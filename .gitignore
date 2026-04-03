@@ -1,0 +1,5 @@
+/target
+/github
+/ssl
+/.env
+/src/lib/lib.rs
