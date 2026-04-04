@@ -3,5 +3,4 @@
 /ssl
 /.env
 /src/lib/lib.rs
-/target
 /github
