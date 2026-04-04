@@ -5,14 +5,41 @@ document.addEventListener('DOMContentLoaded', (event) => {
 });
 
 function attachEventListeners() {
-  attachNewPostEventListener();
-  attachSelectUserEventListener();
-  attachSelectPostEventListener();
-  attachProHomeEventListener();
-  attachEditPostEventListener();
-  attachDeletePostEventListener();
-  attachShowEditProEventListener();
-  attachEditProEventListener();
+  const listeners = [
+    attachCopyLinkEventListener,
+    attachDeletePostEventListener,
+    attachNewPostEventListener,
+    attachSelectUserEventListener,
+    attachSelectPostEventListener,
+    attachProHomeEventListener,
+    attachEditPostEventListener,
+    attachShowEditProEventListener,
+    attachEditProEventListener,
+  ];
+
+  listeners.forEach((setup) => {
+    try {
+      setup();
+    } catch (error) {
+      console.error('Listener setup failed:', setup.name, error);
+    }
+  });
+}
+
+function attachCopyLinkEventListener() {
+  const copyLinks = document.querySelectorAll('.copy-link');
+
+  copyLinks.forEach((link) => {
+    link.addEventListener('click', async (event) => {
+      event.preventDefault();
+
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+      } catch (error) {
+        console.log('Failed to copy link: ', error);
+      }
+    });
+  });
 }
 
 function getLastPathSegment(urlString) {
@@ -124,54 +151,15 @@ function attachNewPostEventListener() {
 }
 
 function attachSelectPostEventListener() {
-  const selectPostLinks = document.querySelectorAll('.post-link');
-  const selectPostForm = document.getElementById('select-post-form');
-  const ibUID = selectPostForm.querySelector('input[name="ib_uid"]').value;
-  const ibSelectedUser = selectPostForm.querySelector('input[name="ib_user"]').value;
+  const selectPostLinks = document.querySelectorAll('.show-post');
 
   selectPostLinks.forEach((link) => {
-    link.addEventListener('click', async (event) => {
+    link.addEventListener('click', (event) => {
       event.preventDefault();
-      const path = getLastPathSegment(link.href);
 
-      console.log('Selected Post:', path);
-  
-      const headers = {
-        'Content-Type': 'application/json',
-        'Accept': 'text/html',
-        'ib-uid': ibUID
-      };
-  
-      try {
-        const params = new URLSearchParams({
-          'ib_uid': ibUID,
-          'ib_user': ibSelectedUser
-        });
-      
-        const response = await fetch(`${selectPostForm.action}?${params.toString()}`, {
-          method: 'POST',
-          headers: headers
-        });
-      
-        const data = await response.text();
-        generateIBFormSuccess(data);
-        const copyPasteLinks = document.querySelectorAll('.copy-paste-link');
-
-        copyPasteLinks.forEach((link) => {
-          link.addEventListener('click', async (event) => {
-            event.preventDefault();
-            try {
-              await navigator.clipboard.writeText(link.href);
-              console.log('Link copied to clipboard');
-            } catch (err) {
-              console.log('Failed to copy link: ', err);
-            }
-          });
-        });
-      
-      } catch (error) {
-        generateIBFormMessageFailure('select-post-message', error);
-        console.error('Error:', error);
+      const showPostForm = link.closest('.post')?.querySelector('.show-post-form');
+      if (showPostForm) {
+        showPostForm.requestSubmit();
       }
     });
   });
@@ -220,123 +208,31 @@ function attachProHomeEventListener() {
 }
 
 function attachEditPostEventListener() {
-  const selectPostLinks = document.querySelectorAll('.edit-post-button');
-  const selectPostForm = document.getElementById('edit-post-form');
-  const ibUID = selectPostForm.querySelector('input[name="ibuid"]').value;
-  const ibAuthToken = selectPostForm.querySelector('input[name="ibauthtoken"]').value;
-  const ibSelectedUser = selectPostForm.querySelector('input[name="ibselecteduser"]').value;
-  const ibPID = selectPostForm.querySelector('input[name="ibpid"]').value;
+  const editPostLinks = document.querySelectorAll('.edit-post');
 
-  selectPostLinks.forEach((link) => {
-    link.addEventListener('click', async (event) => {
+  editPostLinks.forEach((link) => {
+    link.addEventListener('click', (event) => {
       event.preventDefault();
-      const path = getLastPathSegment(link.href);
 
-      console.log('Selected Post:', path);
-  
-      const headers = {
-        'Content-Type': 'application/json',
-        'Accept': 'text/html',
-        'ib-uid': ibUID,
-        'ib-authtoken': ibAuthToken,
-        'ib-selecteduser': ibSelectedUser,
-        'ib-editpostid': ibPID
-      };
-  
-      try {
-        const params = new URLSearchParams({
-          'ibuid': ibUID,
-          'ibauthtoken': ibAuthToken,
-          'ibselecteduser': ibSelectedUser,
-          'pid': ibPID
-        });
-      
-        const response = await fetch(`${selectPostForm.action}?${params.toString()}`, {
-          method: 'POST',
-          headers: headers
-        });
-      
-        const data = await response.text();
-        generateIBFormSuccess(data);
-
-        const ibPostForm = document.querySelector('#editpost');
-
-        ibPostForm.addEventListener('submit', (event) => {
-          event.preventDefault();
-
-          const ibUID = ibPostForm.querySelector('input[name="ibuid"]').value;
-          const ibAuthToken = ibPostForm.querySelector('input[name="ibauthtoken"]').value;
-          const post = ibPostForm.querySelector('input[name="post"]').value;
-          const ibPID = ibPostForm.querySelector('input[name="pid"]').value;
-
-          fetch(ibPostForm.action, {
-            method: ibPostForm.method,
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'text/html',
-              'ib-uid': ibUID,
-              'ib-authtoken': ibAuthToken,
-              'ib-editpostid': ibPID
-            },
-            body: JSON.stringify({ 'ibuid': ibUID, 'ibauthtoken': ibAuthToken, 'post': post, 'pid': ibPID }),
-          })
-            .then(async response => {
-              for (let [key, value] of response.headers.entries()) {
-                console.log(`${key}: ${value}`);
-              }
-
-              await response.text();
-            })
-            .then(data => generateIBFormSuccess(data))
-            .catch(error => generateIBFormMessageFailure('edit-post-message', error))
-        });
-
-        attachEventListeners();
-      } catch (error) {
-        generateIBFormMessageFailure(error);
-        console.error('Error:', error);
+      const editPostForm = link.closest('.post')?.querySelector('.edit-post-form');
+      if (editPostForm) {
+        editPostForm.requestSubmit();
       }
     });
   });
 }
 
 function attachDeletePostEventListener() {
-  const deletePostLinks = document.querySelectorAll('.delete-post-button');
-  const deletePostForm = document.getElementById('delete-post-form');
-  const ibUID = deletePostForm.querySelector('input[name="ibuid"]').value;
-  const ibAuthToken = deletePostForm.querySelector('input[name="ibauthtoken"]').value;
-  const ibPID = deletePostForm.querySelector('input[name="pid"]').value;
+  const deletePostLinks = document.querySelectorAll('.delete-post');
 
   deletePostLinks.forEach((link) => {
-    link.addEventListener('click', async (event) => {
+    link.addEventListener('click', (event) => {
       event.preventDefault();
-  
-      const headers = {
-        'Content-Type': 'application/json',
-        'Accept': 'text/html',
-        'ib-uid': ibUID,
-        'ib-authtoken': ibAuthToken,
-        'ib-deletepostid': ibPID
-      };
-  
-      try {
-        const body = JSON.stringify({
-          'ib-uid': ibUID,
-          'ib-authtoken': ibAuthToken,
-          'ib-deletepostid': ibPID
-        });
-      
-        const response = await fetch(deletePostForm.action, {
-          method: 'POST',
-          headers: headers,
-          body: body
-        });
-      
-        const data = await response.text();
-        generateIBFormSuccess(data);
-      } catch (error) {
-        console.error('Error:', error);
-        generateIBFormMessageFailure('delete-post-message', error);
+
+      const deletePostForm = link.closest('.post')?.querySelector('.delete-post-form');
+
+      if (deletePostForm) {
+        deletePostForm.requestSubmit();
       }
     });
   });
@@ -345,39 +241,15 @@ function attachDeletePostEventListener() {
 function attachShowEditProEventListener() {
   const showEditProLinks = document.querySelectorAll('.show-edit-profile');
   const editProForm = document.getElementById('edit-profile-form');
-  const ibUID = editProForm.querySelector('input[name="ibuid"]').value;
-  const ibAuthToken = editProForm.querySelector('input[name="ibauthtoken"]').value;
+
+  if (!editProForm) {
+    return;
+  }
 
   showEditProLinks.forEach((link) => {
-    link.addEventListener('click', async (event) => {
+    link.addEventListener('click', (event) => {
       event.preventDefault();
-      const path = getLastPathSegment(link.href);
-  
-      const headers = {
-        'Content-Type': 'application/json',
-        'Accept': 'text/html',
-        'ib-uid': ibUID,
-        'ib-authtoken': ibAuthToken
-      };
-  
-      try {
-        const body = JSON.stringify({
-          'ibuid': ibUID,
-          'ibauthtoken': ibAuthToken
-        });
-      
-        const response = await fetch(editProForm.action, {
-          method: 'POST',
-          headers: headers,
-          body: body
-        });
-      
-        const data = await response.text();
-        generateIBFormSuccess(data);
-      } catch (error) {
-        generateIBFormMessageFailure('edit-pro-message', error)
-        console.error('Error:', error);
-      }
+      editProForm.requestSubmit();
     });
   });
 }
@@ -422,6 +294,10 @@ function characterCounter(counter) {
   const textFieldPost = document.querySelector('input[name="post"]');
   const charCountDiv = document.getElementById(`${counter}`);
 
+  if (!textFieldPost || !charCountDiv) {
+    return;
+  }
+
   textFieldPost.addEventListener('input', (event) => {
     const charCountPost = event.target.value.length;
     charCountDiv.textContent = charCountPost + '/1024';
@@ -451,9 +327,6 @@ function generateIBPostFormSuccess(ibUser, ibUID) {
   const headers = new Headers();
   headers.append('ib-uid', ibUID);
 
-  const body = new URLSearchParams();
-  body.append('ib_uid', ibUID);
-
   fetch(`https://${domain}/v1/profile/${ibUser}`, {
     method: 'GET',
     headers: headers
@@ -464,7 +337,6 @@ function generateIBPostFormSuccess(ibUser, ibUID) {
   })
   .catch(error => {
     console.error('Error:', error);
-    // Handle the error...
   });
   attachEventListeners();
 }

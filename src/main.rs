@@ -38,8 +38,9 @@
 // [[ "Nothing else follows." ]]
 
 use is_by_pro::{COPYRIGHT, DOMAIN, IB_CA_CERT, IB_CA_KEY, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE};
+use actix_cors::Cors;
 use actix_files::Files;
-use actix_web::{cookie::Cookie, get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web::{cookie::Cookie, dev::Service, get, http::Method, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
 use rustls::{ServerConfig, pki_types::CertificateDer};
@@ -111,6 +112,67 @@ struct GithubUser {
 struct NewPostRequest {
   ib_uid: i64,
   ib_user: String,
+  post: String,
+}
+
+#[derive(Deserialize)]
+struct DeletePostRequest {
+  ib_uid: i64,
+  ib_user: String,
+  pid: String,
+}
+
+#[derive(Deserialize)]
+struct EditPostRequest {
+  ib_uid: i64,
+  ib_user: String,
+  pid: String,
+}
+
+#[derive(Deserialize)]
+struct EditPostUpdateRequest {
+  ib_uid: i64,
+  ib_user: String,
+  pid: String,
+  post: String,
+}
+
+#[derive(Deserialize)]
+struct ShowPostRequest {
+  ib_uid: i64,
+  ib_user: String,
+  pid: String,
+}
+
+#[derive(Deserialize)]
+struct EditProfileRequest {
+  ib_uid: i64,
+  ib_user: String,
+}
+
+#[derive(Deserialize)]
+struct EditProfileUpdateRequest {
+  ib_uid: i64,
+  ib_user: String,
+  ib_github: String,
+  ib_ibp: String,
+  ib_pro: String,
+  ib_services: String,
+  ib_location: String,
+  ib_website: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct EditProfileRow {
+  ib_ibp: String,
+  ib_pro: String,
+  ib_services: String,
+  ib_location: String,
+  ib_website: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct EditPostRow {
   post: String,
 }
 
@@ -201,17 +263,7 @@ async fn render_profile_html(state: &AppState, ib_uid: i64, ib_user: &str) -> Re
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
-  <form id="edit-post-form" action="https://{domain}/v1/editpost" method="GET">
-    <input type="hidden" name="ib_uid" value="{ib_uid}">
-    <input type="hidden" name="ib_user" value="{ib_user}">
-    <input type="hidden" name="pid" value="">
-  </form>
-  <form id="delete-post-form" action="https://{domain}/v1/deletepost" method="POST">
-    <input type="hidden" name="ib_uid" value="{ib_uid}">
-    <input type="hidden" name="ib_user" value="{ib_user}">
-    <input type="hidden" name="pid" value="">
-  </form>
-  <form id="edit-profile-form" action="https://{domain}/v1/profile/edit" method="POST">
+  <form id="edit-profile-form" action="https://{domain}/v1/editprofile" method="GET">
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
@@ -261,10 +313,34 @@ async fn render_profile_html(state: &AppState, ib_uid: i64, ib_user: &str) -> Re
   let start_index = ib_post_results_length.saturating_sub(ib_post_results_maximum);
   for row in ib_post_results[start_index..].iter().rev() {
     selected_user_posts_response_content += &format!(
-      r#"<div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}"><p>{ib_post}</p><div class="post-actions"><a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a><a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a></div></div>"#,
+      r#"
+      <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
+        <p>{ib_post}</p>
+        <div class="post-actions">
+          <form class="delete-post-form" action="https://{domain}/v1/deletepost" method="POST">
+            <input type="hidden" name="ib_uid" value="{ib_uid}">
+            <input type="hidden" name="ib_user" value="{ib_user}">
+            <input type="hidden" name="pid" value="{ib_post_id}">
+          </form>
+          <form class="edit-post-form" action="https://{domain}/v1/editpost" method="GET">
+            <input type="hidden" name="ib_uid" value="{ib_uid}">
+            <input type="hidden" name="ib_user" value="{ib_user}">
+            <input type="hidden" name="pid" value="{ib_post_id}">
+          </form>
+          <form class="show-post-form" action="https://{domain}/v1/showpost" method="GET">
+            <input type="hidden" name="ib_uid" value="{ib_uid}">
+            <input type="hidden" name="ib_user" value="{ib_user}">
+            <input type="hidden" name="pid" value="{ib_post_id}">
+          </form>
+          <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a><a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a><a href="javascript:void(0);" class="show-post">:[[ :show-post: ]]:</a>
+        </div>
+      </div>"#,
       ib_post_id = escape_html(&row.postid),
       ib_post_timestamp = escape_html(&row.timestamp),
-      ib_post = escape_html(&row.post)
+      ib_post = escape_html(&row.post),
+      ib_uid = ib_uid,
+      ib_user = escape_html(ib_user),
+      domain = DOMAIN
     );
   }
 
@@ -284,7 +360,111 @@ async fn render_profile_html(state: &AppState, ib_uid: i64, ib_user: &str) -> Re
     html += &format!(r#"
   </div>
   <div id="profile-section">
-    <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p><strong>:[[ :<a target="_blank" rel="noopener" href="{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p class="paragraph"><em>{ib_ibp}</em></p>
+    <p class="description">{ib_pro}</p>
+    <p class="description">{ib_services}</p>
+    <p class="description">{ib_location}</p>
+    <p><a target="_blank" rel="noopener" href="{ib_website}">{ib_website}</a></p>
+  </div>
+</div>
+</body>
+
+</html>"#,
+      ib_github = escape_html(&ib_pro.github),
+      ib_user = escape_html(ib_user),
+      ib_ibp = escape_html(&ib_pro.ibp),
+      ib_pro = escape_html(&ib_pro.pro),
+      ib_services = escape_html(&ib_pro.services),
+      ib_location = escape_html(&ib_pro.location),
+      ib_website = escape_html(&ib_pro.website)
+    );
+  } else {
+    html += &format!(r#"
+    </div>
+  </div>
+</body>
+
+</html>"#);
+  }
+
+  Ok(html)
+}
+
+async fn render_single_post_html(
+  state: &AppState,
+  ib_uid: i64,
+  ib_user: &str,
+  pid: &str,
+) -> Result<String, String> {
+  let post = sqlx::query_as::<_, PostRow>(
+      "SELECT postid, post, timestamp FROM isby.post WHERE ib_uid = ? AND postid = ? LIMIT 1"
+    )
+    .bind(ib_uid)
+    .bind(pid)
+    .fetch_optional(&state.db_pool)
+    .await
+    .map_err(|e| format!("Post lookup failed: {}", e))?;
+
+  let post = match post {
+    Some(post) => post,
+    None => return Err(format!("Post not found: {}", pid)),
+  };
+
+  let mut html = format!(
+    r#"<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
+  <script src="/js/is-by_user.js" type="text/javascript"></script>
+  <title>:[[ :is-by: pro: {ib_user}: ]]:</title>
+</head>
+
+<body>
+  <form id="select-user-form" action="/" method="GET">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <div id="main-section">
+    <div id="media-section">
+      <div>
+      <img src="/images/Death_Angel-555x111.png" alt=":Death_Angel-555x111.png:" width="555"
+          height="111">
+      </div>
+      <div id="navigation-section">
+        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+      </div>
+      <div id="selected-user-posts-section" class="post-section">
+        <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
+          <p>{ib_post}</p>
+          <div class="post-actions">
+            <p><a href="javascript:void(0);" class="copy-link">:[[ :copy-link: ]]:</a></p>
+          </div>
+        </div>
+      </div>"#,
+    domain = DOMAIN,
+    ib_uid = ib_uid,
+    ib_user = escape_html(ib_user),
+    ib_post_id = escape_html(&post.postid),
+    ib_post_timestamp = escape_html(&post.timestamp),
+    ib_post = escape_html(&post.post)
+  );
+
+  let ib_pro_result = sqlx::query_as::<_, ProRow>(
+      "SELECT ibp, pro, location, services, website, github FROM isby.pro WHERE ib_uid = ?"
+    )
+    .bind(ib_uid)
+    .fetch_one(&state.db_pool)
+    .await;
+
+  if let Ok(ib_pro) = ib_pro_result {
+    html += &format!(r#"
+  </div>
+  <div id="profile-section">
+    <p><strong>:[[ :<a target="_blank" rel="noopener" href="{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -363,6 +543,272 @@ async fn create_post(
       message: format!("Failed to create post: {}", err),
       postid: None,
     }),
+  }
+}
+
+#[post("/v1/showpost")]
+async fn show_post(
+  state: web::Data<AppState>,
+  payload: web::Form<ShowPostRequest>,
+) -> impl Responder {
+  render_show_post_response(&state, payload.ib_uid, &payload.ib_user, &payload.pid).await
+}
+
+#[get("/v1/showpost")]
+async fn show_post_get(
+  state: web::Data<AppState>,
+  query: web::Query<ShowPostRequest>,
+) -> impl Responder {
+  render_show_post_response(&state, query.ib_uid, &query.ib_user, &query.pid).await
+}
+
+async fn render_show_post_response(
+  state: &AppState,
+  ib_uid: i64,
+  ib_user: &str,
+  pid: &str,
+) -> HttpResponse {
+  match render_single_post_html(state, ib_uid, ib_user, pid).await {
+    Ok(html) => HttpResponse::Ok()
+      .content_type("text/html; charset=utf-8")
+      .body(html),
+    Err(err) if err.starts_with("Post not found:") => HttpResponse::NotFound()
+      .content_type("text/html; charset=utf-8")
+      .body(format!(
+        "<!DOCTYPE html><html lang=\"en-US\"><head><meta charset=\"UTF-8\"><title>Post Not Found</title></head><body><p>{}</p></body></html>",
+        escape_html(&err)
+      )),
+    Err(err) => HttpResponse::InternalServerError().body(err),
+  }
+}
+
+#[get("/v1/editprofile")]
+async fn edit_profile(
+  state: web::Data<AppState>,
+  query: web::Query<EditProfileRequest>,
+) -> impl Responder {
+  let row = match sqlx::query_as::<_, EditProfileRow>(
+    "SELECT github AS ib_github, ibp AS ib_ibp, pro AS ib_pro, services AS ib_services, location AS ib_location, website AS ib_website FROM isby.pro WHERE ib_uid = ? LIMIT 1",
+  )
+  .bind(query.ib_uid)
+  .fetch_optional(&state.db_pool)
+  .await
+  {
+    Ok(Some(row)) => row,
+    Ok(None) => EditProfileRow {
+      ib_ibp: String::new(),
+      ib_pro: String::new(),
+      ib_services: String::new(),
+      ib_location: String::new(),
+      ib_website: String::new(),
+    },
+    Err(err) => {
+      return HttpResponse::InternalServerError().body(format!("Edit profile lookup failed: {}", err));
+    }
+  };
+
+  let html = format!(
+    r#"<!DOCTYPE html>
+<html lang="en-US">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css" />
+  <script src="/js/is-by_user.js" type="text/javascript"></script>
+  <title>:[[ :edit-profile: {ib_user}: ]]:</title>
+</head>
+<body>
+  <div id="main-section">
+    <div id="media-section">
+      <div>
+        <img src="/images/Death_Angel-555x111.png" alt=":Death_Angel-555x111.png:" width="555" height="111">
+      </div>
+      <div id="navigation-section">
+        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+      </div>
+      <div id="post-form-section" style="display:block;">
+        <form id="edit-profile-form" action="https://{domain}/v1/editprofile" method="POST">
+          <input type="hidden" name="ib_uid" value="{ib_uid}">
+          <input type="hidden" name="ib_user" value="{ib_user}">
+          GitHub: https://github.com/<input class="post" type="text" name="ib_github" placeholder="{ib_user}" autocomplete="off"><br>
+          About Me: <input class="post" type="text" name="ib_ibp" value="{ib_ibp}" placeholder="{ib_ibp}" autocomplete="off"><br>
+          Interests: <input class="post" type="text" name="ib_pro" value="{ib_pro}" placeholder="{ib_pro}" autocomplete="off"><br>
+          Services: <input class="post" type="text" name="ib_services" value="{ib_services}" placeholder="{ib_services}" autocomplete="off"><br>
+          Location: <input class="post" type="text" name="ib_location" value="{ib_location}" placeholder="{ib_location}" autocomplete="off"><br>
+          Website: <input class="post" type="text" name="ib_website" value="{ib_website}" placeholder="{ib_website}" autocomplete="off"><br>
+          <input class="post-submit" type="submit" value="Save">
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+</html>"#,
+    domain = DOMAIN,
+    ib_uid = query.ib_uid,
+    ib_user = escape_html(&query.ib_user),
+    ib_ibp = escape_html(&row.ib_ibp),
+    ib_pro = escape_html(&row.ib_pro),
+    ib_services = escape_html(&row.ib_services),
+    ib_location = escape_html(&row.ib_location),
+    ib_website = escape_html(&row.ib_website)
+  );
+
+  HttpResponse::Ok()
+    .content_type("text/html; charset=utf-8")
+    .body(html)
+}
+
+#[post("/v1/editprofile")]
+async fn update_profile(
+  state: web::Data<AppState>,
+  payload: web::Form<EditProfileUpdateRequest>,
+) -> impl Responder {
+  let result = sqlx::query(
+    "INSERT INTO isby.pro (ib_uid, github, ibp, pro, services, location, website) VALUES (?, ?, ?, ?, ?, ?, ?) \
+     ON DUPLICATE KEY UPDATE github = VALUES(github), ibp = VALUES(ibp), pro = VALUES(pro), services = VALUES(services), location = VALUES(location), website = VALUES(website)",
+  )
+  .bind(payload.ib_uid)
+  .bind(&payload.ib_github)
+  .bind(&payload.ib_ibp)
+  .bind(&payload.ib_pro)
+  .bind(&payload.ib_services)
+  .bind(&payload.ib_location)
+  .bind(&payload.ib_website)
+  .execute(&state.db_pool)
+  .await;
+
+  match result {
+    Ok(_) => HttpResponse::SeeOther()
+      .insert_header(("Location", format!("/v1/profile/{}", payload.ib_user)))
+      .finish(),
+    Err(err) => HttpResponse::InternalServerError()
+      .body(format!("Failed to update profile: {}", err)),
+  }
+}
+
+#[post("/v1/deletepost")]
+async fn delete_post(
+  state: web::Data<AppState>,
+  payload: web::Form<DeletePostRequest>,
+) -> impl Responder {
+  let result = sqlx::query(
+    "DELETE FROM isby.post WHERE ib_uid = ? AND postid = ?",
+  )
+  .bind(payload.ib_uid)
+  .bind(&payload.pid)
+  .execute(&state.db_pool)
+  .await;
+
+  match result {
+    Ok(_) => HttpResponse::SeeOther()
+      .insert_header(("Location", format!("/v1/profile/{}", payload.ib_user)))
+      .finish(),
+    Err(err) => HttpResponse::InternalServerError()
+      .body(format!("Failed to delete post: {}", err)),
+  }
+}
+
+#[get("/v1/editpost")]
+async fn edit_post(
+  state: web::Data<AppState>,
+  query: web::Query<EditPostRequest>,
+) -> impl Responder {
+  let selected = sqlx::query_as::<_, EditPostRow>(
+    "SELECT post FROM isby.post WHERE ib_uid = ? AND postid = ? LIMIT 1",
+  )
+  .bind(query.ib_uid)
+  .bind(&query.pid)
+  .fetch_optional(&state.db_pool)
+  .await;
+
+  let row = match selected {
+    Ok(Some(row)) => row,
+    Ok(None) => {
+      return HttpResponse::NotFound()
+        .content_type("text/html; charset=utf-8")
+        .body(format!(
+          "<!DOCTYPE html><html lang=\"en-US\"><head><meta charset=\"UTF-8\"><title>Post Not Found</title></head><body><p>Post not found: {}</p></body></html>",
+          escape_html(&query.pid)
+        ));
+    }
+    Err(err) => {
+      return HttpResponse::InternalServerError().body(format!("Edit post lookup failed: {}", err));
+    }
+  };
+
+  let html = format!(
+    r#"<!DOCTYPE html>
+<html lang="en-US">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css" />
+  <title>:[[ :edit-post: ]]:</title>
+</head>
+<body>
+  <div id="main-section">
+    <div id="media-section">
+      <div id="navigation-section">
+        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+      </div>
+      <div id="post-form-section" style="display:block;">
+        <form id="editpost" action="https://{domain}/v1/editpost" method="POST">
+          <div id="edit-post-message"></div>
+          <input type="hidden" name="ib_uid" value="{ib_uid}">
+          <input type="hidden" name="ib_user" value="{ib_user}">
+          <input type="hidden" name="pid" value="{pid}">
+          <textarea name="post" rows="8" cols="80" required>{post}</textarea>
+          <br>
+          <input class="post-submit" type="submit" value="Save">
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+</html>"#,
+    domain = DOMAIN,
+    ib_uid = query.ib_uid,
+    ib_user = escape_html(&query.ib_user),
+    pid = escape_html(&query.pid),
+    post = escape_html(&row.post)
+  );
+
+  HttpResponse::Ok()
+    .content_type("text/html; charset=utf-8")
+    .body(html)
+}
+
+#[post("/v1/editpost")]
+async fn update_post(
+  state: web::Data<AppState>,
+  payload: web::Form<EditPostUpdateRequest>,
+) -> impl Responder {
+  const MAX_POST_LEN: usize = 1024;
+
+  if payload.post.trim().is_empty() {
+    return HttpResponse::BadRequest().body("Post cannot be empty");
+  }
+
+  if payload.post.chars().count() > MAX_POST_LEN {
+    return HttpResponse::BadRequest()
+      .body(format!("Post cannot exceed {} characters", MAX_POST_LEN));
+  }
+
+  let result = sqlx::query(
+    "UPDATE isby.post SET post = ? WHERE ib_uid = ? AND postid = ?",
+  )
+  .bind(&payload.post)
+  .bind(payload.ib_uid)
+  .bind(&payload.pid)
+  .execute(&state.db_pool)
+  .await;
+
+  match result {
+    Ok(_) => HttpResponse::SeeOther()
+      .insert_header(("Location", format!("/v1/profile/{}", payload.ib_user)))
+      .finish(),
+    Err(err) => HttpResponse::InternalServerError()
+      .body(format!("Failed to update post: {}", err)),
   }
 }
 
@@ -584,7 +1030,7 @@ async fn hello() -> impl Responder {
       <img src="/images/Death_Angel-555x222.png" alt=":Death_Angel-555x222.png:" width="555"
         height="222">
       <div class="for-the">
-        <p><em>:[[ :for-the: [[ QWOD-MJ12: ATSOSSDEV-A: HyperSpire-Foundation: is-by: respecting: is-with: user-privacy: is-with: GitHub-driven: social-media: ]]: ]]:</em></p>
+        <p><em>:[[ :for-the: [[ QWOD-MJ12: ATSOSSDEV-A: HyperSpire-Foundation: is-with: GitHub-driven: social-media: ]]: ]]:</em></p>
       </div>
       <div class="is-by">
         <h1 class="warno">:[[ :is-by: pro: for-the: [[ anti-social: social-media: for-the: [[ PEOPLE: is-by: WE: people: ]]: ]]: ]]:</h1>
@@ -642,10 +1088,81 @@ async fn main() -> std::io::Result<()> {
   .run();
 
   let https_server = HttpServer::new(move || {
+    let allowed_origin = format!("https://{}", DOMAIN);
+    let cors = Cors::default()
+      .allowed_origin(&allowed_origin)
+      .allowed_methods(vec!["GET", "POST"])
+      .allow_any_header();
+
     App::new()
+      .wrap(cors)
+      .wrap_fn(move |req, srv| {
+        let method = req.method().clone();
+        let host = req
+          .connection_info()
+          .host()
+          .split(':')
+          .next()
+          .unwrap_or_default()
+          .to_owned();
+        let host_ok = host.eq_ignore_ascii_case(DOMAIN);
+
+        let origin_ok = req
+          .headers()
+          .get("origin")
+          .and_then(|v| v.to_str().ok())
+          .map(|origin| origin.eq_ignore_ascii_case(&allowed_origin))
+          .unwrap_or(true);
+
+        let method_ok = method == Method::GET || method == Method::POST;
+
+        type MiddlewareFuture = std::pin::Pin<
+          Box<
+            dyn std::future::Future<
+              Output = Result<
+                actix_web::dev::ServiceResponse<
+                  actix_web::body::EitherBody<actix_web::body::BoxBody>
+                >,
+                actix_web::Error,
+              >,
+            >,
+          >,
+        >;
+
+        if !host_ok || !origin_ok {
+          let response = req.into_response(HttpResponse::Forbidden().body("Forbidden"));
+          let fut: MiddlewareFuture = Box::pin(async move {
+            Ok(response.map_into_right_body::<actix_web::body::BoxBody>())
+          });
+          return fut;
+        }
+
+        if !method_ok {
+          let response = req.into_response(HttpResponse::MethodNotAllowed().body("Method Not Allowed"));
+          let fut: MiddlewareFuture = Box::pin(async move {
+            Ok(response.map_into_right_body::<actix_web::body::BoxBody>())
+          });
+          return fut;
+        }
+
+        let fut = srv.call(req);
+        let fut: MiddlewareFuture = Box::pin(async move {
+          let res = fut.await?;
+          let res = res.map_into_boxed_body();
+          Ok(res.map_into_left_body::<actix_web::body::BoxBody>())
+        });
+        fut
+      })
       .app_data(web::Data::new(app_state.clone()))
       .service(hello)
       .service(create_post)
+      .service(show_post)
+      .service(show_post_get)
+      .service(edit_profile)
+      .service(update_profile)
+      .service(delete_post)
+      .service(edit_post)
+      .service(update_post)
       .service(view_profile)
       .service(github_auth_start)
       .service(github_auth_callback)
