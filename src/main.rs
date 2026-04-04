@@ -37,7 +37,7 @@
 // or logo of HyperSpire Foundation or its affiliates." ]]
 // [[ "Nothing else follows." ]]
 
-use is_by_pro::{COPYRIGHT, DOMAIN, IB_CA_CERT, IB_CA_KEY, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE};
+use is_by_pro::{COPYRIGHT, DOMAIN, IB_CA_CERT, IB_CA_KEY, MYSQL_USER, MYSQL_DATABASE};
 use actix_cors::Cors;
 use actix_files::Files;
 use actix_web::{cookie::Cookie, dev::Service, get, http::Method, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
@@ -214,13 +214,16 @@ async fn redirect_to_https(req: HttpRequest) -> HttpResponse {
 }
 
 async fn create_db_pool() -> Result<MySqlPool, sqlx::Error> {
+  let mysql_password = std::env::var("MYSQL_PASSWORD")
+    .expect("Missing MYSQL_PASSWORD in environment file or shell");
+
   MySqlPoolOptions::new()
     .max_connections(5)
     .connect_with(
       sqlx::mysql::MySqlConnectOptions::new()
         .host("localhost")
         .username(MYSQL_USER)
-        .password(MYSQL_PASSWORD)
+        .password(&mysql_password)
         .database(MYSQL_DATABASE),
     )
     .await
@@ -1064,8 +1067,9 @@ async fn main() -> std::io::Result<()> {
     .install_default()
     .expect("Failed to install rustls crypto provider");
 
-  let _ = dotenvy::from_filename(".env/GITHUB_CLIENT_SECRET")
-    .or_else(|_| dotenvy::from_filename(".env"));
+  let _ = dotenvy::from_filename(".env");
+  let _ = dotenvy::from_filename(".env/GITHUB_CLIENT_SECRET.env");
+  let _ = dotenvy::from_filename(".env/MYSQL_PASSWORD.env");
 
   let db_pool = create_db_pool()
     .await
