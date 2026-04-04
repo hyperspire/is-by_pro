@@ -1,7 +1,0 @@
-pub const DOMAIN: &str = "domain";
-pub const IB_CA_KEY: &str = "./ssl/sslcert.key";
-pub const IB_CA_CERT: &str = "./ssl/sslcert.pro.crt";
-pub const COPYRIGHT: u32 = 2026;
-pub const MYSQL_USER: &str = "username";
-pub const MYSQL_PASSWORD: &str = "password";
-pub const MYSQL_DATABASE: &str = "database";
