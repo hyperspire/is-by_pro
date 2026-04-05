@@ -60,6 +60,8 @@ struct AppState {
 
 #[derive(sqlx::FromRow)]
 struct PostRow {
+  ib_uid: String,
+  username: String,
   postid: String,
   post: String,
   timestamp: String,
@@ -120,6 +122,8 @@ struct DeletePostRequest {
   ib_uid: i64,
   ib_user: String,
   pid: String,
+  root_pid: Option<String>,
+  post_owner_uid: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -127,6 +131,8 @@ struct EditPostRequest {
   ib_uid: i64,
   ib_user: String,
   pid: String,
+  root_pid: Option<String>,
+  post_owner_uid: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -135,6 +141,8 @@ struct EditPostUpdateRequest {
   ib_user: String,
   pid: String,
   post: String,
+  root_pid: Option<String>,
+  post_owner_uid: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -142,6 +150,14 @@ struct ShowPostRequest {
   ib_uid: i64,
   ib_user: String,
   pid: String,
+}
+
+#[derive(Deserialize)]
+struct ReplyRequest {
+  ib_uid: i64,
+  ib_user: String,
+  pid: String,
+  post: String,
 }
 
 #[derive(Deserialize)]
@@ -205,6 +221,27 @@ fn escape_html(input: &str) -> String {
     .replace('\'', "&#39;")
 }
 
+fn render_post_meta(ib_uid: &str, username: &str, timestamp: &str) -> String {
+  let profile_target = if username.trim().is_empty() {
+    ib_uid
+  } else {
+    username
+  };
+
+  format!(
+    r#"<div class="post-meta"><a class="post-author" href="https://{domain}/v1/profile/{profile_target}">{username}</a><span class="post-timestamp">{timestamp}</span></div>"#,
+    domain = DOMAIN,
+    profile_target = escape_html(profile_target),
+    username = escape_html(username),
+    timestamp = escape_html(timestamp)
+  )
+}
+
+fn get_session_uid(req: &HttpRequest) -> Option<i64> {
+  req.cookie("ib_uid")
+    .and_then(|cookie| cookie.value().parse::<i64>().ok())
+}
+
 async fn redirect_to_https(req: HttpRequest) -> HttpResponse {
   let host = req.connection_info().host().to_owned();
   let path = req.uri().path_and_query().map(|p| p.as_str()).unwrap_or("/");
@@ -244,7 +281,24 @@ async fn ensure_legacy_user_from_github(
   Ok(())
 }
 
-async fn render_profile_html(state: &AppState, ib_uid: i64, ib_user: &str) -> Result<String, String> {
+async fn render_profile_html(
+  state: &AppState,
+  ib_uid: i64,
+  ib_user: &str,
+  session_uid: Option<i64>,
+) -> Result<String, String> {
+  let navigation_links = if session_uid.is_some() {
+    format!(
+      r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
+        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>"#,
+      domain = DOMAIN,
+      ib_user = escape_html(ib_user)
+    )
+  } else {
+    String::new()
+  };
+
   let mut html = format!(
     r#"<!DOCTYPE html>
 <html lang="en-US">
@@ -277,9 +331,7 @@ async fn render_profile_html(state: &AppState, ib_uid: i64, ib_user: &str) -> Re
           height="111">
       </div>
       <div id="navigation-section">
-        <a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
-        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
-        <a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>
+        {navigation_links}
       </div>
       <div id="post-form-section">
         <form id="post-form" action="https://{domain}/v1/post" method="POST">
@@ -294,12 +346,13 @@ async fn render_profile_html(state: &AppState, ib_uid: i64, ib_user: &str) -> Re
       </div>"#,
     ib_user = escape_html(ib_user),
     ib_uid = ib_uid,
+    navigation_links = navigation_links,
     domain = DOMAIN
   );
 
   let ib_post_results_maximum: usize = 200;
   let ib_post_results = sqlx::query_as::<_, PostRow>(
-      "SELECT postid, post, timestamp FROM isby.post WHERE ib_uid = ?"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp FROM isby.post AS post LEFT JOIN isby.user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = '' OR post.parentid IS NULL)"
     )
     .bind(ib_uid)
     .fetch_all(&state.db_pool)
@@ -315,12 +368,11 @@ async fn render_profile_html(state: &AppState, ib_uid: i64, ib_user: &str) -> Re
 
   let start_index = ib_post_results_length.saturating_sub(ib_post_results_maximum);
   for row in ib_post_results[start_index..].iter().rev() {
-    selected_user_posts_response_content += &format!(
-      r#"
-      <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
-        <p>{ib_post}</p>
-        <div class="post-actions">
-          <form class="delete-post-form" action="https://{domain}/v1/deletepost" method="POST">
+    let row_owner_uid = row.ib_uid.parse::<i64>().ok();
+    let can_manage_post = session_uid.is_some() && session_uid == row_owner_uid;
+    let manage_actions = if can_manage_post {
+      format!(
+        r#"<form class="delete-post-form" action="https://{domain}/v1/deletepost" method="POST">
             <input type="hidden" name="ib_uid" value="{ib_uid}">
             <input type="hidden" name="ib_user" value="{ib_user}">
             <input type="hidden" name="pid" value="{ib_post_id}">
@@ -330,16 +382,35 @@ async fn render_profile_html(state: &AppState, ib_uid: i64, ib_user: &str) -> Re
             <input type="hidden" name="ib_user" value="{ib_user}">
             <input type="hidden" name="pid" value="{ib_post_id}">
           </form>
+          <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a><a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>"#,
+        domain = DOMAIN,
+        ib_uid = ib_uid,
+        ib_user = escape_html(ib_user),
+        ib_post_id = escape_html(&row.postid),
+      )
+    } else {
+      String::new()
+    };
+
+    selected_user_posts_response_content += &format!(
+      r#"
+      <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
+        {post_meta}
+        <p>{ib_post}</p>
+        <div class="post-actions">
+          {manage_actions}
           <form class="show-post-form" action="https://{domain}/v1/showpost" method="GET">
             <input type="hidden" name="ib_uid" value="{ib_uid}">
             <input type="hidden" name="ib_user" value="{ib_user}">
             <input type="hidden" name="pid" value="{ib_post_id}">
           </form>
-          <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a><a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a><a href="javascript:void(0);" class="show-post">:[[ :show-post: ]]:</a>
+          <a href="javascript:void(0);" class="show-post">:[[ :show-post: ]]:</a>
         </div>
       </div>"#,
       ib_post_id = escape_html(&row.postid),
       ib_post_timestamp = escape_html(&row.timestamp),
+      post_meta = render_post_meta(&row.ib_uid, &row.username, &row.timestamp),
+      manage_actions = manage_actions,
       ib_post = escape_html(&row.post),
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user),
@@ -399,9 +470,10 @@ async fn render_single_post_html(
   ib_uid: i64,
   ib_user: &str,
   pid: &str,
+  session_uid: Option<i64>,
 ) -> Result<String, String> {
   let post = sqlx::query_as::<_, PostRow>(
-      "SELECT postid, post, timestamp FROM isby.post WHERE ib_uid = ? AND postid = ? LIMIT 1"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp FROM isby.post AS post LEFT JOIN isby.user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.postid = ? LIMIT 1"
     )
     .bind(ib_uid)
     .bind(pid)
@@ -413,6 +485,66 @@ async fn render_single_post_html(
     Some(post) => post,
     None => return Err(format!("Post not found: {}", pid)),
   };
+
+  let replies = sqlx::query_as::<_, PostRow>(
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp FROM isby.post AS post LEFT JOIN isby.user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.parentid = ? ORDER BY post.timestamp ASC"
+    )
+    .bind(pid)
+    .fetch_all(&state.db_pool)
+    .await
+    .map_err(|e| format!("Reply lookup failed: {}", e))?;
+
+  let mut replies_html = String::new();
+
+  if !replies.is_empty() {
+    for reply in replies {
+      let reply_owner_uid = escape_html(&reply.ib_uid);
+      let can_manage_reply = session_uid.is_some() && session_uid == reply.ib_uid.parse::<i64>().ok();
+      let reply_manage_actions = if can_manage_reply {
+        format!(
+          r#"<div class="post-actions">
+            <form class="delete-post-form" action="https://{domain}/v1/deletepost" method="POST">
+              <input type="hidden" name="ib_uid" value="{page_ib_uid}">
+              <input type="hidden" name="ib_user" value="{page_ib_user}">
+              <input type="hidden" name="pid" value="{reply_post_id}">
+              <input type="hidden" name="root_pid" value="{root_pid}">
+              <input type="hidden" name="post_owner_uid" value="{reply_owner_uid}">
+            </form>
+            <form class="edit-post-form" action="https://{domain}/v1/editpost" method="GET">
+              <input type="hidden" name="ib_uid" value="{page_ib_uid}">
+              <input type="hidden" name="ib_user" value="{page_ib_user}">
+              <input type="hidden" name="pid" value="{reply_post_id}">
+              <input type="hidden" name="root_pid" value="{root_pid}">
+              <input type="hidden" name="post_owner_uid" value="{reply_owner_uid}">
+            </form>
+            <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a><a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>
+          </div>"#,
+          domain = DOMAIN,
+          page_ib_uid = ib_uid,
+          page_ib_user = escape_html(ib_user),
+          root_pid = escape_html(pid),
+          reply_post_id = escape_html(&reply.postid),
+          reply_owner_uid = reply_owner_uid,
+        )
+      } else {
+        String::new()
+      };
+
+      replies_html += &format!(
+        r#"
+        <div class="post reply-post" data-postid="{reply_post_id}" data-timestamp="{reply_post_timestamp}">
+          {reply_post_meta}
+          <p>{reply_post}</p>
+          {reply_manage_actions}
+        </div>"#,
+        reply_post_id = escape_html(&reply.postid),
+        reply_post_timestamp = escape_html(&reply.timestamp),
+        reply_post_meta = render_post_meta(&reply.ib_uid, &reply.username, &reply.timestamp),
+        reply_post = escape_html(&reply.post),
+        reply_manage_actions = reply_manage_actions
+      );
+    }
+  }
 
   let mut html = format!(
     r#"<!DOCTYPE html>
@@ -442,10 +574,22 @@ async fn render_single_post_html(
       </div>
       <div id="selected-user-posts-section" class="post-section">
         <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
+          {post_meta}
           <p>{ib_post}</p>
           <div class="post-actions">
             <p><a href="javascript:void(0);" class="copy-link">:[[ :copy-link: ]]:</a></p>
           </div>
+        </div>
+        {replies_html}
+        <div id="post-form-section" style="display:block;">
+          <form id="reply-form" action="https://{domain}/v1/reply" method="POST">
+            <input type="hidden" name="ib_uid" value="{ib_uid}">
+            <input type="hidden" name="ib_user" value="{ib_user}">
+            <input type="hidden" name="pid" value="{ib_post_id}">
+            <input type="text" class="post" name="post" maxlength="1024" required>
+            <br>
+            <input class="post-submit" type="submit" value="Reply">
+          </form>
         </div>
       </div>"#,
     domain = DOMAIN,
@@ -453,7 +597,9 @@ async fn render_single_post_html(
     ib_user = escape_html(ib_user),
     ib_post_id = escape_html(&post.postid),
     ib_post_timestamp = escape_html(&post.timestamp),
-    ib_post = escape_html(&post.post)
+    post_meta = render_post_meta(&post.ib_uid, &post.username, &post.timestamp),
+    ib_post = escape_html(&post.post),
+    replies_html = replies_html
   );
 
   let ib_pro_result = sqlx::query_as::<_, ProRow>(
@@ -523,7 +669,8 @@ async fn create_post(
 
   let postid = Uuid::new_v4().to_string();
 
-  // CREATE TABLE isby.post (ib_uid varchar(64), postid varchar(64), post varchar(1024), timestamp varchar(32));
+  // CREATE TABLE isby.post (ib_uid varchar(64), postid varchar(64), parentid varchar(64), post varchar(1024), timestamp varchar(32));
+  // ALTER TABLE isby.post MODIFY COLUMN parentid VARCHAR(64) NOT NULL DEFAULT '';
   let result = sqlx::query(
     "INSERT INTO isby.post (ib_uid, postid, post, `timestamp`) VALUES (?, ?, ?, NOW())",
   )
@@ -549,20 +696,79 @@ async fn create_post(
   }
 }
 
+#[post("/v1/reply")]
+async fn create_reply(
+  state: web::Data<AppState>,
+  payload: web::Form<ReplyRequest>,
+) -> impl Responder {
+  const MAX_POST_LEN: usize = 1024;
+
+  if payload.post.trim().is_empty() {
+    return HttpResponse::BadRequest().body("Reply cannot be empty");
+  }
+
+  if payload.post.chars().count() > MAX_POST_LEN {
+    return HttpResponse::BadRequest()
+      .body(format!("Reply cannot exceed {} characters", MAX_POST_LEN));
+  }
+
+  let replyid = Uuid::new_v4().to_string();
+
+  let result = sqlx::query(
+    "INSERT INTO isby.post (ib_uid, postid, parentid, post, `timestamp`) VALUES (?, ?, ?, ?, NOW())",
+  )
+  .bind(payload.ib_uid)
+  .bind(&replyid)
+  .bind(&payload.pid)
+  .bind(&payload.post)
+  .execute(&state.db_pool)
+  .await;
+
+  match result {
+    Ok(_) => HttpResponse::SeeOther()
+      .insert_header((
+        "Location",
+        format!(
+          "/v1/showpost?ib_uid={}&ib_user={}&pid={}",
+          payload.ib_uid, payload.ib_user, payload.pid
+        ),
+      ))
+      .finish(),
+    Err(err) => HttpResponse::InternalServerError()
+      .body(format!("Failed to create reply: {}", err)),
+  }
+}
+
 #[post("/v1/showpost")]
 async fn show_post(
+  req: HttpRequest,
   state: web::Data<AppState>,
   payload: web::Form<ShowPostRequest>,
 ) -> impl Responder {
-  render_show_post_response(&state, payload.ib_uid, &payload.ib_user, &payload.pid).await
+  render_show_post_response(
+    &state,
+    payload.ib_uid,
+    &payload.ib_user,
+    &payload.pid,
+    get_session_uid(&req),
+  )
+  .await
 }
 
 #[get("/v1/showpost")]
 async fn show_post_get(
+  req: HttpRequest,
   state: web::Data<AppState>,
   query: web::Query<ShowPostRequest>,
 ) -> impl Responder {
-  render_show_post_response(&state, query.ib_uid, &query.ib_user, &query.pid).await
+  render_show_post_response(
+    &state,
+    query.ib_uid,
+    &query.ib_user,
+    &query.pid,
+    get_session_uid(&req),
+  )
+  .await
 }
 
 async fn render_show_post_response(
@@ -570,8 +776,9 @@ async fn render_show_post_response(
   ib_uid: i64,
   ib_user: &str,
   pid: &str,
+  session_uid: Option<i64>,
 ) -> HttpResponse {
-  match render_single_post_html(state, ib_uid, ib_user, pid).await {
+  match render_single_post_html(state, ib_uid, ib_user, pid, session_uid).await {
     Ok(html) => HttpResponse::Ok()
       .content_type("text/html; charset=utf-8")
       .body(html),
@@ -691,21 +898,43 @@ async fn update_profile(
 
 #[post("/v1/deletepost")]
 async fn delete_post(
+  req: HttpRequest,
   state: web::Data<AppState>,
   payload: web::Form<DeletePostRequest>,
 ) -> impl Responder {
+  let session_uid = match get_session_uid(&req) {
+    Some(uid) => uid,
+    None => return HttpResponse::Unauthorized().body("Login required"),
+  };
+
+  let owner_uid = payload.post_owner_uid.unwrap_or(payload.ib_uid);
+  if session_uid != owner_uid {
+    return HttpResponse::Forbidden().body("You can only delete your own posts");
+  }
+
   let result = sqlx::query(
     "DELETE FROM isby.post WHERE ib_uid = ? AND postid = ?",
   )
-  .bind(payload.ib_uid)
+  .bind(owner_uid)
   .bind(&payload.pid)
   .execute(&state.db_pool)
   .await;
 
   match result {
-    Ok(_) => HttpResponse::SeeOther()
-      .insert_header(("Location", format!("/v1/profile/{}", payload.ib_user)))
-      .finish(),
+    Ok(_) => {
+      let location = if let Some(root_pid) = payload.root_pid.as_deref() {
+        format!(
+          "/v1/showpost?ib_uid={}&ib_user={}&pid={}",
+          payload.ib_uid, payload.ib_user, root_pid
+        )
+      } else {
+        format!("/v1/profile/{}", payload.ib_user)
+      };
+
+      HttpResponse::SeeOther()
+        .insert_header(("Location", location))
+        .finish()
+    }
     Err(err) => HttpResponse::InternalServerError()
       .body(format!("Failed to delete post: {}", err)),
   }
@@ -713,13 +942,24 @@ async fn delete_post(
 
 #[get("/v1/editpost")]
 async fn edit_post(
+  req: HttpRequest,
   state: web::Data<AppState>,
   query: web::Query<EditPostRequest>,
 ) -> impl Responder {
+  let session_uid = match get_session_uid(&req) {
+    Some(uid) => uid,
+    None => return HttpResponse::Unauthorized().body("Login required"),
+  };
+
+  let owner_uid = query.post_owner_uid.unwrap_or(query.ib_uid);
+  if session_uid != owner_uid {
+    return HttpResponse::Forbidden().body("You can only edit your own posts");
+  }
+
   let selected = sqlx::query_as::<_, EditPostRow>(
     "SELECT post FROM isby.post WHERE ib_uid = ? AND postid = ? LIMIT 1",
   )
-  .bind(query.ib_uid)
+  .bind(owner_uid)
   .bind(&query.pid)
   .fetch_optional(&state.db_pool)
   .await;
@@ -738,6 +978,20 @@ async fn edit_post(
       return HttpResponse::InternalServerError().body(format!("Edit post lookup failed: {}", err));
     }
   };
+
+  let root_pid_field = query.root_pid.as_ref().map(|root_pid| {
+    format!(
+      r#"<input type="hidden" name="root_pid" value="{}">"#,
+      escape_html(root_pid)
+    )
+  }).unwrap_or_default();
+
+  let post_owner_uid_field = query.post_owner_uid.map(|post_owner_uid| {
+    format!(
+      r#"<input type="hidden" name="post_owner_uid" value="{}">"#,
+      post_owner_uid
+    )
+  }).unwrap_or_default();
 
   let html = format!(
     r#"<!DOCTYPE html>
@@ -760,7 +1014,9 @@ async fn edit_post(
           <input type="hidden" name="ib_uid" value="{ib_uid}">
           <input type="hidden" name="ib_user" value="{ib_user}">
           <input type="hidden" name="pid" value="{pid}">
-          <textarea name="post" rows="8" cols="80" required>{post}</textarea>
+          {root_pid_field}
+          {post_owner_uid_field}
+          <input type="text" class="post" name="post" maxlength="1024" value="{post}" required>
           <br>
           <input class="post-submit" type="submit" value="Save">
         </form>
@@ -773,6 +1029,8 @@ async fn edit_post(
     ib_uid = query.ib_uid,
     ib_user = escape_html(&query.ib_user),
     pid = escape_html(&query.pid),
+    root_pid_field = root_pid_field,
+    post_owner_uid_field = post_owner_uid_field,
     post = escape_html(&row.post)
   );
 
@@ -783,10 +1041,21 @@ async fn edit_post(
 
 #[post("/v1/editpost")]
 async fn update_post(
+  req: HttpRequest,
   state: web::Data<AppState>,
   payload: web::Form<EditPostUpdateRequest>,
 ) -> impl Responder {
   const MAX_POST_LEN: usize = 1024;
+
+  let session_uid = match get_session_uid(&req) {
+    Some(uid) => uid,
+    None => return HttpResponse::Unauthorized().body("Login required"),
+  };
+
+  let owner_uid = payload.post_owner_uid.unwrap_or(payload.ib_uid);
+  if session_uid != owner_uid {
+    return HttpResponse::Forbidden().body("You can only edit your own posts");
+  }
 
   if payload.post.trim().is_empty() {
     return HttpResponse::BadRequest().body("Post cannot be empty");
@@ -801,15 +1070,26 @@ async fn update_post(
     "UPDATE isby.post SET post = ? WHERE ib_uid = ? AND postid = ?",
   )
   .bind(&payload.post)
-  .bind(payload.ib_uid)
+  .bind(owner_uid)
   .bind(&payload.pid)
   .execute(&state.db_pool)
   .await;
 
   match result {
-    Ok(_) => HttpResponse::SeeOther()
-      .insert_header(("Location", format!("/v1/profile/{}", payload.ib_user)))
-      .finish(),
+    Ok(_) => {
+      let location = if let Some(root_pid) = payload.root_pid.as_deref() {
+        format!(
+          "/v1/showpost?ib_uid={}&ib_user={}&pid={}",
+          payload.ib_uid, payload.ib_user, root_pid
+        )
+      } else {
+        format!("/v1/profile/{}", payload.ib_user)
+      };
+
+      HttpResponse::SeeOther()
+        .insert_header(("Location", location))
+        .finish()
+    }
     Err(err) => HttpResponse::InternalServerError()
       .body(format!("Failed to update post: {}", err)),
   }
@@ -817,6 +1097,7 @@ async fn update_post(
 
 #[get("/v1/profile/{ib_user}")]
 async fn view_profile(
+  req: HttpRequest,
   path: web::Path<String>,
   state: web::Data<AppState>,
 ) -> impl Responder {
@@ -886,7 +1167,7 @@ async fn view_profile(
     }
   };
 
-  match render_profile_html(&state, ib_uid, &ib_user).await {
+  match render_profile_html(&state, ib_uid, &ib_user, get_session_uid(&req)).await {
     Ok(html) => HttpResponse::Ok()
       .content_type("text/html; charset=utf-8")
       .body(html),
@@ -1006,9 +1287,23 @@ async fn github_auth_callback(
       .body(format!("Failed to persist GitHub user: {}", err));
   }
 
-  match render_profile_html(&state, user.id as i64, &user.login).await {
+  match render_profile_html(&state, user.id as i64, &user.login, Some(user.id as i64)).await {
     Ok(html) => HttpResponse::Ok()
       .content_type("text/html; charset=utf-8")
+      .cookie(
+        Cookie::build("ib_uid", user.id.to_string())
+          .path("/")
+          .http_only(true)
+          .secure(true)
+          .finish(),
+      )
+      .cookie(
+        Cookie::build("ib_user", user.login.clone())
+          .path("/")
+          .http_only(true)
+          .secure(true)
+          .finish(),
+      )
       .body(html),
     Err(err) => HttpResponse::InternalServerError().body(err),
   }
@@ -1160,6 +1455,7 @@ async fn main() -> std::io::Result<()> {
       .app_data(web::Data::new(app_state.clone()))
       .service(hello)
       .service(create_post)
+      .service(create_reply)
       .service(show_post)
       .service(show_post_get)
       .service(edit_profile)
