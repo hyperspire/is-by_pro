@@ -304,6 +304,19 @@ input[type=password] {
     width: 120px;
 }
 
+#userlist-section {
+    display: flex;
+    width: 250px;
+    height: auto;
+    flex-direction: row;
+    align-items: flex-start;
+    vertical-align: top;
+    justify-content: center;
+    position: relative;
+    top: 0;
+    right: 0;
+}
+
 .signup-section {
     display: flex;
     width: 250px;

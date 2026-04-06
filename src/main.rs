@@ -440,6 +440,12 @@ async fn render_profile_html(
     <p class="description">{ib_services}</p>
     <p class="description">{ib_location}</p>
     <p><a target="_blank" rel="noopener" href="{ib_website}">{ib_website}</a></p>
+    <div id="userlist-section">
+      <p><strong>:[[ :userlist: ]]:</strong></p>
+      <div id="userlist-container">
+        <p><em>:[[ :coming-soon: ]]:</em></p>
+      </div>
+    </div>
   </div>
 </div>
 </body>
@@ -619,6 +625,12 @@ async fn render_single_post_html(
     <p class="description">{ib_services}</p>
     <p class="description">{ib_location}</p>
     <p><a target="_blank" rel="noopener" href="{ib_website}">{ib_website}</a></p>
+    <div id="userlist-section">
+      <p><strong>:[[ :userlist: ]]:</strong></p>
+      <div id="userlist-container">
+        <p><em>:[[ :coming-soon: ]]:</em></p>
+      </div>
+    </div>
   </div>
 </div>
 </body>
@@ -873,24 +885,45 @@ async fn update_profile(
   state: web::Data<AppState>,
   payload: web::Form<EditProfileUpdateRequest>,
 ) -> impl Responder {
-  let result = sqlx::query(
-    "INSERT INTO isby.pro (ib_uid, github, ibp, pro, services, location, website) VALUES (?, ?, ?, ?, ?, ?, ?) \
-     ON DUPLICATE KEY UPDATE github = VALUES(github), ibp = VALUES(ibp), pro = VALUES(pro), services = VALUES(services), location = VALUES(location), website = VALUES(website)",
+  let update_result = sqlx::query(
+    "UPDATE isby.pro SET github = ?, ibp = ?, pro = ?, services = ?, location = ?, website = ? WHERE ib_uid = ?",
   )
-  .bind(payload.ib_uid)
   .bind(&payload.ib_github)
   .bind(&payload.ib_ibp)
   .bind(&payload.ib_pro)
   .bind(&payload.ib_services)
   .bind(&payload.ib_location)
   .bind(&payload.ib_website)
+  .bind(payload.ib_uid)
   .execute(&state.db_pool)
   .await;
 
-  match result {
-    Ok(_) => HttpResponse::SeeOther()
+  match update_result {
+    Ok(update_done) if update_done.rows_affected() > 0 => HttpResponse::SeeOther()
       .insert_header(("Location", format!("/v1/profile/{}", payload.ib_user)))
       .finish(),
+    Ok(_) => {
+      let insert_result = sqlx::query(
+        "INSERT INTO isby.pro (ib_uid, github, ibp, pro, services, location, website) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .bind(payload.ib_uid)
+      .bind(&payload.ib_github)
+      .bind(&payload.ib_ibp)
+      .bind(&payload.ib_pro)
+      .bind(&payload.ib_services)
+      .bind(&payload.ib_location)
+      .bind(&payload.ib_website)
+      .execute(&state.db_pool)
+      .await;
+
+      match insert_result {
+        Ok(_) => HttpResponse::SeeOther()
+          .insert_header(("Location", format!("/v1/profile/{}", payload.ib_user)))
+          .finish(),
+        Err(err) => HttpResponse::InternalServerError()
+          .body(format!("Failed to create profile: {}", err)),
+      }
+    }
     Err(err) => HttpResponse::InternalServerError()
       .body(format!("Failed to update profile: {}", err)),
   }
