@@ -87,6 +87,11 @@ struct UsernameLookupRow {
   ib_uid: String,
 }
 
+#[derive(sqlx::FromRow)]
+struct RelatedUserRow {
+  username: Option<String>,
+}
+
 #[derive(Deserialize)]
 struct GithubCallback {
   code: String,
@@ -219,6 +224,81 @@ fn escape_html(input: &str) -> String {
     .replace('>', "&gt;")
     .replace('"', "&quot;")
     .replace('\'', "&#39;")
+}
+
+fn escape_mysql_regex_token(input: &str) -> String {
+  let mut escaped = String::with_capacity(input.len());
+
+  for ch in input.chars() {
+    match ch {
+      '\\' | '.' | '^' | '$' | '*' | '+' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '|' => {
+        escaped.push('\\');
+        escaped.push(ch);
+      }
+      _ => escaped.push(ch),
+    }
+  }
+
+  escaped
+}
+
+async fn render_related_userlist_html(
+  state: &AppState,
+  current_uid: i64,
+  current_pro: &str,
+) -> String {
+  let interests: Vec<String> = current_pro
+    .split(',')
+    .map(|term| term.trim().to_lowercase())
+    .filter(|term| !term.is_empty())
+    .collect();
+
+  if interests.is_empty() {
+    return "<p><em>:[[ :no-related-users: ]]:</em></p>".to_string();
+  }
+
+  let regex_terms: Vec<String> = interests
+    .iter()
+    .map(|term| escape_mysql_regex_token(term))
+    .collect();
+  let pattern = format!(
+    "(^|[[:space:],])({})([[:space:],]|$)",
+    regex_terms.join("|")
+  );
+
+  let related_rows = sqlx::query_as::<_, RelatedUserRow>(
+      "SELECT u.username FROM isby.pro AS p LEFT JOIN isby.user AS u ON CONVERT(u.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(p.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE p.ib_uid <> ? AND LOWER(COALESCE(p.pro, '')) REGEXP ? ORDER BY p.ib_uid DESC LIMIT 5"
+    )
+    .bind(current_uid)
+    .bind(&pattern)
+    .fetch_all(&state.db_pool)
+    .await;
+
+  let related_rows = match related_rows {
+    Ok(rows) => rows,
+    Err(_) => return "<p><em>:[[ :related-user-lookup-failed: ]]:</em></p>".to_string(),
+  };
+
+  let mut related_html = String::new();
+
+  for row in related_rows {
+    let username = match row.username {
+      Some(username) if !username.trim().is_empty() => username,
+      _ => continue,
+    };
+
+    related_html += &format!(
+      r#"<p><a href="https://{domain}/v1/profile/{username}">{username}</a></p>"#,
+      domain = DOMAIN,
+      username = escape_html(&username)
+    );
+  }
+
+  if related_html.is_empty() {
+    "<p><em>:[[ :no-related-users: ]]:</em></p>".to_string()
+  } else {
+    related_html
+  }
 }
 
 fn render_post_meta(ib_uid: &str, username: &str, timestamp: &str) -> String {
@@ -431,6 +511,8 @@ async fn render_profile_html(
     .await;
 
   if let Ok(ib_pro) = ib_pro_result {
+    let related_userlist_html = render_related_userlist_html(state, ib_uid, &ib_pro.pro).await;
+
     html += &format!(r#"
   </div>
   <div id="profile-section">
@@ -443,7 +525,7 @@ async fn render_profile_html(
     <div id="userlist-section">
       <p><strong>:[[ :userlist: ]]:</strong></p>
       <div id="userlist-container">
-        <p><em>:[[ :coming-soon: ]]:</em></p>
+        {related_userlist_html}
       </div>
     </div>
   </div>
@@ -457,7 +539,8 @@ async fn render_profile_html(
       ib_pro = escape_html(&ib_pro.pro),
       ib_services = escape_html(&ib_pro.services),
       ib_location = escape_html(&ib_pro.location),
-      ib_website = escape_html(&ib_pro.website)
+      ib_website = escape_html(&ib_pro.website),
+      related_userlist_html = related_userlist_html
     );
   } else {
     html += &format!(r#"
@@ -616,6 +699,8 @@ async fn render_single_post_html(
     .await;
 
   if let Ok(ib_pro) = ib_pro_result {
+    let related_userlist_html = render_related_userlist_html(state, ib_uid, &ib_pro.pro).await;
+
     html += &format!(r#"
   </div>
   <div id="profile-section">
@@ -628,7 +713,7 @@ async fn render_single_post_html(
     <div id="userlist-section">
       <p><strong>:[[ :userlist: ]]:</strong></p>
       <div id="userlist-container">
-        <p><em>:[[ :coming-soon: ]]:</em></p>
+        {related_userlist_html}
       </div>
     </div>
   </div>
@@ -642,7 +727,8 @@ async fn render_single_post_html(
       ib_pro = escape_html(&ib_pro.pro),
       ib_services = escape_html(&ib_pro.services),
       ib_location = escape_html(&ib_pro.location),
-      ib_website = escape_html(&ib_pro.website)
+      ib_website = escape_html(&ib_pro.website),
+      related_userlist_html = related_userlist_html
     );
   } else {
     html += &format!(r#"
