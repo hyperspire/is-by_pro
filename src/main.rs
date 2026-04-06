@@ -89,7 +89,18 @@ struct UsernameLookupRow {
 
 #[derive(sqlx::FromRow)]
 struct RelatedUserRow {
-  username: Option<String>,
+  ib_uid: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct RelatedUsernameRow {
+  username: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct SearchUserRow {
+  ib_uid: String,
+  ibp: String,
 }
 
 #[derive(Deserialize)]
@@ -183,6 +194,13 @@ struct EditProfileUpdateRequest {
   ib_website: String,
 }
 
+#[derive(Deserialize)]
+struct SearchUsersRequest {
+  ib_uid: i64,
+  ib_user: String,
+  query: String,
+}
+
 #[derive(sqlx::FromRow)]
 struct EditProfileRow {
   ib_ibp: String,
@@ -242,19 +260,83 @@ fn escape_mysql_regex_token(input: &str) -> String {
   escaped
 }
 
+fn highlight_terms(raw_text: &str, terms: &[String]) -> String {
+  if terms.is_empty() {
+    return escape_html(raw_text);
+  }
+
+  let chars: Vec<char> = raw_text.chars().collect();
+  let lower_chars: Vec<char> = raw_text.to_lowercase().chars().collect();
+  let n = chars.len();
+  let mut matched = vec![false; n];
+
+  for term in terms {
+    if term.is_empty() {
+      continue;
+    }
+    let term_chars: Vec<char> = term.to_lowercase().chars().collect();
+    let tlen = term_chars.len();
+    let mut i = 0;
+    while i + tlen <= n {
+      if lower_chars[i..i + tlen] == term_chars[..] {
+        for j in i..i + tlen {
+          matched[j] = true;
+        }
+        i += tlen;
+      } else {
+        i += 1;
+      }
+    }
+  }
+
+  let mut result = String::new();
+  let mut in_match = false;
+  let mut buffer = String::new();
+
+  for (i, &ch) in chars.iter().enumerate() {
+    if matched[i] && !in_match {
+      result.push_str(&escape_html(&buffer));
+      buffer.clear();
+      in_match = true;
+      buffer.push(ch);
+    } else if !matched[i] && in_match {
+      result.push_str("<strong>");
+      result.push_str(&escape_html(&buffer));
+      result.push_str("</strong>");
+      buffer.clear();
+      in_match = false;
+      buffer.push(ch);
+    } else {
+      buffer.push(ch);
+    }
+  }
+
+  if !buffer.is_empty() {
+    if in_match {
+      result.push_str("<strong>");
+      result.push_str(&escape_html(&buffer));
+      result.push_str("</strong>");
+    } else {
+      result.push_str(&escape_html(&buffer));
+    }
+  }
+
+  result
+}
+
 async fn render_related_userlist_html(
   state: &AppState,
-  current_uid: i64,
-  current_pro: &str,
+  source_uid: i64,
+  source_ibp: &str,
 ) -> String {
-  let interests: Vec<String> = current_pro
+  let interests: Vec<String> = source_ibp
     .split(',')
     .map(|term| term.trim().to_lowercase())
     .filter(|term| !term.is_empty())
     .collect();
 
   if interests.is_empty() {
-    return "<p><em>:[[ :no-related-users: ]]:</em></p>".to_string();
+    return "<br><p><em>:[[ :no-related-users: ]]:</em></p>".to_string();
   }
 
   let regex_terms: Vec<String> = interests
@@ -267,9 +349,9 @@ async fn render_related_userlist_html(
   );
 
   let related_rows = sqlx::query_as::<_, RelatedUserRow>(
-      "SELECT u.username FROM isby.pro AS p LEFT JOIN isby.user AS u ON CONVERT(u.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(p.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE p.ib_uid <> ? AND LOWER(COALESCE(p.pro, '')) REGEXP ? ORDER BY p.ib_uid DESC LIMIT 5"
+      "SELECT CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid FROM isby.pro AS candidate WHERE candidate.ib_uid <> ? AND LOWER(COALESCE(candidate.ibp, '')) REGEXP ? ORDER BY RAND() LIMIT 5"
     )
-    .bind(current_uid)
+    .bind(source_uid)
     .bind(&pattern)
     .fetch_all(&state.db_pool)
     .await;
@@ -282,23 +364,43 @@ async fn render_related_userlist_html(
   let mut related_html = String::new();
 
   for row in related_rows {
-    let username = match row.username {
-      Some(username) if !username.trim().is_empty() => username,
+    let username_row = sqlx::query_as::<_, RelatedUsernameRow>(
+        "SELECT username FROM isby.user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1"
+      )
+      .bind(&row.ib_uid)
+      .fetch_optional(&state.db_pool)
+      .await;
+
+    let username = match username_row {
+      Ok(Some(row)) if !row.username.trim().is_empty() => row.username,
       _ => continue,
     };
 
     related_html += &format!(
-      r#"<p><a href="https://{domain}/v1/profile/{username}">{username}</a></p>"#,
+      r#"<br><p><a href="https://{domain}/v1/profile/{username}">{username}</a></p>"#,
       domain = DOMAIN,
       username = escape_html(&username)
     );
   }
 
   if related_html.is_empty() {
-    "<p><em>:[[ :no-related-users: ]]:</em></p>".to_string()
+    "<br><p><em>:[[ :no-related-users: ]]:</em></p>".to_string()
   } else {
     related_html
   }
+}
+
+async fn lookup_ibp_by_uid(state: &AppState, uid: i64) -> Option<String> {
+  let row = sqlx::query_as::<_, ProRow>(
+      "SELECT ibp, pro, location, services, website, github FROM isby.pro WHERE ib_uid = ? LIMIT 1"
+    )
+    .bind(uid)
+    .fetch_optional(&state.db_pool)
+    .await
+    .ok()
+    .flatten()?;
+
+  Some(row.ibp)
 }
 
 fn render_post_meta(ib_uid: &str, username: &str, timestamp: &str) -> String {
@@ -511,7 +613,13 @@ async fn render_profile_html(
     .await;
 
   if let Ok(ib_pro) = ib_pro_result {
-    let related_userlist_html = render_related_userlist_html(state, ib_uid, &ib_pro.pro).await;
+    let source_uid = session_uid.unwrap_or(ib_uid);
+    let source_ibp = if let Some(uid) = session_uid {
+      lookup_ibp_by_uid(state, uid).await.unwrap_or_else(|| ib_pro.ibp.clone())
+    } else {
+      ib_pro.ibp.clone()
+    };
+    let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
 
     html += &format!(r#"
   </div>
@@ -523,11 +631,18 @@ async fn render_profile_html(
     <p class="description">{ib_location}</p>
     <p><a target="_blank" rel="noopener" href="{ib_website}">{ib_website}</a></p>
     <div id="userlist-section">
-      <p><strong>:[[ :userlist: ]]:</strong></p>
+      <p><strong>:[[ :userlist: ]]:</strong></p><br>
       <div id="userlist-container">
         {related_userlist_html}
       </div>
-    </div>
+    </div><br>
+    <div id="user-search-section">
+      <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Users" required>
+        <input type="submit" value="Search">
+      </form>
   </div>
 </div>
 </body>
@@ -546,6 +661,194 @@ async fn render_profile_html(
     html += &format!(r#"
     </div>
   </div>
+</body>
+
+</html>"#);
+  }
+
+  Ok(html)
+}
+
+async fn render_search_users_html(
+  state: &AppState,
+  ib_uid: i64,
+  ib_user: &str,
+  raw_query: &str,
+  session_uid: Option<i64>,
+) -> Result<String, String> {
+  let search_terms: Vec<String> = raw_query
+    .split_whitespace()
+    .map(|term| term.trim().to_lowercase())
+    .filter(|term| !term.is_empty())
+    .collect();
+
+  let search_results_html = if search_terms.is_empty() {
+    "<p><em>:[[ :search-users-empty-query: ]]:</em></p>".to_string()
+  } else {
+    let regex_terms: Vec<String> = search_terms
+      .iter()
+      .map(|term| escape_mysql_regex_token(term))
+      .collect();
+    let pattern = format!(
+      "(^|[[:space:],])({})([[:space:],]|$)",
+      regex_terms.join("|")
+    );
+
+    let rows = sqlx::query_as::<_, SearchUserRow>(
+        "SELECT CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, COALESCE(candidate.ibp, '') AS ibp FROM isby.pro AS candidate WHERE LOWER(COALESCE(candidate.ibp, '')) REGEXP ? ORDER BY RAND() LIMIT 200"
+      )
+      .bind(&pattern)
+      .fetch_all(&state.db_pool)
+      .await
+      .map_err(|e| format!("Search users query failed: {}", e))?;
+
+    let mut html = String::new();
+
+    for row in rows {
+      let username_row = sqlx::query_as::<_, RelatedUsernameRow>(
+          "SELECT username FROM isby.user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1"
+        )
+        .bind(&row.ib_uid)
+        .fetch_optional(&state.db_pool)
+        .await
+        .map_err(|e| format!("Search username lookup failed: {}", e))?;
+
+      let username = match username_row {
+        Some(username_row) if !username_row.username.trim().is_empty() => username_row.username,
+        _ => continue,
+      };
+
+      html += &format!(
+        r#"<p><a href="https://{domain}/v1/profile/{username}">{username}</a><br><small>{ibp}</small></p>"#,
+        domain = DOMAIN,
+        username = escape_html(&username),
+        ibp = highlight_terms(&row.ibp, &search_terms)
+      );
+    }
+
+    if html.is_empty() {
+      "<p><em>:[[ :search-users-no-results: ]]:</em></p>".to_string()
+    } else {
+      html
+    }
+  };
+
+  let navigation_links = if session_uid.is_some() {
+    format!(
+      r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
+        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>"#,
+      domain = DOMAIN,
+      ib_user = escape_html(ib_user)
+    )
+  } else {
+    String::new()
+  };
+
+  let mut html = format!(
+    r#"<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
+  <script src="/js/is-by_user.js" type="text/javascript"></script>
+  <title>:[[ :search-users: {ib_user}: ]]:</title>
+</head>
+
+<body>
+  <form id="select-user-form" action="/" method="GET">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <form id="select-post-form" action="https://{domain}/v1/showpost" method="POST">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <form id="edit-profile-form" action="https://{domain}/v1/editprofile" method="GET">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <div id="main-section">
+    <div id="media-section">
+      <div>
+      <img src="/images/Death_Angel-555x111.png" alt=":Death_Angel-555x111.png:" width="555"
+          height="111">
+      </div>
+      <div id="navigation-section">
+        {navigation_links}
+      </div>
+      <div id="selected-user-posts-section" class="post-section">
+        <div class="notice"><p><em>:[[ :search-users-for: {raw_query}: ]]:</em></p></div>
+        {search_results_html}
+      </div>
+    </div>"#,
+    domain = DOMAIN,
+    ib_uid = ib_uid,
+    ib_user = escape_html(ib_user),
+    navigation_links = navigation_links,
+    raw_query = escape_html(raw_query),
+    search_results_html = search_results_html
+  );
+
+  let ib_pro_result = sqlx::query_as::<_, ProRow>(
+      "SELECT ibp, pro, location, services, website, github FROM isby.pro WHERE ib_uid = ?"
+    )
+    .bind(ib_uid)
+    .fetch_one(&state.db_pool)
+    .await;
+
+  if let Ok(ib_pro) = ib_pro_result {
+    let source_uid = session_uid.unwrap_or(ib_uid);
+    let source_ibp = if let Some(uid) = session_uid {
+      lookup_ibp_by_uid(state, uid).await.unwrap_or_else(|| ib_pro.ibp.clone())
+    } else {
+      ib_pro.ibp.clone()
+    };
+    let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
+
+    html += &format!(r#"
+  <div id="profile-section">
+    <p><strong>:[[ :<a target="_blank" rel="noopener" href="{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p class="paragraph"><em>{ib_ibp}</em></p>
+    <p class="description">{ib_pro}</p>
+    <p class="description">{ib_services}</p>
+    <p class="description">{ib_location}</p>
+    <p><a target="_blank" rel="noopener" href="{ib_website}">{ib_website}</a></p>
+    <div id="userlist-section">
+      <p><strong>:[[ :userlist: ]]:</strong></p><br>
+      <div id="userlist-container">
+        {related_userlist_html}
+      </div>
+    </div><br>
+    <div id="user-search-section">
+      <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Users" required>
+        <input type="submit" value="Search">
+      </form>
+    </div>
+  </div>
+</div>
+</body>
+
+</html>"#,
+      ib_uid = ib_uid,
+      ib_github = escape_html(&ib_pro.github),
+      ib_user = escape_html(ib_user),
+      ib_ibp = escape_html(&ib_pro.ibp),
+      ib_pro = escape_html(&ib_pro.pro),
+      ib_services = escape_html(&ib_pro.services),
+      ib_location = escape_html(&ib_pro.location),
+      ib_website = escape_html(&ib_pro.website),
+      related_userlist_html = related_userlist_html
+    );
+  } else {
+    html += &format!(r#"
+  </div>
+</div>
 </body>
 
 </html>"#);
@@ -699,7 +1002,13 @@ async fn render_single_post_html(
     .await;
 
   if let Ok(ib_pro) = ib_pro_result {
-    let related_userlist_html = render_related_userlist_html(state, ib_uid, &ib_pro.pro).await;
+    let source_uid = session_uid.unwrap_or(ib_uid);
+    let source_ibp = if let Some(uid) = session_uid {
+      lookup_ibp_by_uid(state, uid).await.unwrap_or_else(|| ib_pro.ibp.clone())
+    } else {
+      ib_pro.ibp.clone()
+    };
+    let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
 
     html += &format!(r#"
   </div>
@@ -711,10 +1020,18 @@ async fn render_single_post_html(
     <p class="description">{ib_location}</p>
     <p><a target="_blank" rel="noopener" href="{ib_website}">{ib_website}</a></p>
     <div id="userlist-section">
-      <p><strong>:[[ :userlist: ]]:</strong></p>
+      <p><strong>:[[ :userlist: ]]:</strong></p><br>
       <div id="userlist-container">
         {related_userlist_html}
       </div>
+    </div><br>
+    <div id="user-search-section">
+      <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Users" required>
+        <input type="submit" value="Search">
+      </form>
     </div>
   </div>
 </div>
@@ -1294,6 +1611,26 @@ async fn view_profile(
   }
 }
 
+#[get("/v1/searchusers")]
+async fn search_users(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  query: web::Query<SearchUsersRequest>,
+) -> impl Responder {
+  match render_search_users_html(
+    &state,
+    query.ib_uid,
+    &query.ib_user,
+    &query.query,
+    get_session_uid(&req),
+  ).await {
+    Ok(html) => HttpResponse::Ok()
+      .content_type("text/html; charset=utf-8")
+      .body(html),
+    Err(err) => HttpResponse::InternalServerError().body(err),
+  }
+}
+
 #[get("/auth/github")]
 async fn github_auth_start(state: web::Data<AppState>) -> impl Responder {
   let oauth_state: String = rand::thread_rng()
@@ -1583,6 +1920,7 @@ async fn main() -> std::io::Result<()> {
       .service(edit_post)
       .service(update_post)
       .service(view_profile)
+      .service(search_users)
       .service(github_auth_start)
       .service(github_auth_callback)
       .service(Files::new("/", "./webroot"))
