@@ -3,8 +3,12 @@
 FROM rust:1.86-bookworm AS builder
 WORKDIR /app
 
-COPY Cargo.toml Cargo.lock ./
-COPY src ./src
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends git ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN git clone https://github.com/hyperspire/is-by_pro.git
+WORKDIR /app/is-by_pro
 
 RUN cargo build --release
 
@@ -15,8 +19,8 @@ RUN yum update -y \
     && yum install -y ca-certificates curl \
     && yum clean all
 
-COPY --from=builder /app/target/release/is-by_pro /usr/local/bin/is-by_pro
-COPY webroot ./webroot
+COPY --from=builder /app/is-by_pro/target/release/is-by_pro /usr/local/bin/is-by_pro
+COPY --from=builder /app/is-by_pro/webroot ./webroot
 COPY ssl ./ssl
 COPY .env ./env
 COPY healthcheck.sh /usr/local/bin/healthcheck.sh
