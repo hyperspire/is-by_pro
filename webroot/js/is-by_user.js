@@ -5,6 +5,8 @@ document.addEventListener('DOMContentLoaded', (event) => {
 });
 
 function attachEventListeners() {
+  stopDMPolling();
+
   const listeners = [
     attachCopyLinkEventListener,
     attachDeletePostEventListener,
@@ -15,6 +17,7 @@ function attachEventListeners() {
     attachEditPostEventListener,
     attachShowEditProEventListener,
     attachEditProEventListener,
+    attachDirectMessageEventListeners,
   ];
 
   listeners.forEach((setup) => {
@@ -24,6 +27,214 @@ function attachEventListeners() {
       console.error('Listener setup failed:', setup.name, error);
     }
   });
+}
+
+function getCurrentIBUID() {
+  const selectUserForm = document.getElementById('select-user-form');
+  const ibUIDField = selectUserForm?.querySelector('input[name="ib_uid"]');
+  return ibUIDField ? Number(ibUIDField.value) : NaN;
+}
+
+function stopDMPolling() {
+  if (window.dmUnreadInterval) {
+    window.clearInterval(window.dmUnreadInterval);
+    window.dmUnreadInterval = null;
+  }
+
+  if (window.dmThreadInterval) {
+    window.clearInterval(window.dmThreadInterval);
+    window.dmThreadInterval = null;
+  }
+}
+
+function attachDirectMessageEventListeners() {
+  const dmPanel = document.getElementById('dm-panel');
+  const dmForm = document.getElementById('dm-form');
+  const dmThread = document.getElementById('dm-thread');
+  const dmStatus = document.getElementById('dm-message-status');
+  const dmTargetLabel = document.getElementById('dm-target-user');
+  const dmTargetInput = document.getElementById('dm-target-user-input');
+  const dmUnreadCount = document.getElementById('dm-unread-count');
+  const dmInboxLinks = document.querySelectorAll('.dm-inbox-display');
+  const dmButtons = document.querySelectorAll('.open-dm');
+
+  if (dmUnreadCount) {
+    updateUnreadDMCount();
+    window.dmUnreadInterval = window.setInterval(updateUnreadDMCount, 5000);
+  }
+
+  if (!dmPanel || !dmForm || !dmThread || !dmTargetLabel || !dmTargetInput) {
+    return;
+  }
+
+  dmInboxLinks.forEach((link) => {
+    link.addEventListener('click', (event) => {
+      const href = link.getAttribute('href') || '';
+      if (href === '' || href === 'javascript:void(0);') {
+        event.preventDefault();
+        dmPanel.style.display = dmPanel.style.display === 'none' ? 'block' : 'none';
+      }
+    });
+  });
+
+  if (dmTargetInput.value.trim() !== '') {
+    const targetUser = dmTargetInput.value.trim();
+    dmPanel.style.display = 'block';
+    dmTargetLabel.textContent = targetUser;
+    loadDMThread(targetUser);
+    if (window.dmThreadInterval) {
+      window.clearInterval(window.dmThreadInterval);
+    }
+    window.dmThreadInterval = window.setInterval(() => loadDMThread(targetUser), 3000);
+  }
+
+  dmButtons.forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      const targetUser = button.dataset.targetUser;
+      if (!targetUser) {
+        return;
+      }
+
+      dmPanel.style.display = 'block';
+      dmTargetLabel.textContent = targetUser;
+      dmTargetInput.value = targetUser;
+      loadDMThread(targetUser);
+      if (window.dmThreadInterval) {
+        window.clearInterval(window.dmThreadInterval);
+      }
+      window.dmThreadInterval = window.setInterval(() => loadDMThread(targetUser), 3000);
+    });
+  });
+
+  dmForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    const targetUser = dmTargetInput.value.trim();
+    const messageField = document.getElementById('dm-message-input');
+    const message = messageField?.value.trim() || '';
+    const ibUID = getCurrentIBUID();
+
+    if (!targetUser || !message || Number.isNaN(ibUID)) {
+      setDMStatus(dmStatus, false, 'Target user and message are required');
+      return;
+    }
+
+    try {
+      const response = await fetch(dmForm.action, {
+        method: dmForm.method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'ib-uid': String(ibUID),
+        },
+        body: JSON.stringify({ target_user: targetUser, message: message }),
+      });
+
+      const data = await response.json();
+      if (data.success === true) {
+        messageField.value = '';
+        setDMStatus(dmStatus, true, data.message || 'Message sent');
+        await loadDMThread(targetUser);
+        await updateUnreadDMCount();
+      } else {
+        setDMStatus(dmStatus, false, data.message || 'Failed to send message');
+      }
+    } catch (error) {
+      setDMStatus(dmStatus, false, String(error));
+      console.error('dm-send-error:', error);
+    }
+  });
+}
+
+async function updateUnreadDMCount() {
+  const unreadCountNode = document.getElementById('dm-unread-count');
+  const ibUID = getCurrentIBUID();
+
+  if (!unreadCountNode || Number.isNaN(ibUID)) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`https://${domain}/v1/dm/unreadcount`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'ib-uid': String(ibUID),
+      },
+    });
+
+    const data = await response.json();
+    if (data.success === true) {
+      unreadCountNode.textContent = String(data.unread_count);
+      unreadCountNode.style.color = data.unread_count > 0 ? '#ff3300' : '#33cc44';
+    }
+  } catch (error) {
+    console.error('dm-unread-error:', error);
+  }
+}
+
+async function loadDMThread(targetUser) {
+  const dmThread = document.getElementById('dm-thread');
+  const ibUID = getCurrentIBUID();
+
+  if (!dmThread || !targetUser || Number.isNaN(ibUID)) {
+    return;
+  }
+
+  try {
+    const params = new URLSearchParams({ target_user: targetUser });
+    const response = await fetch(`https://${domain}/v1/dm/messages?${params.toString()}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'ib-uid': String(ibUID),
+      },
+    });
+
+    const data = await response.json();
+    if (data.success !== true) {
+      return;
+    }
+
+    if (!Array.isArray(data.messages) || data.messages.length === 0) {
+      dmThread.innerHTML = '<p><em>:[[ :no-direct-messages: ]]:</em></p>';
+      await updateUnreadDMCount();
+      return;
+    }
+
+    dmThread.innerHTML = data.messages.map((message) => {
+      const senderClass = message.is_mine ? 'dm-message dm-message-mine' : 'dm-message dm-message-theirs';
+      return `
+        <div class="${senderClass}">
+          <p class="dm-message-meta"><strong>${escapeHTML(message.sender_user)}</strong> <span>${escapeHTML(message.timestamp)}</span></p>
+          <p class="dm-message-body">${escapeHTML(message.message)}</p>
+        </div>`;
+    }).join('');
+
+    dmThread.scrollTop = dmThread.scrollHeight;
+    await updateUnreadDMCount();
+  } catch (error) {
+    console.error('dm-thread-error:', error);
+  }
+}
+
+function escapeHTML(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function setDMStatus(node, success, message) {
+  if (!node) {
+    return;
+  }
+
+  const cssClass = success ? 'success' : 'failure';
+  node.innerHTML = `<em class="${cssClass}">${escapeHTML(message)}</em>`;
 }
 
 function attachCopyLinkEventListener() {

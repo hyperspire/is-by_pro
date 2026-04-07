@@ -40,8 +40,8 @@
 use is_by_pro::{COPYRIGHT, DOMAIN, IB_CA_CERT, IB_CA_KEY, MYSQL_USER, MYSQL_DATABASE};
 use actix_cors::Cors;
 use actix_files::Files;
-use actix_web::{cookie::Cookie, dev::Service, get, http::Method, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
-use rand::{distributions::Alphanumeric, Rng};
+use actix_web::{cookie::Cookie, dev::Service, get, http::Method, post, web, App, Either, HttpRequest, HttpResponse, HttpServer, Responder};
+use rand::{distributions::Alphanumeric, seq::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use rustls::{ServerConfig, pki_types::CertificateDer};
 use sqlx::{mysql::MySqlPoolOptions, MySqlPool};
@@ -201,6 +201,35 @@ struct SearchUsersRequest {
   query: String,
 }
 
+#[derive(Deserialize)]
+struct WarRoomRequest {
+  ib_uid: i64,
+  ib_user: String,
+}
+
+#[derive(Deserialize)]
+struct InboxRequest {
+  ib_uid: i64,
+  ib_user: String,
+  target_user: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct DMMessageRequest {
+  target_user: String,
+  message: String,
+}
+
+#[derive(Deserialize)]
+struct DMMessagesRequest {
+  target_user: String,
+}
+
+#[derive(Deserialize)]
+struct FollowRequest {
+  target_user: String,
+}
+
 #[derive(sqlx::FromRow)]
 struct EditProfileRow {
   ib_ibp: String,
@@ -215,11 +244,76 @@ struct EditPostRow {
   post: String,
 }
 
+#[derive(sqlx::FromRow)]
+struct FollowLookupRow {
+  username: String,
+  followers: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct SessionUserRow {
+  username: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct MessageUserLookupRow {
+  ib_uid: String,
+  username: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct DMMessageRow {
+  id: i64,
+  sender_uid: i64,
+  sender_username: String,
+  recipient_username: String,
+  message: String,
+  created_at: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct DMUnreadCountRow {
+  unread_count: i64,
+}
+
+#[derive(sqlx::FromRow)]
+struct ConversationUsernameRow {
+  username: String,
+}
+
 #[derive(Serialize)]
 struct PostResponse {
   success: bool,
   message: String,
   postid: Option<String>,
+}
+
+#[derive(Serialize)]
+struct DMSendResponse {
+  success: bool,
+  message: String,
+}
+
+#[derive(Serialize)]
+struct DMMessageResponseItem {
+  id: i64,
+  sender_user: String,
+  recipient_user: String,
+  message: String,
+  timestamp: String,
+  is_mine: bool,
+}
+
+#[derive(Serialize)]
+struct DMMessagesResponse {
+  success: bool,
+  messages: Vec<DMMessageResponseItem>,
+}
+
+#[derive(Serialize)]
+struct DMUnreadCountResponse {
+  success: bool,
+  unread_count: i64,
 }
 
 fn load_rustls_config() -> ServerConfig {
@@ -448,6 +542,28 @@ async fn create_db_pool() -> Result<MySqlPool, sqlx::Error> {
     .await
 }
 
+async fn ensure_dm_table(pool: &MySqlPool) -> Result<(), sqlx::Error> {
+  sqlx::query(
+    "CREATE TABLE IF NOT EXISTS isby.dm (id BIGINT PRIMARY KEY AUTO_INCREMENT, sender_uid BIGINT NOT NULL, recipient_uid BIGINT NOT NULL, message TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, read_at TIMESTAMP NULL DEFAULT NULL, INDEX idx_dm_recipient_read (recipient_uid, read_at), INDEX idx_dm_pair_time (sender_uid, recipient_uid, created_at))",
+  )
+  .execute(pool)
+  .await?;
+
+  Ok(())
+}
+
+async fn lookup_user_by_username(state: &AppState, username: &str) -> Result<Option<(i64, String)>, sqlx::Error> {
+  let row = sqlx::query_as::<_, MessageUserLookupRow>(
+      "SELECT CONVERT(ib_uid USING utf8mb4) AS ib_uid, username FROM isby.user WHERE LOWER(username) = LOWER(?) LIMIT 1"
+    )
+    .bind(username)
+    .fetch_optional(&state.db_pool)
+    .await?;
+
+  let parsed = row.and_then(|r| r.ib_uid.parse::<i64>().ok().map(|uid| (uid, r.username)));
+  Ok(parsed)
+}
+
 async fn ensure_legacy_user_from_github(
   state: &AppState,
   github_id: u64,
@@ -469,13 +585,143 @@ async fn render_profile_html(
   ib_user: &str,
   session_uid: Option<i64>,
 ) -> Result<String, String> {
+  let viewed_user_row = sqlx::query_as::<_, FollowLookupRow>(
+      "SELECT username, COALESCE(followers, '') AS followers FROM isby.user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1"
+    )
+    .bind(ib_uid.to_string())
+    .fetch_optional(&state.db_pool)
+    .await
+    .map_err(|e| format!("Viewed user lookup failed: {}", e))?;
+
+  let viewed_username = viewed_user_row
+    .as_ref()
+    .map(|row| row.username.clone())
+    .unwrap_or_else(|| ib_user.to_string());
+
+  let follower_list: Vec<String> = viewed_user_row
+    .as_ref()
+    .map(|row| {
+      row
+        .followers
+        .split(',')
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+        .collect()
+    })
+    .unwrap_or_default();
+
+  let followers_count = follower_list.len();
+
+  let session_username = if let Some(uid) = session_uid {
+    match sqlx::query_as::<_, SessionUserRow>(
+      "SELECT username FROM isby.user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
+    )
+    .bind(uid.to_string())
+    .fetch_optional(&state.db_pool)
+    .await
+    {
+      Ok(Some(row)) if !row.username.trim().is_empty() => Some(row.username),
+      _ => None,
+    }
+  } else {
+    None
+  };
+
+  let show_unfollow = session_username
+    .as_ref()
+    .map(|username| {
+      follower_list
+        .iter()
+        .any(|follower| follower.eq_ignore_ascii_case(username))
+    })
+    .unwrap_or(false);
+
+  let show_follow = session_username
+    .as_ref()
+    .map(|username| !show_unfollow && !username.eq_ignore_ascii_case(&viewed_username))
+    .unwrap_or(false);
+
+  let show_profile_dm_link = session_username
+    .as_ref()
+    .map(|username| !username.eq_ignore_ascii_case(&viewed_username))
+    .unwrap_or(false);
+
+  let followers_html = if follower_list.is_empty() {
+    "<p><em>:[[ :no-followers: ]]:</em></p>".to_string()
+  } else {
+    follower_list
+      .iter()
+      .map(|username| {
+        format!(
+          r#"<p><a href="https://{domain}/v1/profile/{username}">{username}</a><button type="button" class="open-dm" data-target-user="{username}">DM</button></p>"#,
+          domain = DOMAIN,
+          username = escape_html(username)
+        )
+      })
+      .collect::<Vec<String>>()
+      .join("")
+  };
+
+  let follow_controls_html = if session_uid.is_some() {
+    let follow_form_html = if show_follow {
+      format!(
+        r#"<form id="follow-form" action="https://{domain}/v1/follow" method="POST">
+        <input type="hidden" name="target_user" value="{target_user}">
+        <input type="submit" value="Follow">
+      </form>"#,
+        domain = DOMAIN,
+        target_user = escape_html(&viewed_username)
+      )
+    } else {
+      String::new()
+    };
+
+    let unfollow_form_html = if show_unfollow {
+      format!(
+        r#"<form id="unfollow-form" action="https://{domain}/v1/unfollow" method="POST">
+        <input type="hidden" name="target_user" value="{target_user}">
+        <input type="submit" value="Unfollow">
+      </form>"#,
+        domain = DOMAIN,
+        target_user = escape_html(&viewed_username)
+      )
+    } else {
+      String::new()
+    };
+
+    format!(
+      r#"<div id="follow-section">
+      {follow_form_html}
+      {unfollow_form_html}
+    </div>"#,
+      follow_form_html = follow_form_html,
+      unfollow_form_html = unfollow_form_html
+    )
+  } else {
+    String::new()
+  };
+
   let navigation_links = if session_uid.is_some() {
     format!(
       r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
         <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
+        {dm_link}
         <a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>"#,
       domain = DOMAIN,
-      ib_user = escape_html(ib_user)
+      ib_uid = ib_uid,
+      ib_user = escape_html(ib_user),
+      dm_link = if show_profile_dm_link {
+        format!(
+          r#"<a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
+          domain = DOMAIN,
+          ib_uid = ib_uid,
+          ib_user = escape_html(ib_user)
+        )
+      } else {
+        String::new()
+      }
     )
   } else {
     String::new()
@@ -630,6 +876,23 @@ async fn render_profile_html(
     <p class="description">{ib_services}</p>
     <p class="description">{ib_location}</p>
     <p><a target="_blank" rel="noopener" href="{ib_website}">{ib_website}</a></p>
+    {follow_controls_html}
+    <div id="followers-section">
+      <p><strong>:[[ :followers: {followers_count}: ]]:</strong></p>
+      <div id="followers-container">
+        {followers_html}
+      </div>
+    </div>
+    <div id="dm-panel" style="display:none;">
+      <p><strong>:[[ :direct-messages: ]]: <span id="dm-target-user"></span></strong></p>
+      <div id="dm-message-status"></div>
+      <div id="dm-thread"></div>
+      <form id="dm-form" action="https://{DOMAIN}/v1/dm/send" method="POST">
+        <input type="hidden" id="dm-target-user-input" name="target_user" value="">
+        <input type="text" id="dm-message-input" name="message" maxlength="1024" placeholder="Type a direct message" required>
+        <input type="submit" value="Send">
+      </form>
+    </div>
     <div id="userlist-section">
       <p><strong>:[[ :userlist: ]]:</strong></p><br>
       <div id="userlist-container">
@@ -655,6 +918,9 @@ async fn render_profile_html(
       ib_services = escape_html(&ib_pro.services),
       ib_location = escape_html(&ib_pro.location),
       ib_website = escape_html(&ib_pro.website),
+      follow_controls_html = follow_controls_html,
+      followers_count = followers_count,
+      followers_html = followers_html,
       related_userlist_html = related_userlist_html
     );
   } else {
@@ -737,8 +1003,11 @@ async fn render_search_users_html(
     format!(
       r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
         <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
+        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>
         <a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>"#,
       domain = DOMAIN,
+      ib_uid = ib_uid,
       ib_user = escape_html(ib_user)
     )
   } else {
@@ -790,6 +1059,425 @@ async fn render_search_users_html(
     navigation_links = navigation_links,
     raw_query = escape_html(raw_query),
     search_results_html = search_results_html
+  );
+
+  let ib_pro_result = sqlx::query_as::<_, ProRow>(
+      "SELECT ibp, pro, location, services, website, github FROM isby.pro WHERE ib_uid = ?"
+    )
+    .bind(ib_uid)
+    .fetch_one(&state.db_pool)
+    .await;
+
+  if let Ok(ib_pro) = ib_pro_result {
+    let source_uid = session_uid.unwrap_or(ib_uid);
+    let source_ibp = if let Some(uid) = session_uid {
+      lookup_ibp_by_uid(state, uid).await.unwrap_or_else(|| ib_pro.ibp.clone())
+    } else {
+      ib_pro.ibp.clone()
+    };
+    let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
+
+    html += &format!(r#"
+  <div id="profile-section">
+    <p><strong>:[[ :<a target="_blank" rel="noopener" href="{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p class="paragraph"><em>{ib_ibp}</em></p>
+    <p class="description">{ib_pro}</p>
+    <p class="description">{ib_services}</p>
+    <p class="description">{ib_location}</p>
+    <p><a target="_blank" rel="noopener" href="{ib_website}">{ib_website}</a></p>
+    <div id="userlist-section">
+      <p><strong>:[[ :userlist: ]]:</strong></p><br>
+      <div id="userlist-container">
+        {related_userlist_html}
+      </div>
+    </div><br>
+    <div id="user-search-section">
+      <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Users" required>
+        <input type="submit" value="Search">
+      </form>
+    </div>
+  </div>
+</div>
+</body>
+
+</html>"#,
+      ib_uid = ib_uid,
+      ib_github = escape_html(&ib_pro.github),
+      ib_user = escape_html(ib_user),
+      ib_ibp = escape_html(&ib_pro.ibp),
+      ib_pro = escape_html(&ib_pro.pro),
+      ib_services = escape_html(&ib_pro.services),
+      ib_location = escape_html(&ib_pro.location),
+      ib_website = escape_html(&ib_pro.website),
+      related_userlist_html = related_userlist_html
+    );
+  } else {
+    html += &format!(r#"
+  </div>
+</div>
+</body>
+
+</html>"#);
+  }
+
+  Ok(html)
+}
+
+async fn render_war_room_html(
+  state: &AppState,
+  ib_uid: i64,
+  ib_user: &str,
+  session_uid: Option<i64>,
+) -> Result<String, String> {
+  let followers_row = sqlx::query_as::<_, FollowLookupRow>(
+      "SELECT username, COALESCE(followers, '') AS followers FROM isby.user WHERE LOWER(username) = LOWER(?) LIMIT 1"
+    )
+    .bind(ib_user)
+    .fetch_optional(&state.db_pool)
+    .await
+    .map_err(|e| format!("War room followers lookup failed: {}", e))?;
+
+  let follower_usernames: Vec<String> = followers_row
+    .as_ref()
+    .map(|row| {
+      row
+        .followers
+        .split(',')
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+        .collect()
+    })
+    .unwrap_or_default();
+
+  let mut shuffled_followers = follower_usernames;
+  shuffled_followers.shuffle(&mut rand::thread_rng());
+  let selected_followers: Vec<String> = shuffled_followers.into_iter().take(200).collect();
+
+  let war_room_content = if selected_followers.is_empty() {
+    "<div class=\"notice\"><p><em>:[[ :war-room-no-followers: ]]:</em></p></div>".to_string()
+  } else {
+    let mut rendered_posts = String::new();
+
+    for selected_follower in &selected_followers {
+      let post_row = sqlx::query_as::<_, PostRow>(
+          "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp FROM isby.post AS post LEFT JOIN isby.user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) = LOWER(?) AND (post.parentid = '' OR post.parentid IS NULL) ORDER BY post.timestamp DESC LIMIT 1"
+        )
+        .bind(selected_follower)
+        .fetch_optional(&state.db_pool)
+        .await
+        .map_err(|e| format!("War room post lookup failed: {}", e))?;
+
+      if let Some(post_row) = post_row {
+        rendered_posts += &format!(
+          r#"<div class="notice"><p><em>:[[ :war-room-selected-follower: {selected_follower}: ]]:</em></p></div>
+          <div class="post" data-postid="{post_id}" data-timestamp="{post_timestamp}">
+            {post_meta}
+            <p>{post}</p>
+            <div class="post-actions">
+              <form class="show-post-form" action="https://{domain}/v1/showpost" method="GET">
+                <input type="hidden" name="ib_uid" value="{post_owner_uid}">
+                <input type="hidden" name="ib_user" value="{post_owner_user}">
+                <input type="hidden" name="pid" value="{post_id}">
+              </form>
+              <a href="javascript:void(0);" class="show-post">:[[ :show-post: ]]:</a>
+            </div>
+          </div>"#,
+          selected_follower = escape_html(selected_follower),
+          post_id = escape_html(&post_row.postid),
+          post_timestamp = escape_html(&post_row.timestamp),
+          post_meta = render_post_meta(&post_row.ib_uid, &post_row.username, &post_row.timestamp),
+          post = escape_html(&post_row.post),
+          domain = DOMAIN,
+          post_owner_uid = escape_html(&post_row.ib_uid),
+          post_owner_user = escape_html(&post_row.username)
+        );
+      }
+    }
+
+    if rendered_posts.is_empty() {
+      "<div class=\"notice\"><p><em>:[[ :war-room-no-follower-posts: ]]:</em></p></div>".to_string()
+    } else {
+      format!(
+        r#"<div class="notice"><p><em>:[[ :war-room-followers-selected: {selected_count}: ]]:</em></p></div>{rendered_posts}"#,
+        selected_count = selected_followers.len(),
+        rendered_posts = rendered_posts
+      )
+    }
+  };
+
+  let navigation_links = if session_uid.is_some() {
+    format!(
+      r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
+        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
+        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>
+        <a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>"#,
+      domain = DOMAIN,
+      ib_uid = ib_uid,
+      ib_user = escape_html(ib_user)
+    )
+  } else {
+    String::new()
+  };
+
+  let mut html = format!(
+    r#"<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
+  <script src="/js/is-by_user.js" type="text/javascript"></script>
+  <title>:[[ :war-room: {ib_user}: ]]:</title>
+</head>
+
+<body>
+  <form id="select-user-form" action="/" method="GET">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <form id="select-post-form" action="https://{domain}/v1/showpost" method="POST">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <form id="edit-profile-form" action="https://{domain}/v1/editprofile" method="GET">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <div id="main-section">
+    <div id="media-section">
+      <div>
+      <img src="/images/Death_Angel-555x111.png" alt=":Death_Angel-555x111.png:" width="555"
+          height="111">
+      </div>
+      <div id="navigation-section">
+        {navigation_links}
+      </div>
+      <div id="selected-user-posts-section" class="post-section">
+        <div class="notice"><p><em>:[[ :war-room: ]]:</em></p></div>
+        {war_room_content}
+      </div>
+    </div>"#,
+    domain = DOMAIN,
+    ib_uid = ib_uid,
+    ib_user = escape_html(ib_user),
+    navigation_links = navigation_links,
+    war_room_content = war_room_content
+  );
+
+  let ib_pro_result = sqlx::query_as::<_, ProRow>(
+      "SELECT ibp, pro, location, services, website, github FROM isby.pro WHERE ib_uid = ?"
+    )
+    .bind(ib_uid)
+    .fetch_one(&state.db_pool)
+    .await;
+
+  if let Ok(ib_pro) = ib_pro_result {
+    let source_uid = session_uid.unwrap_or(ib_uid);
+    let source_ibp = if let Some(uid) = session_uid {
+      lookup_ibp_by_uid(state, uid).await.unwrap_or_else(|| ib_pro.ibp.clone())
+    } else {
+      ib_pro.ibp.clone()
+    };
+    let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
+
+    html += &format!(r#"
+  <div id="profile-section">
+    <p><strong>:[[ :<a target="_blank" rel="noopener" href="{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p class="paragraph"><em>{ib_ibp}</em></p>
+    <p class="description">{ib_pro}</p>
+    <p class="description">{ib_services}</p>
+    <p class="description">{ib_location}</p>
+    <p><a target="_blank" rel="noopener" href="{ib_website}">{ib_website}</a></p>
+    <div id="userlist-section">
+      <p><strong>:[[ :userlist: ]]:</strong></p><br>
+      <div id="userlist-container">
+        {related_userlist_html}
+      </div>
+    </div><br>
+    <div id="user-search-section">
+      <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Users" required>
+        <input type="submit" value="Search">
+      </form>
+    </div>
+  </div>
+</div>
+</body>
+
+</html>"#,
+      ib_uid = ib_uid,
+      ib_github = escape_html(&ib_pro.github),
+      ib_user = escape_html(ib_user),
+      ib_ibp = escape_html(&ib_pro.ibp),
+      ib_pro = escape_html(&ib_pro.pro),
+      ib_services = escape_html(&ib_pro.services),
+      ib_location = escape_html(&ib_pro.location),
+      ib_website = escape_html(&ib_pro.website),
+      related_userlist_html = related_userlist_html
+    );
+  } else {
+    html += &format!(r#"
+  </div>
+</div>
+</body>
+
+</html>"#);
+  }
+
+  Ok(html)
+}
+
+async fn render_inbox_html(
+  state: &AppState,
+  ib_uid: i64,
+  ib_user: &str,
+  session_uid: Option<i64>,
+  requested_target_user: Option<&str>,
+) -> Result<String, String> {
+  let followers_row = sqlx::query_as::<_, FollowLookupRow>(
+      "SELECT username, COALESCE(followers, '') AS followers FROM isby.user WHERE LOWER(username) = LOWER(?) LIMIT 1"
+    )
+    .bind(ib_user)
+    .fetch_optional(&state.db_pool)
+    .await
+    .map_err(|e| format!("Inbox followers lookup failed: {}", e))?;
+
+  let mut inbox_users: Vec<String> = followers_row
+    .as_ref()
+    .map(|row| {
+      row
+        .followers
+        .split(',')
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+        .collect()
+    })
+    .unwrap_or_default();
+
+  let conversation_rows = sqlx::query_as::<_, ConversationUsernameRow>(
+      "SELECT DISTINCT CAST(COALESCE(CONVERT(counter.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username FROM isby.dm AS dm LEFT JOIN isby.user AS counter ON CONVERT(counter.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(CASE WHEN dm.sender_uid = ? THEN dm.recipient_uid ELSE dm.sender_uid END AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE dm.sender_uid = ? OR dm.recipient_uid = ?"
+    )
+    .bind(ib_uid)
+    .bind(ib_uid)
+    .bind(ib_uid)
+    .fetch_all(&state.db_pool)
+    .await
+    .map_err(|e| format!("Inbox conversation lookup failed: {}", e))?;
+
+  for row in conversation_rows {
+    let username = row.username.trim();
+    if username.is_empty() {
+      continue;
+    }
+
+    if !inbox_users.iter().any(|existing| existing.eq_ignore_ascii_case(username)) {
+      inbox_users.push(username.to_string());
+    }
+  }
+
+  let default_target_user = requested_target_user
+    .map(|value| value.trim())
+    .filter(|value| !value.is_empty())
+    .map(|value| value.to_string())
+    .or_else(|| inbox_users.first().cloned())
+    .unwrap_or_default();
+
+  let contact_list_html = if inbox_users.is_empty() {
+    "<p><em>:[[ :no-direct-message-contacts: ]]:</em></p>".to_string()
+  } else {
+    inbox_users
+      .iter()
+      .map(|username| {
+        format!(
+          r#"<p><button type="button" class="open-dm" data-target-user="{username}">{username}</button></p>"#,
+          username = escape_html(username)
+        )
+      })
+      .collect::<Vec<String>>()
+      .join("")
+  };
+
+  let navigation_links = if session_uid.is_some() {
+    format!(
+      r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
+        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
+        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>
+        <a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>"#,
+      domain = DOMAIN,
+      ib_uid = ib_uid,
+      ib_user = escape_html(ib_user)
+    )
+  } else {
+    String::new()
+  };
+
+  let mut html = format!(
+    r#"<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
+  <script src="/js/is-by_user.js" type="text/javascript"></script>
+  <title>:[[ :dm-inbox: {ib_user}: ]]:</title>
+</head>
+
+<body>
+  <form id="select-user-form" action="/" method="GET">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <form id="select-post-form" action="https://{domain}/v1/showpost" method="POST">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <form id="edit-profile-form" action="https://{domain}/v1/editprofile" method="GET">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <div id="main-section">
+    <div id="media-section">
+      <div>
+      <img src="/images/Death_Angel-555x111.png" alt=":Death_Angel-555x111.png:" width="555"
+          height="111">
+      </div>
+      <div id="navigation-section">
+        {navigation_links}
+      </div>
+      <div id="selected-user-posts-section" class="post-section">
+        <div class="notice"><p><em>:[[ :direct-message-inbox: ]]:</em></p></div>
+        <div id="dm-inbox-layout">
+          <div id="dm-contact-list">{contact_list_html}</div>
+          <div id="dm-panel" style="display:block;">
+            <p><strong>:[[ :direct-messages: ]]: <span id="dm-target-user">{default_target_user}</span></strong></p>
+            <div id="dm-message-status"></div>
+            <div id="dm-thread"></div>
+            <form id="dm-form" action="https://{DOMAIN}/v1/dm/send" method="POST">
+              <input type="hidden" id="dm-target-user-input" name="target_user" value="{default_target_user}">
+              <input type="text" id="dm-message-input" name="message" maxlength="1024" placeholder="Type a direct message" required>
+              <input type="submit" value="Send">
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>"#,
+    domain = DOMAIN,
+    ib_uid = ib_uid,
+    ib_user = escape_html(ib_user),
+    navigation_links = navigation_links,
+    contact_list_html = contact_list_html,
+    default_target_user = escape_html(&default_target_user)
   );
 
   let ib_pro_result = sqlx::query_as::<_, ProRow>(
@@ -963,6 +1651,8 @@ async fn render_single_post_html(
       </div>
       <div id="navigation-section">
         <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+        {war_room_link}
+        {dm_notification_link}
       </div>
       <div id="selected-user-posts-section" class="post-section">
         <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
@@ -987,6 +1677,26 @@ async fn render_single_post_html(
     domain = DOMAIN,
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
+    war_room_link = if session_uid.is_some() {
+      format!(
+        r#"<a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>"#,
+        domain = DOMAIN,
+        ib_uid = ib_uid,
+        ib_user = escape_html(ib_user)
+      )
+    } else {
+      String::new()
+    },
+    dm_notification_link = if session_uid.is_some() {
+      format!(
+        r#"<a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
+        domain = DOMAIN,
+        ib_uid = ib_uid,
+        ib_user = escape_html(ib_user)
+      )
+    } else {
+      String::new()
+    },
     ib_post_id = escape_html(&post.postid),
     ib_post_timestamp = escape_html(&post.timestamp),
     post_meta = render_post_meta(&post.ib_uid, &post.username, &post.timestamp),
@@ -1205,6 +1915,191 @@ async fn render_show_post_response(
       )),
     Err(err) => HttpResponse::InternalServerError().body(err),
   }
+}
+
+#[post("/v1/follow")]
+async fn follow_user(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  payload: web::Form<FollowRequest>,
+) -> impl Responder {
+  let session_uid = match get_session_uid(&req) {
+    Some(uid) => uid,
+    None => return HttpResponse::Unauthorized().body("Login required"),
+  };
+
+  let target_user = payload.target_user.trim();
+  if target_user.is_empty() {
+    return HttpResponse::BadRequest().body("Target user is required");
+  }
+
+  let target_row = match sqlx::query_as::<_, FollowLookupRow>(
+    "SELECT username, COALESCE(followers, '') AS followers FROM isby.user WHERE LOWER(username) = LOWER(?) LIMIT 1",
+  )
+  .bind(target_user)
+  .fetch_optional(&state.db_pool)
+  .await
+  {
+    Ok(Some(row)) => row,
+    Ok(None) => return HttpResponse::NotFound().body("Profile not found"),
+    Err(err) => {
+      return HttpResponse::InternalServerError().body(format!("Follow lookup failed: {}", err));
+    }
+  };
+
+  let follower_username = if let Some(cookie_user) = req.cookie("ib_user") {
+    let value = cookie_user.value().trim();
+    if !value.is_empty() {
+      value.to_string()
+    } else {
+      String::new()
+    }
+  } else {
+    String::new()
+  };
+
+  let follower_username = if !follower_username.is_empty() {
+    follower_username
+  } else {
+    match sqlx::query_as::<_, SessionUserRow>(
+      "SELECT username FROM isby.user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
+    )
+    .bind(session_uid.to_string())
+    .fetch_optional(&state.db_pool)
+    .await
+    {
+      Ok(Some(row)) if !row.username.trim().is_empty() => row.username,
+      Ok(_) => return HttpResponse::Unauthorized().body("Could not resolve session username"),
+      Err(err) => {
+        return HttpResponse::InternalServerError().body(format!("Session user lookup failed: {}", err));
+      }
+    }
+  };
+
+  if follower_username.eq_ignore_ascii_case(&target_row.username) {
+    return HttpResponse::SeeOther()
+      .insert_header(("Location", format!("/v1/profile/{}", target_row.username)))
+      .finish();
+  }
+
+  let mut followers: Vec<String> = target_row
+    .followers
+    .split(',')
+    .map(|value| value.trim())
+    .filter(|value| !value.is_empty())
+    .map(|value| value.to_string())
+    .collect();
+
+  let already_following = followers
+    .iter()
+    .any(|value| value.eq_ignore_ascii_case(&follower_username));
+
+  if !already_following {
+    followers.push(follower_username);
+  }
+
+  let updated_followers = followers.join(", ");
+
+  if let Err(err) = sqlx::query(
+    "UPDATE isby.user SET followers = ? WHERE LOWER(username) = LOWER(?) LIMIT 1",
+  )
+  .bind(updated_followers)
+  .bind(&target_row.username)
+  .execute(&state.db_pool)
+  .await
+  {
+    return HttpResponse::InternalServerError().body(format!("Failed to update followers: {}", err));
+  }
+
+  HttpResponse::SeeOther()
+    .insert_header(("Location", format!("/v1/profile/{}", target_row.username)))
+    .finish()
+}
+
+#[post("/v1/unfollow")]
+async fn unfollow_user(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  payload: web::Form<FollowRequest>,
+) -> impl Responder {
+  let session_uid = match get_session_uid(&req) {
+    Some(uid) => uid,
+    None => return HttpResponse::Unauthorized().body("Login required"),
+  };
+
+  let target_user = payload.target_user.trim();
+  if target_user.is_empty() {
+    return HttpResponse::BadRequest().body("Target user is required");
+  }
+
+  let target_row = match sqlx::query_as::<_, FollowLookupRow>(
+    "SELECT username, COALESCE(followers, '') AS followers FROM isby.user WHERE LOWER(username) = LOWER(?) LIMIT 1",
+  )
+  .bind(target_user)
+  .fetch_optional(&state.db_pool)
+  .await
+  {
+    Ok(Some(row)) => row,
+    Ok(None) => return HttpResponse::NotFound().body("Profile not found"),
+    Err(err) => {
+      return HttpResponse::InternalServerError().body(format!("Unfollow lookup failed: {}", err));
+    }
+  };
+
+  let follower_username = if let Some(cookie_user) = req.cookie("ib_user") {
+    let value = cookie_user.value().trim();
+    if !value.is_empty() {
+      value.to_string()
+    } else {
+      String::new()
+    }
+  } else {
+    String::new()
+  };
+
+  let follower_username = if !follower_username.is_empty() {
+    follower_username
+  } else {
+    match sqlx::query_as::<_, SessionUserRow>(
+      "SELECT username FROM isby.user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
+    )
+    .bind(session_uid.to_string())
+    .fetch_optional(&state.db_pool)
+    .await
+    {
+      Ok(Some(row)) if !row.username.trim().is_empty() => row.username,
+      Ok(_) => return HttpResponse::Unauthorized().body("Could not resolve session username"),
+      Err(err) => {
+        return HttpResponse::InternalServerError().body(format!("Session user lookup failed: {}", err));
+      }
+    }
+  };
+
+  let followers: Vec<String> = target_row
+    .followers
+    .split(',')
+    .map(|value| value.trim())
+    .filter(|value| !value.is_empty())
+    .filter(|value| !value.eq_ignore_ascii_case(&follower_username))
+    .map(|value| value.to_string())
+    .collect();
+
+  let updated_followers = followers.join(", ");
+
+  if let Err(err) = sqlx::query(
+    "UPDATE isby.user SET followers = ? WHERE LOWER(username) = LOWER(?) LIMIT 1",
+  )
+  .bind(updated_followers)
+  .bind(&target_row.username)
+  .execute(&state.db_pool)
+  .await
+  {
+    return HttpResponse::InternalServerError().body(format!("Failed to update followers: {}", err));
+  }
+
+  HttpResponse::SeeOther()
+    .insert_header(("Location", format!("/v1/profile/{}", target_row.username)))
+    .finish()
 }
 
 #[get("/v1/editprofile")]
@@ -1631,6 +2526,284 @@ async fn search_users(
   }
 }
 
+#[get("/v1/warroom")]
+async fn war_room(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  query: web::Query<WarRoomRequest>,
+) -> impl Responder {
+  let session_uid = get_session_uid(&req);
+  if session_uid.is_none() {
+    return HttpResponse::Unauthorized().body("Login required");
+  }
+
+  match render_war_room_html(&state, query.ib_uid, &query.ib_user, session_uid).await {
+    Ok(html) => HttpResponse::Ok()
+      .content_type("text/html; charset=utf-8")
+      .body(html),
+    Err(err) => HttpResponse::InternalServerError().body(err),
+  }
+}
+
+#[get("/v1/inbox")]
+async fn inbox(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  query: web::Query<InboxRequest>,
+) -> impl Responder {
+  let session_uid = get_session_uid(&req);
+  if session_uid.is_none() {
+    return HttpResponse::Unauthorized().body("Login required");
+  }
+
+  match render_inbox_html(
+    &state,
+    query.ib_uid,
+    &query.ib_user,
+    session_uid,
+    query.target_user.as_deref(),
+  ).await {
+    Ok(html) => HttpResponse::Ok()
+      .content_type("text/html; charset=utf-8")
+      .body(html),
+    Err(err) => HttpResponse::InternalServerError().body(err),
+  }
+}
+
+#[post("/v1/dm/send")]
+async fn send_direct_message(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  payload: Either<web::Json<DMMessageRequest>, web::Form<DMMessageRequest>>,
+) -> impl Responder {
+  let payload = match payload {
+    Either::Left(json_payload) => json_payload.into_inner(),
+    Either::Right(form_payload) => form_payload.into_inner(),
+  };
+
+  let session_uid = match get_session_uid(&req) {
+    Some(uid) => uid,
+    None => {
+      return HttpResponse::Unauthorized().json(DMSendResponse {
+        success: false,
+        message: "Login required".to_string(),
+      });
+    }
+  };
+
+  let target_user = payload.target_user.trim();
+  let message = payload.message.trim();
+
+  if target_user.is_empty() || message.is_empty() {
+    return HttpResponse::BadRequest().json(DMSendResponse {
+      success: false,
+      message: "Target user and message are required".to_string(),
+    });
+  }
+
+  let (target_uid, _) = match lookup_user_by_username(&state, target_user).await {
+    Ok(Some(found)) => found,
+    Ok(None) => {
+      return HttpResponse::NotFound().json(DMSendResponse {
+        success: false,
+        message: "Target user not found".to_string(),
+      });
+    }
+    Err(err) => {
+      return HttpResponse::InternalServerError().json(DMSendResponse {
+        success: false,
+        message: format!("Lookup failed: {}", err),
+      });
+    }
+  };
+
+  if target_uid == session_uid {
+    return HttpResponse::BadRequest().json(DMSendResponse {
+      success: false,
+      message: "Cannot send a direct message to yourself".to_string(),
+    });
+  }
+
+  let insert_result = sqlx::query(
+    "INSERT INTO isby.dm (sender_uid, recipient_uid, message) VALUES (?, ?, ?)",
+  )
+  .bind(session_uid)
+  .bind(target_uid)
+  .bind(message)
+  .execute(&state.db_pool)
+  .await;
+
+  let wants_json = req
+    .headers()
+    .get("accept")
+    .and_then(|value| value.to_str().ok())
+    .map(|value| value.contains("application/json"))
+    .unwrap_or(false);
+
+  match insert_result {
+    Ok(_) => {
+      if wants_json {
+        HttpResponse::Ok().json(DMSendResponse {
+          success: true,
+          message: "Message sent".to_string(),
+        })
+      } else {
+        let current_username = match sqlx::query_as::<_, SessionUserRow>(
+          "SELECT username FROM isby.user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
+        )
+        .bind(session_uid.to_string())
+        .fetch_optional(&state.db_pool)
+        .await
+        {
+          Ok(Some(row)) if !row.username.trim().is_empty() => row.username,
+          _ => req.cookie("ib_user").map(|cookie| cookie.value().to_string()).unwrap_or_default(),
+        };
+
+        HttpResponse::SeeOther()
+          .insert_header((
+            "Location",
+            format!(
+              "/v1/inbox?ib_uid={}&ib_user={}&target_user={}",
+              session_uid,
+              current_username,
+              payload.target_user
+            ),
+          ))
+          .finish()
+      }
+    }
+    Err(err) => {
+      if wants_json {
+        HttpResponse::InternalServerError().json(DMSendResponse {
+          success: false,
+          message: format!("Failed to send message: {}", err),
+        })
+      } else {
+        HttpResponse::InternalServerError().body(format!("Failed to send message: {}", err))
+      }
+    }
+  }
+}
+
+#[get("/v1/dm/messages")]
+async fn direct_messages(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  query: web::Query<DMMessagesRequest>,
+) -> impl Responder {
+  let session_uid = match get_session_uid(&req) {
+    Some(uid) => uid,
+    None => {
+      return HttpResponse::Unauthorized().json(DMMessagesResponse {
+        success: false,
+        messages: Vec::new(),
+      });
+    }
+  };
+
+  let target_user = query.target_user.trim();
+  if target_user.is_empty() {
+    return HttpResponse::BadRequest().json(DMMessagesResponse {
+      success: false,
+      messages: Vec::new(),
+    });
+  }
+
+  let (target_uid, _) = match lookup_user_by_username(&state, target_user).await {
+    Ok(Some(found)) => found,
+    Ok(None) => {
+      return HttpResponse::NotFound().json(DMMessagesResponse {
+        success: false,
+        messages: Vec::new(),
+      });
+    }
+    Err(_) => {
+      return HttpResponse::InternalServerError().json(DMMessagesResponse {
+        success: false,
+        messages: Vec::new(),
+      });
+    }
+  };
+
+  let rows = match sqlx::query_as::<_, DMMessageRow>(
+    "SELECT dm.id, dm.sender_uid, CAST(COALESCE(CONVERT(sender.username USING utf8mb4), CAST(dm.sender_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS sender_username, CAST(COALESCE(CONVERT(recipient.username USING utf8mb4), CAST(dm.recipient_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS recipient_username, dm.message, DATE_FORMAT(dm.created_at, '%Y-%m-%d %H:%i:%s') AS created_at FROM isby.dm AS dm LEFT JOIN isby.user AS sender ON CONVERT(sender.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(dm.sender_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LEFT JOIN isby.user AS recipient ON CONVERT(recipient.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(dm.recipient_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE (dm.sender_uid = ? AND dm.recipient_uid = ?) OR (dm.sender_uid = ? AND dm.recipient_uid = ?) ORDER BY dm.id ASC LIMIT 200",
+  )
+  .bind(session_uid)
+  .bind(target_uid)
+  .bind(target_uid)
+  .bind(session_uid)
+  .fetch_all(&state.db_pool)
+  .await
+  {
+    Ok(rows) => rows,
+    Err(_) => {
+      return HttpResponse::InternalServerError().json(DMMessagesResponse {
+        success: false,
+        messages: Vec::new(),
+      });
+    }
+  };
+
+  let _ = sqlx::query(
+    "UPDATE isby.dm SET read_at = NOW() WHERE sender_uid = ? AND recipient_uid = ? AND read_at IS NULL",
+  )
+  .bind(target_uid)
+  .bind(session_uid)
+  .execute(&state.db_pool)
+  .await;
+
+  let messages = rows
+    .into_iter()
+    .map(|row| DMMessageResponseItem {
+      id: row.id,
+      sender_user: row.sender_username,
+      recipient_user: row.recipient_username,
+      message: row.message,
+      timestamp: row.created_at,
+      is_mine: row.sender_uid == session_uid,
+    })
+    .collect::<Vec<DMMessageResponseItem>>();
+
+  HttpResponse::Ok().json(DMMessagesResponse {
+    success: true,
+    messages,
+  })
+}
+
+#[get("/v1/dm/unreadcount")]
+async fn direct_message_unread_count(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+) -> impl Responder {
+  let session_uid = match get_session_uid(&req) {
+    Some(uid) => uid,
+    None => {
+      return HttpResponse::Unauthorized().json(DMUnreadCountResponse {
+        success: false,
+        unread_count: 0,
+      });
+    }
+  };
+
+  let row = sqlx::query_as::<_, DMUnreadCountRow>(
+      "SELECT COUNT(*) AS unread_count FROM isby.dm WHERE recipient_uid = ? AND read_at IS NULL"
+    )
+    .bind(session_uid)
+    .fetch_one(&state.db_pool)
+    .await;
+
+  match row {
+    Ok(row) => HttpResponse::Ok().json(DMUnreadCountResponse {
+      success: true,
+      unread_count: row.unread_count,
+    }),
+    Err(_) => HttpResponse::InternalServerError().json(DMUnreadCountResponse {
+      success: false,
+      unread_count: 0,
+    }),
+  }
+}
+
 #[get("/auth/github")]
 async fn github_auth_start(state: web::Data<AppState>) -> impl Responder {
   let oauth_state: String = rand::thread_rng()
@@ -1826,6 +2999,10 @@ async fn main() -> std::io::Result<()> {
     .await
     .expect("Failed to connect to MySQL");
 
+  ensure_dm_table(&db_pool)
+    .await
+    .expect("Failed to ensure DM table");
+
   let app_state = AppState {
     db_pool,
     github_client_id: std::env::var("GITHUB_CLIENT_ID")
@@ -1920,7 +3097,14 @@ async fn main() -> std::io::Result<()> {
       .service(edit_post)
       .service(update_post)
       .service(view_profile)
+      .service(follow_user)
+      .service(unfollow_user)
       .service(search_users)
+      .service(war_room)
+      .service(inbox)
+      .service(send_direct_message)
+      .service(direct_messages)
+      .service(direct_message_unread_count)
       .service(github_auth_start)
       .service(github_auth_callback)
       .service(Files::new("/", "./webroot"))
