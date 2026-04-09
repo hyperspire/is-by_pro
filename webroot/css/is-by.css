@@ -723,6 +723,26 @@ input[type=password] {
     left: 188px;
 }
 
+/* Keep the primary post form controls aligned in one row across pages (including DM inbox). */
+#post-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    max-width: 560px;
+}
+
+#post-form #post-message,
+#post-form #post-character-count,
+#post-form .post {
+    flex: 0 0 100%;
+}
+
+#post-form .post-cancel,
+#post-form .post-submit {
+    left: 0;
+}
+
 .edit-pro,
 .edit-pro input[type=text] {
     color: #3F3F3F !important;

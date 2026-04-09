@@ -46,6 +46,7 @@ use serde::{Deserialize, Serialize};
 use rustls::{ServerConfig, pki_types::CertificateDer};
 use sqlx::{mysql::MySqlPoolOptions, MySqlPool};
 use rustls_pemfile::{certs, private_key};
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::BufReader;
 use uuid::Uuid;
@@ -101,6 +102,18 @@ struct RelatedUsernameRow {
 struct SearchUserRow {
   ib_uid: String,
   ibp: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct TrendingTagRow {
+  tag: String,
+  tag_count: i64,
+}
+
+#[derive(sqlx::FromRow)]
+struct RecentPostTagBackfillRow {
+  postid: String,
+  post: String,
 }
 
 #[derive(Deserialize)]
@@ -199,6 +212,13 @@ struct SearchUsersRequest {
   ib_uid: i64,
   ib_user: String,
   query: String,
+}
+
+#[derive(Deserialize)]
+struct SearchPostsRequest {
+  ib_uid: i64,
+  ib_user: String,
+  tag: String,
 }
 
 #[derive(Deserialize)]
@@ -354,6 +374,212 @@ fn escape_mysql_regex_token(input: &str) -> String {
   escaped
 }
 
+fn url_encode_component(input: &str) -> String {
+  let mut encoded = String::with_capacity(input.len());
+
+  for byte in input.bytes() {
+    if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+      encoded.push(byte as char);
+    } else {
+      encoded.push_str(&format!("%{:02X}", byte));
+    }
+  }
+
+  encoded
+}
+
+fn normalize_hashtag(raw_tag: &str) -> Option<String> {
+  let mut normalized = raw_tag.trim();
+
+  if let Some(without_hash) = normalized.strip_prefix('#') {
+    normalized = without_hash;
+  }
+
+  if normalized.is_empty() {
+    return None;
+  }
+
+  if !normalized
+    .chars()
+    .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+  {
+    return None;
+  }
+
+  Some(normalized.to_lowercase())
+}
+
+fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> String {
+  let mut rendered = String::new();
+  let chars: Vec<(usize, char)> = raw_text.char_indices().collect();
+  let mut cursor = 0usize;
+  let mut index = 0usize;
+
+  while index < chars.len() {
+    let (byte_pos, ch) = chars[index];
+    let previous_is_token_char = index > 0
+      && (chars[index - 1].1.is_ascii_alphanumeric() || chars[index - 1].1 == '_');
+
+    if (ch == '#' || ch == '@') && !previous_is_token_char {
+      let mut token_end_index = index + 1;
+
+      while token_end_index < chars.len() {
+        let next_char = chars[token_end_index].1;
+        if next_char.is_ascii_alphanumeric() || next_char == '_' {
+          token_end_index += 1;
+        } else {
+          break;
+        }
+      }
+
+      if token_end_index > index + 1 {
+        rendered.push_str(&escape_html(&raw_text[cursor..byte_pos]));
+
+        let token_start_byte = byte_pos + ch.len_utf8();
+        let token_end_byte = if token_end_index < chars.len() {
+          chars[token_end_index].0
+        } else {
+          raw_text.len()
+        };
+
+        let token_value = &raw_text[token_start_byte..token_end_byte];
+        let href = if ch == '#' {
+          format!(
+            "https://{domain}/v1/searchposts?ib_uid={ib_uid}&ib_user={ib_user}&tag=%23{tag}",
+            domain = DOMAIN,
+            ib_uid = ib_uid,
+            ib_user = url_encode_component(ib_user),
+            tag = url_encode_component(token_value)
+          )
+        } else {
+          format!(
+            "https://{domain}/v1/profile/{username}",
+            domain = DOMAIN,
+            username = url_encode_component(token_value)
+          )
+        };
+
+        let class_name = if ch == '#' { "post-tag" } else { "post-mention" };
+        rendered.push_str(&format!(
+          r#"<a class="{class_name}" href="{href}">{prefix}{token}</a>"#,
+          class_name = class_name,
+          href = href,
+          prefix = ch,
+          token = escape_html(token_value)
+        ));
+
+        cursor = token_end_byte;
+        index = token_end_index;
+        continue;
+      }
+    }
+
+    index += 1;
+  }
+
+  if cursor < raw_text.len() {
+    rendered.push_str(&escape_html(&raw_text[cursor..]));
+  }
+
+  rendered
+}
+
+fn extract_hashtags(raw_text: &str) -> Vec<String> {
+  let chars: Vec<(usize, char)> = raw_text.char_indices().collect();
+  let mut index = 0usize;
+  let mut tags = Vec::new();
+  let mut seen = HashSet::new();
+
+  while index < chars.len() {
+    let (byte_pos, ch) = chars[index];
+    let previous_is_tag_char = index > 0
+      && (chars[index - 1].1.is_ascii_alphanumeric() || chars[index - 1].1 == '_');
+
+    if ch == '#' && !previous_is_tag_char {
+      let mut tag_end_index = index + 1;
+
+      while tag_end_index < chars.len() {
+        let next_char = chars[tag_end_index].1;
+        if next_char.is_ascii_alphanumeric() || next_char == '_' {
+          tag_end_index += 1;
+        } else {
+          break;
+        }
+      }
+
+      if tag_end_index > index + 1 {
+        let tag_start_byte = byte_pos + '#'.len_utf8();
+        let tag_end_byte = if tag_end_index < chars.len() {
+          chars[tag_end_index].0
+        } else {
+          raw_text.len()
+        };
+        let tag_value = &raw_text[tag_start_byte..tag_end_byte];
+
+        if let Some(normalized) = normalize_hashtag(tag_value) {
+          if seen.insert(normalized.clone()) {
+            tags.push(normalized);
+          }
+        }
+
+        index = tag_end_index;
+        continue;
+      }
+    }
+
+    index += 1;
+  }
+
+  tags
+}
+
+fn extract_mentions(raw_text: &str) -> Vec<String> {
+  let chars: Vec<(usize, char)> = raw_text.char_indices().collect();
+  let mut index = 0usize;
+  let mut mentions = Vec::new();
+  let mut seen = HashSet::new();
+
+  while index < chars.len() {
+    let (byte_pos, ch) = chars[index];
+    let previous_is_token_char = index > 0
+      && (chars[index - 1].1.is_ascii_alphanumeric() || chars[index - 1].1 == '_');
+
+    if ch == '@' && !previous_is_token_char {
+      let mut mention_end_index = index + 1;
+
+      while mention_end_index < chars.len() {
+        let next_char = chars[mention_end_index].1;
+        if next_char.is_ascii_alphanumeric() || next_char == '_' {
+          mention_end_index += 1;
+        } else {
+          break;
+        }
+      }
+
+      if mention_end_index > index + 1 {
+        let mention_start_byte = byte_pos + '@'.len_utf8();
+        let mention_end_byte = if mention_end_index < chars.len() {
+          chars[mention_end_index].0
+        } else {
+          raw_text.len()
+        };
+        let mention_value = &raw_text[mention_start_byte..mention_end_byte];
+
+        if seen.insert(mention_value.to_lowercase()) {
+          mentions.push(mention_value.to_string());
+        }
+
+        index = mention_end_index;
+        continue;
+      }
+    }
+
+    index += 1;
+  }
+
+  mentions
+}
+
 fn highlight_terms(raw_text: &str, terms: &[String]) -> String {
   if terms.is_empty() {
     return escape_html(raw_text);
@@ -443,7 +669,7 @@ async fn render_related_userlist_html(
   );
 
   let related_rows = sqlx::query_as::<_, RelatedUserRow>(
-      "SELECT CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid FROM isby.pro AS candidate WHERE candidate.ib_uid <> ? AND LOWER(COALESCE(candidate.ibp, '')) REGEXP ? ORDER BY RAND() LIMIT 5"
+      "SELECT CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid FROM pro AS candidate WHERE candidate.ib_uid <> ? AND LOWER(COALESCE(candidate.ibp, '')) REGEXP ? ORDER BY RAND() LIMIT 5"
     )
     .bind(source_uid)
     .bind(&pattern)
@@ -459,7 +685,7 @@ async fn render_related_userlist_html(
 
   for row in related_rows {
     let username_row = sqlx::query_as::<_, RelatedUsernameRow>(
-        "SELECT username FROM isby.user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1"
+        "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1"
       )
       .bind(&row.ib_uid)
       .fetch_optional(&state.db_pool)
@@ -486,7 +712,7 @@ async fn render_related_userlist_html(
 
 async fn lookup_ibp_by_uid(state: &AppState, uid: i64) -> Option<String> {
   let row = sqlx::query_as::<_, ProRow>(
-      "SELECT ibp, pro, location, services, website, github FROM isby.pro WHERE ib_uid = ? LIMIT 1"
+      "SELECT ibp, pro, location, services, website, github FROM pro WHERE ib_uid = ? LIMIT 1"
     )
     .bind(uid)
     .fetch_optional(&state.db_pool)
@@ -530,21 +756,62 @@ async fn create_db_pool() -> Result<MySqlPool, sqlx::Error> {
   let mysql_password = std::env::var("MYSQL_PASSWORD")
     .expect("Missing MYSQL_PASSWORD in environment file or shell");
 
+  let server_options = sqlx::mysql::MySqlConnectOptions::new()
+    .host("localhost")
+    .username(MYSQL_USER)
+    .password(&mysql_password);
+
+  // Bootstrap the database itself before connecting with a selected schema.
+  let bootstrap_pool = MySqlPoolOptions::new()
+    .max_connections(1)
+    .connect_with(server_options.clone())
+    .await?;
+
+  let safe_database_name = MYSQL_DATABASE.replace('`', "");
+  let create_database_sql = format!(
+    "CREATE DATABASE IF NOT EXISTS `{}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+    safe_database_name
+  );
+
+  sqlx::query(&create_database_sql)
+    .execute(&bootstrap_pool)
+    .await?;
+
+  drop(bootstrap_pool);
+
   MySqlPoolOptions::new()
     .max_connections(5)
-    .connect_with(
-      sqlx::mysql::MySqlConnectOptions::new()
-        .host("localhost")
-        .username(MYSQL_USER)
-        .password(&mysql_password)
-        .database(MYSQL_DATABASE),
-    )
+    .connect_with(server_options.database(MYSQL_DATABASE))
     .await
 }
 
-async fn ensure_dm_table(pool: &MySqlPool) -> Result<(), sqlx::Error> {
+async fn ensure_database_schema(pool: &MySqlPool) -> Result<(), sqlx::Error> {
   sqlx::query(
-    "CREATE TABLE IF NOT EXISTS isby.dm (id BIGINT PRIMARY KEY AUTO_INCREMENT, sender_uid BIGINT NOT NULL, recipient_uid BIGINT NOT NULL, message TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, read_at TIMESTAMP NULL DEFAULT NULL, INDEX idx_dm_recipient_read (recipient_uid, read_at), INDEX idx_dm_pair_time (sender_uid, recipient_uid, created_at))",
+    "CREATE TABLE IF NOT EXISTS user (ib_uid VARCHAR(64) PRIMARY KEY, username VARCHAR(255) NOT NULL, followers TEXT NOT NULL)",
+  )
+  .execute(pool)
+  .await?;
+
+  sqlx::query(
+    "CREATE TABLE IF NOT EXISTS pro (ib_uid BIGINT PRIMARY KEY, github VARCHAR(255) NOT NULL, ibp TEXT NOT NULL, pro TEXT NOT NULL, services TEXT NOT NULL, location TEXT NOT NULL, website TEXT NOT NULL)",
+  )
+  .execute(pool)
+  .await?;
+
+  sqlx::query(
+    "CREATE TABLE IF NOT EXISTS post (ib_uid BIGINT NOT NULL, postid VARCHAR(64) PRIMARY KEY, parentid VARCHAR(64) NOT NULL DEFAULT '', post VARCHAR(1024) NOT NULL, timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX idx_post_uid_time (ib_uid, timestamp), INDEX idx_post_parentid (parentid))",
+  )
+  .execute(pool)
+  .await?;
+
+  sqlx::query(
+    "CREATE TABLE IF NOT EXISTS dm (id BIGINT PRIMARY KEY AUTO_INCREMENT, sender_uid BIGINT NOT NULL, recipient_uid BIGINT NOT NULL, message TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, read_at TIMESTAMP NULL DEFAULT NULL, INDEX idx_dm_recipient_read (recipient_uid, read_at), INDEX idx_dm_pair_time (sender_uid, recipient_uid, created_at))",
+  )
+  .execute(pool)
+  .await?;
+
+  sqlx::query(
+    "CREATE TABLE IF NOT EXISTS post_tag (id BIGINT PRIMARY KEY AUTO_INCREMENT, postid VARCHAR(64) NOT NULL, tag VARCHAR(64) NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY uniq_post_tag (postid, tag), INDEX idx_post_tag_created (created_at), INDEX idx_post_tag_tag (tag), INDEX idx_post_tag_postid (postid))",
   )
   .execute(pool)
   .await?;
@@ -552,9 +819,84 @@ async fn ensure_dm_table(pool: &MySqlPool) -> Result<(), sqlx::Error> {
   Ok(())
 }
 
+async fn replace_post_tags(pool: &MySqlPool, postid: &str, post_text: &str) -> Result<(), sqlx::Error> {
+  sqlx::query("DELETE FROM post_tag WHERE postid = ?")
+    .bind(postid)
+    .execute(pool)
+    .await?;
+
+  let tags = extract_hashtags(post_text);
+
+  for tag in tags {
+    sqlx::query("INSERT INTO post_tag (postid, tag, created_at) VALUES (?, ?, NOW())")
+      .bind(postid)
+      .bind(tag)
+      .execute(pool)
+      .await?;
+  }
+
+  Ok(())
+}
+
+async fn remove_post_tags(pool: &MySqlPool, postid: &str) -> Result<(), sqlx::Error> {
+  sqlx::query("DELETE FROM post_tag WHERE postid = ?")
+    .bind(postid)
+    .execute(pool)
+    .await?;
+
+  Ok(())
+}
+
+async fn backfill_recent_post_tags(pool: &MySqlPool) -> Result<(), sqlx::Error> {
+  let rows = sqlx::query_as::<_, RecentPostTagBackfillRow>(
+      "SELECT postid, post FROM post WHERE `timestamp` >= (NOW() - INTERVAL 1 DAY)"
+    )
+    .fetch_all(pool)
+    .await?;
+
+  for row in rows {
+    replace_post_tags(pool, &row.postid, &row.post).await?;
+  }
+
+  Ok(())
+}
+
+async fn render_trending_tags_html(state: &AppState, ib_uid: i64, ib_user: &str) -> String {
+  let rows = sqlx::query_as::<_, TrendingTagRow>(
+      "SELECT tag, COUNT(*) AS tag_count FROM post_tag WHERE created_at >= (NOW() - INTERVAL 1 DAY) GROUP BY tag ORDER BY tag_count DESC, tag ASC LIMIT 25"
+    )
+    .fetch_all(&state.db_pool)
+    .await;
+
+  match rows {
+    Ok(rows) if rows.is_empty() => "<p><em>:[[ :no-trending-tags: ]]:</em></p>".to_string(),
+    Ok(rows) => rows
+      .iter()
+      .map(|row| {
+        let href = format!(
+          "https://{domain}/v1/searchposts?ib_uid={ib_uid}&ib_user={ib_user}&tag=%23{tag}",
+          domain = DOMAIN,
+          ib_uid = ib_uid,
+          ib_user = url_encode_component(ib_user),
+          tag = url_encode_component(&row.tag)
+        );
+
+        format!(
+          r#"<p><a href="{href}">#{tag}</a> ({count})</p>"#,
+          href = href,
+          tag = escape_html(&row.tag),
+          count = row.tag_count
+        )
+      })
+      .collect::<Vec<String>>()
+      .join(""),
+    Err(_) => "<p><em>:[[ :trending-tags-unavailable: ]]:</em></p>".to_string(),
+  }
+}
+
 async fn lookup_user_by_username(state: &AppState, username: &str) -> Result<Option<(i64, String)>, sqlx::Error> {
   let row = sqlx::query_as::<_, MessageUserLookupRow>(
-      "SELECT CONVERT(ib_uid USING utf8mb4) AS ib_uid, username FROM isby.user WHERE LOWER(username) = LOWER(?) LIMIT 1"
+      "SELECT CONVERT(ib_uid USING utf8mb4) AS ib_uid, username FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1"
     )
     .bind(username)
     .fetch_optional(&state.db_pool)
@@ -569,8 +911,8 @@ async fn ensure_legacy_user_from_github(
   github_id: u64,
   github_username: &str,
 ) -> Result<(), sqlx::Error> {
-  // CREATE TABLE isby.user (ib_uid varchar(64) PRIMARY KEY, username varchar(255));
-  sqlx::query("INSERT IGNORE INTO isby.user (ib_uid, username) VALUES (?, ?)")
+  // CREATE TABLE user (ib_uid varchar(64) PRIMARY KEY, username varchar(255), followers text);
+  sqlx::query("INSERT IGNORE INTO user (ib_uid, username, followers) VALUES (?, ?, '')")
     .bind(github_id.to_string())
     .bind(github_username)
     .execute(&state.db_pool)
@@ -586,7 +928,7 @@ async fn render_profile_html(
   session_uid: Option<i64>,
 ) -> Result<String, String> {
   let viewed_user_row = sqlx::query_as::<_, FollowLookupRow>(
-      "SELECT username, COALESCE(followers, '') AS followers FROM isby.user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1"
+      "SELECT username, COALESCE(followers, '') AS followers FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1"
     )
     .bind(ib_uid.to_string())
     .fetch_optional(&state.db_pool)
@@ -615,7 +957,7 @@ async fn render_profile_html(
 
   let session_username = if let Some(uid) = session_uid {
     match sqlx::query_as::<_, SessionUserRow>(
-      "SELECT username FROM isby.user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
+      "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
     )
     .bind(uid.to_string())
     .fetch_optional(&state.db_pool)
@@ -780,7 +1122,7 @@ async fn render_profile_html(
 
   let ib_post_results_maximum: usize = 200;
   let ib_post_results = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp FROM isby.post AS post LEFT JOIN isby.user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = '' OR post.parentid IS NULL)"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = '' OR post.parentid IS NULL)"
     )
     .bind(ib_uid)
     .fetch_all(&state.db_pool)
@@ -824,7 +1166,7 @@ async fn render_profile_html(
       r#"
       <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
         {post_meta}
-        <p>{ib_post}</p>
+        <p>{post_body}</p>
         <div class="post-actions">
           {manage_actions}
           <form class="show-post-form" action="https://{domain}/v1/showpost" method="GET">
@@ -839,7 +1181,7 @@ async fn render_profile_html(
       ib_post_timestamp = escape_html(&row.timestamp),
       post_meta = render_post_meta(&row.ib_uid, &row.username, &row.timestamp),
       manage_actions = manage_actions,
-      ib_post = escape_html(&row.post),
+      post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user),
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user),
       domain = DOMAIN
@@ -852,7 +1194,7 @@ async fn render_profile_html(
   );
 
   let ib_pro_result = sqlx::query_as::<_, ProRow>(
-      "SELECT ibp, pro, location, services, website, github FROM isby.pro WHERE ib_uid = ?"
+      "SELECT ibp, pro, location, services, website, github FROM pro WHERE ib_uid = ?"
     )
     .bind(ib_uid)
     .fetch_one(&state.db_pool)
@@ -866,6 +1208,7 @@ async fn render_profile_html(
       ib_pro.ibp.clone()
     };
     let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
+    let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
 
     html += &format!(r#"
   </div>
@@ -899,6 +1242,12 @@ async fn render_profile_html(
         {related_userlist_html}
       </div>
     </div><br>
+    <div id="trending-tags-section">
+      <p><strong>:[[ :trending-tags-24h: ]]:</strong></p>
+      <div id="trending-tags-container">
+        {trending_tags_html}
+      </div>
+    </div><br>
     <div id="user-search-section">
       <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
@@ -921,7 +1270,8 @@ async fn render_profile_html(
       follow_controls_html = follow_controls_html,
       followers_count = followers_count,
       followers_html = followers_html,
-      related_userlist_html = related_userlist_html
+      related_userlist_html = related_userlist_html,
+      trending_tags_html = trending_tags_html
     );
   } else {
     html += &format!(r#"
@@ -961,7 +1311,7 @@ async fn render_search_users_html(
     );
 
     let rows = sqlx::query_as::<_, SearchUserRow>(
-        "SELECT CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, COALESCE(candidate.ibp, '') AS ibp FROM isby.pro AS candidate WHERE LOWER(COALESCE(candidate.ibp, '')) REGEXP ? ORDER BY RAND() LIMIT 200"
+        "SELECT CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, COALESCE(candidate.ibp, '') AS ibp FROM pro AS candidate WHERE LOWER(COALESCE(candidate.ibp, '')) REGEXP ? ORDER BY RAND() LIMIT 200"
       )
       .bind(&pattern)
       .fetch_all(&state.db_pool)
@@ -972,7 +1322,7 @@ async fn render_search_users_html(
 
     for row in rows {
       let username_row = sqlx::query_as::<_, RelatedUsernameRow>(
-          "SELECT username FROM isby.user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1"
+          "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1"
         )
         .bind(&row.ib_uid)
         .fetch_optional(&state.db_pool)
@@ -1062,7 +1412,7 @@ async fn render_search_users_html(
   );
 
   let ib_pro_result = sqlx::query_as::<_, ProRow>(
-      "SELECT ibp, pro, location, services, website, github FROM isby.pro WHERE ib_uid = ?"
+      "SELECT ibp, pro, location, services, website, github FROM pro WHERE ib_uid = ?"
     )
     .bind(ib_uid)
     .fetch_one(&state.db_pool)
@@ -1076,6 +1426,7 @@ async fn render_search_users_html(
       ib_pro.ibp.clone()
     };
     let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
+    let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
 
     html += &format!(r#"
   <div id="profile-section">
@@ -1089,6 +1440,12 @@ async fn render_search_users_html(
       <p><strong>:[[ :userlist: ]]:</strong></p><br>
       <div id="userlist-container">
         {related_userlist_html}
+      </div>
+    </div><br>
+    <div id="trending-tags-section">
+      <p><strong>:[[ :trending-tags-24h: ]]:</strong></p>
+      <div id="trending-tags-container">
+        {trending_tags_html}
       </div>
     </div><br>
     <div id="user-search-section">
@@ -1112,7 +1469,205 @@ async fn render_search_users_html(
       ib_services = escape_html(&ib_pro.services),
       ib_location = escape_html(&ib_pro.location),
       ib_website = escape_html(&ib_pro.website),
-      related_userlist_html = related_userlist_html
+      related_userlist_html = related_userlist_html,
+      trending_tags_html = trending_tags_html
+    );
+  } else {
+    html += &format!(r#"
+  </div>
+</div>
+</body>
+
+</html>"#);
+  }
+
+  Ok(html)
+}
+
+async fn render_search_posts_html(
+  state: &AppState,
+  ib_uid: i64,
+  ib_user: &str,
+  raw_tag: &str,
+  session_uid: Option<i64>,
+) -> Result<String, String> {
+  let normalized_tag = normalize_hashtag(raw_tag);
+
+  let search_results_html = if let Some(tag) = normalized_tag.clone() {
+    let pattern = format!(
+      r"(^|[^[:alnum:]_])#{}([^[:alnum:]_]|$)",
+      escape_mysql_regex_token(&tag)
+    );
+
+    let rows = sqlx::query_as::<_, PostRow>(
+        "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(post.post, '')) REGEXP ? ORDER BY post.timestamp DESC LIMIT 200"
+      )
+      .bind(&pattern)
+      .fetch_all(&state.db_pool)
+      .await
+      .map_err(|e| format!("Search posts query failed: {}", e))?;
+
+    if rows.is_empty() {
+      "<p><em>:[[ :search-posts-no-results: ]]:</em></p>".to_string()
+    } else {
+      let mut html = String::new();
+
+      for row in rows {
+        html += &format!(
+          r#"<div class="post" data-postid="{post_id}" data-timestamp="{post_timestamp}">
+            {post_meta}
+            <p>{post_body}</p>
+            <div class="post-actions">
+              <form class="show-post-form" action="https://{domain}/v1/showpost" method="GET">
+                <input type="hidden" name="ib_uid" value="{post_owner_uid}">
+                <input type="hidden" name="ib_user" value="{post_owner_user}">
+                <input type="hidden" name="pid" value="{post_id}">
+              </form>
+              <a href="javascript:void(0);" class="show-post">:[[ :show-post: ]]:</a>
+            </div>
+          </div>"#,
+          post_id = escape_html(&row.postid),
+          post_timestamp = escape_html(&row.timestamp),
+          post_meta = render_post_meta(&row.ib_uid, &row.username, &row.timestamp),
+          post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user),
+          domain = DOMAIN,
+          post_owner_uid = escape_html(&row.ib_uid),
+          post_owner_user = escape_html(&row.username)
+        );
+      }
+
+      html
+    }
+  } else {
+    "<p><em>:[[ :search-posts-invalid-tag: ]]:</em></p>".to_string()
+  };
+
+  let navigation_links = if session_uid.is_some() {
+    format!(
+      r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
+        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
+        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>
+        <a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>"#,
+      domain = DOMAIN,
+      ib_uid = ib_uid,
+      ib_user = escape_html(ib_user)
+    )
+  } else {
+    String::new()
+  };
+
+  let mut html = format!(
+    r#"<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
+  <script src="/js/is-by_user.js" type="text/javascript"></script>
+  <title>:[[ :search-posts: {ib_user}: ]]:</title>
+</head>
+
+<body>
+  <form id="select-user-form" action="/" method="GET">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <form id="select-post-form" action="https://{domain}/v1/showpost" method="POST">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <form id="edit-profile-form" action="https://{domain}/v1/editprofile" method="GET">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <div id="main-section">
+    <div id="media-section">
+      <div>
+      <img src="/images/Death_Angel-555x111.png" alt=":Death_Angel-555x111.png:" width="555"
+          height="111">
+      </div>
+      <div id="navigation-section">
+        {navigation_links}
+      </div>
+      <div id="selected-user-posts-section" class="post-section">
+        <div class="notice"><p><em>:[[ :search-posts-for-tag: #{tag}: ]]:</em></p></div>
+        {search_results_html}
+      </div>
+    </div>"#,
+    domain = DOMAIN,
+    ib_uid = ib_uid,
+    ib_user = escape_html(ib_user),
+    navigation_links = navigation_links,
+    tag = escape_html(
+      normalized_tag
+        .as_deref()
+        .unwrap_or(raw_tag.trim_start_matches('#'))
+    ),
+    search_results_html = search_results_html
+  );
+
+  let ib_pro_result = sqlx::query_as::<_, ProRow>(
+      "SELECT ibp, pro, location, services, website, github FROM pro WHERE ib_uid = ?"
+    )
+    .bind(ib_uid)
+    .fetch_one(&state.db_pool)
+    .await;
+
+  if let Ok(ib_pro) = ib_pro_result {
+    let source_uid = session_uid.unwrap_or(ib_uid);
+    let source_ibp = if let Some(uid) = session_uid {
+      lookup_ibp_by_uid(state, uid).await.unwrap_or_else(|| ib_pro.ibp.clone())
+    } else {
+      ib_pro.ibp.clone()
+    };
+    let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
+    let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
+
+    html += &format!(r#"
+  <div id="profile-section">
+    <p><strong>:[[ :<a target="_blank" rel="noopener" href="{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p class="paragraph"><em>{ib_ibp}</em></p>
+    <p class="description">{ib_pro}</p>
+    <p class="description">{ib_services}</p>
+    <p class="description">{ib_location}</p>
+    <p><a target="_blank" rel="noopener" href="{ib_website}">{ib_website}</a></p>
+    <div id="userlist-section">
+      <p><strong>:[[ :userlist: ]]:</strong></p><br>
+      <div id="userlist-container">
+        {related_userlist_html}
+      </div>
+    </div><br>
+    <div id="trending-tags-section">
+      <p><strong>:[[ :trending-tags-24h: ]]:</strong></p>
+      <div id="trending-tags-container">
+        {trending_tags_html}
+      </div>
+    </div><br>
+    <div id="user-search-section">
+      <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Users" required>
+        <input type="submit" value="Search">
+      </form>
+    </div>
+  </div>
+</div>
+</body>
+
+</html>"#,
+      ib_uid = ib_uid,
+      ib_github = escape_html(&ib_pro.github),
+      ib_user = escape_html(ib_user),
+      ib_ibp = escape_html(&ib_pro.ibp),
+      ib_pro = escape_html(&ib_pro.pro),
+      ib_services = escape_html(&ib_pro.services),
+      ib_location = escape_html(&ib_pro.location),
+      ib_website = escape_html(&ib_pro.website),
+      related_userlist_html = related_userlist_html,
+      trending_tags_html = trending_tags_html
     );
   } else {
     html += &format!(r#"
@@ -1133,7 +1688,7 @@ async fn render_war_room_html(
   session_uid: Option<i64>,
 ) -> Result<String, String> {
   let followers_row = sqlx::query_as::<_, FollowLookupRow>(
-      "SELECT username, COALESCE(followers, '') AS followers FROM isby.user WHERE LOWER(username) = LOWER(?) LIMIT 1"
+      "SELECT username, COALESCE(followers, '') AS followers FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1"
     )
     .bind(ib_user)
     .fetch_optional(&state.db_pool)
@@ -1164,7 +1719,7 @@ async fn render_war_room_html(
 
     for selected_follower in &selected_followers {
       let post_row = sqlx::query_as::<_, PostRow>(
-          "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp FROM isby.post AS post LEFT JOIN isby.user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) = LOWER(?) AND (post.parentid = '' OR post.parentid IS NULL) ORDER BY post.timestamp DESC LIMIT 1"
+          "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) = LOWER(?) AND (post.parentid = '' OR post.parentid IS NULL) ORDER BY post.timestamp DESC LIMIT 1"
         )
         .bind(selected_follower)
         .fetch_optional(&state.db_pool)
@@ -1176,7 +1731,7 @@ async fn render_war_room_html(
           r#"<div class="notice"><p><em>:[[ :war-room-selected-follower: {selected_follower}: ]]:</em></p></div>
           <div class="post" data-postid="{post_id}" data-timestamp="{post_timestamp}">
             {post_meta}
-            <p>{post}</p>
+            <p>{post_body}</p>
             <div class="post-actions">
               <form class="show-post-form" action="https://{domain}/v1/showpost" method="GET">
                 <input type="hidden" name="ib_uid" value="{post_owner_uid}">
@@ -1190,7 +1745,7 @@ async fn render_war_room_html(
           post_id = escape_html(&post_row.postid),
           post_timestamp = escape_html(&post_row.timestamp),
           post_meta = render_post_meta(&post_row.ib_uid, &post_row.username, &post_row.timestamp),
-          post = escape_html(&post_row.post),
+          post_body = render_post_with_hashtags(&post_row.post, ib_uid, ib_user),
           domain = DOMAIN,
           post_owner_uid = escape_html(&post_row.ib_uid),
           post_owner_user = escape_html(&post_row.username)
@@ -1271,7 +1826,7 @@ async fn render_war_room_html(
   );
 
   let ib_pro_result = sqlx::query_as::<_, ProRow>(
-      "SELECT ibp, pro, location, services, website, github FROM isby.pro WHERE ib_uid = ?"
+      "SELECT ibp, pro, location, services, website, github FROM pro WHERE ib_uid = ?"
     )
     .bind(ib_uid)
     .fetch_one(&state.db_pool)
@@ -1285,6 +1840,7 @@ async fn render_war_room_html(
       ib_pro.ibp.clone()
     };
     let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
+    let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
 
     html += &format!(r#"
   <div id="profile-section">
@@ -1298,6 +1854,12 @@ async fn render_war_room_html(
       <p><strong>:[[ :userlist: ]]:</strong></p><br>
       <div id="userlist-container">
         {related_userlist_html}
+      </div>
+    </div><br>
+    <div id="trending-tags-section">
+      <p><strong>:[[ :trending-tags-24h: ]]:</strong></p>
+      <div id="trending-tags-container">
+        {trending_tags_html}
       </div>
     </div><br>
     <div id="user-search-section">
@@ -1321,7 +1883,8 @@ async fn render_war_room_html(
       ib_services = escape_html(&ib_pro.services),
       ib_location = escape_html(&ib_pro.location),
       ib_website = escape_html(&ib_pro.website),
-      related_userlist_html = related_userlist_html
+      related_userlist_html = related_userlist_html,
+      trending_tags_html = trending_tags_html
     );
   } else {
     html += &format!(r#"
@@ -1343,7 +1906,7 @@ async fn render_inbox_html(
   requested_target_user: Option<&str>,
 ) -> Result<String, String> {
   let followers_row = sqlx::query_as::<_, FollowLookupRow>(
-      "SELECT username, COALESCE(followers, '') AS followers FROM isby.user WHERE LOWER(username) = LOWER(?) LIMIT 1"
+      "SELECT username, COALESCE(followers, '') AS followers FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1"
     )
     .bind(ib_user)
     .fetch_optional(&state.db_pool)
@@ -1364,7 +1927,7 @@ async fn render_inbox_html(
     .unwrap_or_default();
 
   let conversation_rows = sqlx::query_as::<_, ConversationUsernameRow>(
-      "SELECT DISTINCT CAST(COALESCE(CONVERT(counter.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username FROM isby.dm AS dm LEFT JOIN isby.user AS counter ON CONVERT(counter.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(CASE WHEN dm.sender_uid = ? THEN dm.recipient_uid ELSE dm.sender_uid END AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE dm.sender_uid = ? OR dm.recipient_uid = ?"
+      "SELECT DISTINCT CAST(COALESCE(CONVERT(counter.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username FROM dm AS dm LEFT JOIN user AS counter ON CONVERT(counter.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(CASE WHEN dm.sender_uid = ? THEN dm.recipient_uid ELSE dm.sender_uid END AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE dm.sender_uid = ? OR dm.recipient_uid = ?"
     )
     .bind(ib_uid)
     .bind(ib_uid)
@@ -1455,6 +2018,17 @@ async fn render_inbox_html(
       <div id="navigation-section">
         {navigation_links}
       </div>
+      <div id="post-form-section">
+        <form id="post-form" action="https://{domain}/v1/post" method="POST">
+          <div id="post-message"></div>
+          <div id="post-character-count"></div>
+          <input type="hidden" name="ib_uid" value="{ib_uid}">
+          <input type="hidden" name="ib_user" value="{ib_user}">
+          <input class="post" type="text" name="post" autocomplete="off" maxlength="1024" required>
+          <input id="post-cancel" class="post-cancel" type="button" value="Cancel">
+          <input class="post-submit" type="submit" value="Post">
+        </form>
+      </div>
       <div id="selected-user-posts-section" class="post-section">
         <div class="notice"><p><em>:[[ :direct-message-inbox: ]]:</em></p></div>
         <div id="dm-inbox-layout">
@@ -1481,7 +2055,7 @@ async fn render_inbox_html(
   );
 
   let ib_pro_result = sqlx::query_as::<_, ProRow>(
-      "SELECT ibp, pro, location, services, website, github FROM isby.pro WHERE ib_uid = ?"
+      "SELECT ibp, pro, location, services, website, github FROM pro WHERE ib_uid = ?"
     )
     .bind(ib_uid)
     .fetch_one(&state.db_pool)
@@ -1495,6 +2069,7 @@ async fn render_inbox_html(
       ib_pro.ibp.clone()
     };
     let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
+    let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
 
     html += &format!(r#"
   <div id="profile-section">
@@ -1508,6 +2083,12 @@ async fn render_inbox_html(
       <p><strong>:[[ :userlist: ]]:</strong></p><br>
       <div id="userlist-container">
         {related_userlist_html}
+      </div>
+    </div><br>
+    <div id="trending-tags-section">
+      <p><strong>:[[ :trending-tags-24h: ]]:</strong></p>
+      <div id="trending-tags-container">
+        {trending_tags_html}
       </div>
     </div><br>
     <div id="user-search-section">
@@ -1531,7 +2112,8 @@ async fn render_inbox_html(
       ib_services = escape_html(&ib_pro.services),
       ib_location = escape_html(&ib_pro.location),
       ib_website = escape_html(&ib_pro.website),
-      related_userlist_html = related_userlist_html
+      related_userlist_html = related_userlist_html,
+      trending_tags_html = trending_tags_html
     );
   } else {
     html += &format!(r#"
@@ -1553,7 +2135,7 @@ async fn render_single_post_html(
   session_uid: Option<i64>,
 ) -> Result<String, String> {
   let post = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp FROM isby.post AS post LEFT JOIN isby.user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.postid = ? LIMIT 1"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.postid = ? LIMIT 1"
     )
     .bind(ib_uid)
     .bind(pid)
@@ -1567,7 +2149,7 @@ async fn render_single_post_html(
   };
 
   let replies = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp FROM isby.post AS post LEFT JOIN isby.user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.parentid = ? ORDER BY post.timestamp ASC"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.parentid = ? ORDER BY post.timestamp ASC"
     )
     .bind(pid)
     .fetch_all(&state.db_pool)
@@ -1614,13 +2196,13 @@ async fn render_single_post_html(
         r#"
         <div class="post reply-post" data-postid="{reply_post_id}" data-timestamp="{reply_post_timestamp}">
           {reply_post_meta}
-          <p>{reply_post}</p>
+          <p>{reply_post_body}</p>
           {reply_manage_actions}
         </div>"#,
         reply_post_id = escape_html(&reply.postid),
         reply_post_timestamp = escape_html(&reply.timestamp),
         reply_post_meta = render_post_meta(&reply.ib_uid, &reply.username, &reply.timestamp),
-        reply_post = escape_html(&reply.post),
+        reply_post_body = render_post_with_hashtags(&reply.post, ib_uid, ib_user),
         reply_manage_actions = reply_manage_actions
       );
     }
@@ -1657,7 +2239,7 @@ async fn render_single_post_html(
       <div id="selected-user-posts-section" class="post-section">
         <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
           {post_meta}
-          <p>{ib_post}</p>
+          <p>{post_body}</p>
           <div class="post-actions">
             <p><a href="javascript:void(0);" class="copy-link">:[[ :copy-link: ]]:</a></p>
           </div>
@@ -1700,12 +2282,12 @@ async fn render_single_post_html(
     ib_post_id = escape_html(&post.postid),
     ib_post_timestamp = escape_html(&post.timestamp),
     post_meta = render_post_meta(&post.ib_uid, &post.username, &post.timestamp),
-    ib_post = escape_html(&post.post),
+    post_body = render_post_with_hashtags(&post.post, ib_uid, ib_user),
     replies_html = replies_html
   );
 
   let ib_pro_result = sqlx::query_as::<_, ProRow>(
-      "SELECT ibp, pro, location, services, website, github FROM isby.pro WHERE ib_uid = ?"
+      "SELECT ibp, pro, location, services, website, github FROM pro WHERE ib_uid = ?"
     )
     .bind(ib_uid)
     .fetch_one(&state.db_pool)
@@ -1719,6 +2301,7 @@ async fn render_single_post_html(
       ib_pro.ibp.clone()
     };
     let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
+    let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
 
     html += &format!(r#"
   </div>
@@ -1733,6 +2316,12 @@ async fn render_single_post_html(
       <p><strong>:[[ :userlist: ]]:</strong></p><br>
       <div id="userlist-container">
         {related_userlist_html}
+      </div>
+    </div><br>
+    <div id="trending-tags-section">
+      <p><strong>:[[ :trending-tags-24h: ]]:</strong></p>
+      <div id="trending-tags-container">
+        {trending_tags_html}
       </div>
     </div><br>
     <div id="user-search-section">
@@ -1755,7 +2344,8 @@ async fn render_single_post_html(
       ib_services = escape_html(&ib_pro.services),
       ib_location = escape_html(&ib_pro.location),
       ib_website = escape_html(&ib_pro.website),
-      related_userlist_html = related_userlist_html
+      related_userlist_html = related_userlist_html,
+      trending_tags_html = trending_tags_html
     );
   } else {
     html += &format!(r#"
@@ -1794,10 +2384,10 @@ async fn create_post(
 
   let postid = Uuid::new_v4().to_string();
 
-  // CREATE TABLE isby.post (ib_uid varchar(64), postid varchar(64), parentid varchar(64), post varchar(1024), timestamp varchar(32));
-  // ALTER TABLE isby.post MODIFY COLUMN parentid VARCHAR(64) NOT NULL DEFAULT '';
+  // CREATE TABLE post (ib_uid varchar(64), postid varchar(64), parentid varchar(64), post varchar(1024), timestamp varchar(32));
+  // ALTER TABLE post MODIFY COLUMN parentid VARCHAR(64) NOT NULL DEFAULT '';
   let result = sqlx::query(
-    "INSERT INTO isby.post (ib_uid, postid, post, `timestamp`) VALUES (?, ?, ?, NOW())",
+    "INSERT INTO post (ib_uid, postid, post, `timestamp`) VALUES (?, ?, ?, NOW())",
   )
   .bind(payload.ib_uid)
   .bind(&postid)
@@ -1806,13 +2396,66 @@ async fn create_post(
   .await;
 
   match result {
-    Ok(_) => HttpResponse::Ok()
-      .insert_header(("ib_user", payload.ib_user.clone()))
-      .json(PostResponse {
-        success: true,
-        message: "Post created".to_string(),
-        postid: Some(postid),
-      }),
+    Ok(_) => {
+      if let Err(err) = replace_post_tags(&state.db_pool, &postid, &payload.post).await {
+        eprintln!("Post tag sync failed for {}: {}", postid, err);
+      }
+
+      let mentioned_users = extract_mentions(&payload.post);
+      if !mentioned_users.is_empty() {
+        for mentioned_user in mentioned_users {
+          let target = match lookup_user_by_username(&state, &mentioned_user).await {
+            Ok(Some(found)) => found,
+            Ok(None) => continue,
+            Err(err) => {
+              eprintln!("Mention lookup failed for @{}: {}", mentioned_user, err);
+              continue;
+            }
+          };
+
+          let target_uid = target.0;
+          if target_uid == payload.ib_uid {
+            continue;
+          }
+
+          let dm_message = format!(
+            "You were mentioned by @{} in a post:\n\n{}\n\nhttps://{}/v1/showpost?ib_uid={}&ib_user={}&pid={}",
+            payload.ib_user,
+            payload.post,
+            DOMAIN,
+            payload.ib_uid,
+            url_encode_component(&payload.ib_user),
+            postid
+          );
+
+          if let Err(err) = sqlx::query(
+            "INSERT INTO dm (sender_uid, recipient_uid, message) VALUES (?, ?, ?)",
+          )
+          .bind(payload.ib_uid)
+          .bind(target_uid)
+          .bind(dm_message)
+          .execute(&state.db_pool)
+          .await
+          {
+            eprintln!(
+              "Mention DM send failed from {} to {} for post {}: {}",
+              payload.ib_uid,
+              target_uid,
+              postid,
+              err
+            );
+          }
+        }
+      }
+
+      HttpResponse::Ok()
+        .insert_header(("ib_user", payload.ib_user.clone()))
+        .json(PostResponse {
+          success: true,
+          message: "Post created".to_string(),
+          postid: Some(postid),
+        })
+    }
     Err(err) => HttpResponse::InternalServerError().json(PostResponse {
       success: false,
       message: format!("Failed to create post: {}", err),
@@ -1840,7 +2483,7 @@ async fn create_reply(
   let replyid = Uuid::new_v4().to_string();
 
   let result = sqlx::query(
-    "INSERT INTO isby.post (ib_uid, postid, parentid, post, `timestamp`) VALUES (?, ?, ?, ?, NOW())",
+    "INSERT INTO post (ib_uid, postid, parentid, post, `timestamp`) VALUES (?, ?, ?, ?, NOW())",
   )
   .bind(payload.ib_uid)
   .bind(&replyid)
@@ -1850,15 +2493,21 @@ async fn create_reply(
   .await;
 
   match result {
-    Ok(_) => HttpResponse::SeeOther()
-      .insert_header((
-        "Location",
-        format!(
-          "/v1/showpost?ib_uid={}&ib_user={}&pid={}",
-          payload.ib_uid, payload.ib_user, payload.pid
-        ),
-      ))
-      .finish(),
+    Ok(_) => {
+      if let Err(err) = replace_post_tags(&state.db_pool, &replyid, &payload.post).await {
+        eprintln!("Reply tag sync failed for {}: {}", replyid, err);
+      }
+
+      HttpResponse::SeeOther()
+        .insert_header((
+          "Location",
+          format!(
+            "/v1/showpost?ib_uid={}&ib_user={}&pid={}",
+            payload.ib_uid, payload.ib_user, payload.pid
+          ),
+        ))
+        .finish()
+    }
     Err(err) => HttpResponse::InternalServerError()
       .body(format!("Failed to create reply: {}", err)),
   }
@@ -1934,7 +2583,7 @@ async fn follow_user(
   }
 
   let target_row = match sqlx::query_as::<_, FollowLookupRow>(
-    "SELECT username, COALESCE(followers, '') AS followers FROM isby.user WHERE LOWER(username) = LOWER(?) LIMIT 1",
+    "SELECT username, COALESCE(followers, '') AS followers FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1",
   )
   .bind(target_user)
   .fetch_optional(&state.db_pool)
@@ -1962,7 +2611,7 @@ async fn follow_user(
     follower_username
   } else {
     match sqlx::query_as::<_, SessionUserRow>(
-      "SELECT username FROM isby.user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
+      "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
     )
     .bind(session_uid.to_string())
     .fetch_optional(&state.db_pool)
@@ -2001,7 +2650,7 @@ async fn follow_user(
   let updated_followers = followers.join(", ");
 
   if let Err(err) = sqlx::query(
-    "UPDATE isby.user SET followers = ? WHERE LOWER(username) = LOWER(?) LIMIT 1",
+    "UPDATE user SET followers = ? WHERE LOWER(username) = LOWER(?) LIMIT 1",
   )
   .bind(updated_followers)
   .bind(&target_row.username)
@@ -2033,7 +2682,7 @@ async fn unfollow_user(
   }
 
   let target_row = match sqlx::query_as::<_, FollowLookupRow>(
-    "SELECT username, COALESCE(followers, '') AS followers FROM isby.user WHERE LOWER(username) = LOWER(?) LIMIT 1",
+    "SELECT username, COALESCE(followers, '') AS followers FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1",
   )
   .bind(target_user)
   .fetch_optional(&state.db_pool)
@@ -2061,7 +2710,7 @@ async fn unfollow_user(
     follower_username
   } else {
     match sqlx::query_as::<_, SessionUserRow>(
-      "SELECT username FROM isby.user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
+      "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
     )
     .bind(session_uid.to_string())
     .fetch_optional(&state.db_pool)
@@ -2087,7 +2736,7 @@ async fn unfollow_user(
   let updated_followers = followers.join(", ");
 
   if let Err(err) = sqlx::query(
-    "UPDATE isby.user SET followers = ? WHERE LOWER(username) = LOWER(?) LIMIT 1",
+    "UPDATE user SET followers = ? WHERE LOWER(username) = LOWER(?) LIMIT 1",
   )
   .bind(updated_followers)
   .bind(&target_row.username)
@@ -2108,7 +2757,7 @@ async fn edit_profile(
   query: web::Query<EditProfileRequest>,
 ) -> impl Responder {
   let row = match sqlx::query_as::<_, EditProfileRow>(
-    "SELECT github AS ib_github, ibp AS ib_ibp, pro AS ib_pro, services AS ib_services, location AS ib_location, website AS ib_website FROM isby.pro WHERE ib_uid = ? LIMIT 1",
+    "SELECT github AS ib_github, ibp AS ib_ibp, pro AS ib_pro, services AS ib_services, location AS ib_location, website AS ib_website FROM pro WHERE ib_uid = ? LIMIT 1",
   )
   .bind(query.ib_uid)
   .fetch_optional(&state.db_pool)
@@ -2184,7 +2833,7 @@ async fn update_profile(
   payload: web::Form<EditProfileUpdateRequest>,
 ) -> impl Responder {
   let update_result = sqlx::query(
-    "UPDATE isby.pro SET github = ?, ibp = ?, pro = ?, services = ?, location = ?, website = ? WHERE ib_uid = ?",
+    "UPDATE pro SET github = ?, ibp = ?, pro = ?, services = ?, location = ?, website = ? WHERE ib_uid = ?",
   )
   .bind(&payload.ib_github)
   .bind(&payload.ib_ibp)
@@ -2202,7 +2851,7 @@ async fn update_profile(
       .finish(),
     Ok(_) => {
       let insert_result = sqlx::query(
-        "INSERT INTO isby.pro (ib_uid, github, ibp, pro, services, location, website) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO pro (ib_uid, github, ibp, pro, services, location, website) VALUES (?, ?, ?, ?, ?, ?, ?)",
       )
       .bind(payload.ib_uid)
       .bind(&payload.ib_github)
@@ -2244,7 +2893,7 @@ async fn delete_post(
   }
 
   let result = sqlx::query(
-    "DELETE FROM isby.post WHERE ib_uid = ? AND postid = ?",
+    "DELETE FROM post WHERE ib_uid = ? AND postid = ?",
   )
   .bind(owner_uid)
   .bind(&payload.pid)
@@ -2253,6 +2902,10 @@ async fn delete_post(
 
   match result {
     Ok(_) => {
+      if let Err(err) = remove_post_tags(&state.db_pool, &payload.pid).await {
+        eprintln!("Post tag delete failed for {}: {}", payload.pid, err);
+      }
+
       let location = if let Some(root_pid) = payload.root_pid.as_deref() {
         format!(
           "/v1/showpost?ib_uid={}&ib_user={}&pid={}",
@@ -2288,7 +2941,7 @@ async fn edit_post(
   }
 
   let selected = sqlx::query_as::<_, EditPostRow>(
-    "SELECT post FROM isby.post WHERE ib_uid = ? AND postid = ? LIMIT 1",
+    "SELECT post FROM post WHERE ib_uid = ? AND postid = ? LIMIT 1",
   )
   .bind(owner_uid)
   .bind(&query.pid)
@@ -2398,7 +3051,7 @@ async fn update_post(
   }
 
   let result = sqlx::query(
-    "UPDATE isby.post SET post = ? WHERE ib_uid = ? AND postid = ?",
+    "UPDATE post SET post = ? WHERE ib_uid = ? AND postid = ?",
   )
   .bind(&payload.post)
   .bind(owner_uid)
@@ -2408,6 +3061,10 @@ async fn update_post(
 
   match result {
     Ok(_) => {
+      if let Err(err) = replace_post_tags(&state.db_pool, &payload.pid, &payload.post).await {
+        eprintln!("Post tag update failed for {}: {}", payload.pid, err);
+      }
+
       let location = if let Some(root_pid) = payload.root_pid.as_deref() {
         format!(
           "/v1/showpost?ib_uid={}&ib_user={}&pid={}",
@@ -2448,7 +3105,7 @@ async fn view_profile(
   // 2) Resolve from profile github handle.
   if resolved_uid.is_none() {
     let lookup = sqlx::query_as::<_, ProfileLookupRow>(
-      "SELECT ib_uid FROM isby.pro WHERE LOWER(github) = LOWER(?) LIMIT 1",
+      "SELECT ib_uid FROM pro WHERE LOWER(github) = LOWER(?) LIMIT 1",
     )
     .bind(&normalized)
     .fetch_optional(&state.db_pool)
@@ -2463,11 +3120,11 @@ async fn view_profile(
     }
   }
 
-  // CREATE TABLE isby.user (ib_uid varchar(64) PRIMARY KEY, username varchar(255));
+  // CREATE TABLE user (ib_uid varchar(64) PRIMARY KEY, username varchar(255));
   // 3) Fallback by username in legacy user table.
   if resolved_uid.is_none() {
     let user_lookup = sqlx::query_as::<_, UsernameLookupRow>(
-      "SELECT ib_uid FROM isby.user WHERE LOWER(username) = LOWER(?) LIMIT 1",
+      "SELECT ib_uid FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1",
     )
     .bind(&normalized)
     .fetch_optional(&state.db_pool)
@@ -2517,6 +3174,26 @@ async fn search_users(
     query.ib_uid,
     &query.ib_user,
     &query.query,
+    get_session_uid(&req),
+  ).await {
+    Ok(html) => HttpResponse::Ok()
+      .content_type("text/html; charset=utf-8")
+      .body(html),
+    Err(err) => HttpResponse::InternalServerError().body(err),
+  }
+}
+
+#[get("/v1/searchposts")]
+async fn search_posts(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  query: web::Query<SearchPostsRequest>,
+) -> impl Responder {
+  match render_search_posts_html(
+    &state,
+    query.ib_uid,
+    &query.ib_user,
+    &query.tag,
     get_session_uid(&req),
   ).await {
     Ok(html) => HttpResponse::Ok()
@@ -2625,7 +3302,7 @@ async fn send_direct_message(
   }
 
   let insert_result = sqlx::query(
-    "INSERT INTO isby.dm (sender_uid, recipient_uid, message) VALUES (?, ?, ?)",
+    "INSERT INTO dm (sender_uid, recipient_uid, message) VALUES (?, ?, ?)",
   )
   .bind(session_uid)
   .bind(target_uid)
@@ -2649,7 +3326,7 @@ async fn send_direct_message(
         })
       } else {
         let current_username = match sqlx::query_as::<_, SessionUserRow>(
-          "SELECT username FROM isby.user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
+          "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
         )
         .bind(session_uid.to_string())
         .fetch_optional(&state.db_pool)
@@ -2726,7 +3403,7 @@ async fn direct_messages(
   };
 
   let rows = match sqlx::query_as::<_, DMMessageRow>(
-    "SELECT dm.id, dm.sender_uid, CAST(COALESCE(CONVERT(sender.username USING utf8mb4), CAST(dm.sender_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS sender_username, CAST(COALESCE(CONVERT(recipient.username USING utf8mb4), CAST(dm.recipient_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS recipient_username, dm.message, DATE_FORMAT(dm.created_at, '%Y-%m-%d %H:%i:%s') AS created_at FROM isby.dm AS dm LEFT JOIN isby.user AS sender ON CONVERT(sender.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(dm.sender_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LEFT JOIN isby.user AS recipient ON CONVERT(recipient.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(dm.recipient_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE (dm.sender_uid = ? AND dm.recipient_uid = ?) OR (dm.sender_uid = ? AND dm.recipient_uid = ?) ORDER BY dm.id ASC LIMIT 200",
+    "SELECT dm.id, dm.sender_uid, CAST(COALESCE(CONVERT(sender.username USING utf8mb4), CAST(dm.sender_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS sender_username, CAST(COALESCE(CONVERT(recipient.username USING utf8mb4), CAST(dm.recipient_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS recipient_username, dm.message, DATE_FORMAT(dm.created_at, '%Y-%m-%d %H:%i:%s') AS created_at FROM dm AS dm LEFT JOIN user AS sender ON CONVERT(sender.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(dm.sender_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LEFT JOIN user AS recipient ON CONVERT(recipient.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(dm.recipient_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE (dm.sender_uid = ? AND dm.recipient_uid = ?) OR (dm.sender_uid = ? AND dm.recipient_uid = ?) ORDER BY dm.id ASC LIMIT 200",
   )
   .bind(session_uid)
   .bind(target_uid)
@@ -2745,7 +3422,7 @@ async fn direct_messages(
   };
 
   let _ = sqlx::query(
-    "UPDATE isby.dm SET read_at = NOW() WHERE sender_uid = ? AND recipient_uid = ? AND read_at IS NULL",
+    "UPDATE dm SET read_at = NOW() WHERE sender_uid = ? AND recipient_uid = ? AND read_at IS NULL",
   )
   .bind(target_uid)
   .bind(session_uid)
@@ -2786,7 +3463,7 @@ async fn direct_message_unread_count(
   };
 
   let row = sqlx::query_as::<_, DMUnreadCountRow>(
-      "SELECT COUNT(*) AS unread_count FROM isby.dm WHERE recipient_uid = ? AND read_at IS NULL"
+      "SELECT COUNT(*) AS unread_count FROM dm WHERE recipient_uid = ? AND read_at IS NULL"
     )
     .bind(session_uid)
     .fetch_one(&state.db_pool)
@@ -2999,9 +3676,13 @@ async fn main() -> std::io::Result<()> {
     .await
     .expect("Failed to connect to MySQL");
 
-  ensure_dm_table(&db_pool)
+  ensure_database_schema(&db_pool)
     .await
-    .expect("Failed to ensure DM table");
+    .expect("Failed to ensure database schema");
+
+  backfill_recent_post_tags(&db_pool)
+    .await
+    .expect("Failed to backfill post tags");
 
   let app_state = AppState {
     db_pool,
@@ -3100,6 +3781,7 @@ async fn main() -> std::io::Result<()> {
       .service(follow_user)
       .service(unfollow_user)
       .service(search_users)
+      .service(search_posts)
       .service(war_room)
       .service(inbox)
       .service(send_direct_message)
