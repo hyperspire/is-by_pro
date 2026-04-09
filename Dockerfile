@@ -21,8 +21,8 @@ RUN yum update -y \
 
 COPY --from=builder /app/is-by_pro/target/release/is-by_pro /usr/local/bin/is-by_pro
 COPY --from=builder /app/is-by_pro/webroot ./webroot
-COPY ssl ./ssl
-COPY .env ./env
+COPY ssl /usr/local/bin/ssl
+COPY .env /usr/local/bin/.env
 COPY healthcheck.sh /usr/local/bin/healthcheck.sh
 
 RUN chmod +x /usr/local/bin/healthcheck.sh
