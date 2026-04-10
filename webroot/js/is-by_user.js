@@ -8,6 +8,7 @@ function attachEventListeners() {
   stopDMPolling();
 
   const listeners = [
+    attachAcknowledgePostEventListener,
     attachCopyLinkEventListener,
     attachDeletePostEventListener,
     attachNewPostEventListener,
@@ -359,6 +360,21 @@ function attachNewPostEventListener() {
       .catch(error => generateIBFormMessageFailure('post-message', error))
   });
 
+}
+
+function attachAcknowledgePostEventListener() {
+  const acknowledgeLinks = document.querySelectorAll('.ack-post');
+
+  acknowledgeLinks.forEach((link) => {
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+
+      const acknowledgeForm = link.closest('.post')?.querySelector('.ack-post-form');
+      if (acknowledgeForm) {
+        acknowledgeForm.requestSubmit();
+      }
+    });
+  });
 }
 
 function attachSelectPostEventListener() {

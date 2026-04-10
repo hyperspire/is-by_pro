@@ -66,6 +66,7 @@ struct PostRow {
   postid: String,
   post: String,
   timestamp: String,
+  acknowledged_count: i64,
 }
 
 #[derive(sqlx::FromRow)]
@@ -80,7 +81,7 @@ struct ProRow {
 
 #[derive(sqlx::FromRow)]
 struct ProfileLookupRow {
-  ib_uid: i64,
+  ib_uid: String,
 }
 
 #[derive(sqlx::FromRow)]
@@ -222,6 +223,31 @@ struct SearchPostsRequest {
 }
 
 #[derive(Deserialize)]
+struct ProjectsRequest {
+  ib_uid: i64,
+  ib_user: String,
+}
+
+#[derive(Deserialize)]
+struct CreateProjectRequest {
+  ib_uid: i64,
+  ib_user: String,
+  project: String,
+  description: String,
+  languages: String,
+}
+
+#[derive(Deserialize)]
+struct EditProjectRequest {
+  ib_uid: i64,
+  ib_user: String,
+  project_id: i64,
+  project: String,
+  description: String,
+  languages: String,
+}
+
+#[derive(Deserialize)]
 struct WarRoomRequest {
   ib_uid: i64,
   ib_user: String,
@@ -248,6 +274,13 @@ struct DMMessagesRequest {
 #[derive(Deserialize)]
 struct FollowRequest {
   target_user: String,
+}
+
+#[derive(Deserialize)]
+struct AckPostRequest {
+  ib_uid: i64,
+  ib_user: String,
+  pid: String,
 }
 
 #[derive(sqlx::FromRow)]
@@ -299,6 +332,17 @@ struct DMUnreadCountRow {
 #[derive(sqlx::FromRow)]
 struct ConversationUsernameRow {
   username: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct ProjectProfileRow {
+  id: i64,
+  ib_uid: i64,
+  username: String,
+  project: String,
+  description: String,
+  languages: String,
+  updated_at: String,
 }
 
 #[derive(Serialize)]
@@ -739,9 +783,68 @@ fn render_post_meta(ib_uid: &str, username: &str, timestamp: &str) -> String {
   )
 }
 
+fn render_ack_controls(page_ib_uid: i64, page_ib_user: &str, post_id: &str) -> String {
+  if page_ib_uid <= 0 {
+    return String::from(r#"<span class="ack-post-disabled">:[[ACK]]:</span>"#);
+  }
+
+  format!(
+    r#"<form class="ack-post-form" action="https://{domain}/v1/ackpost" method="POST">
+      <input type="hidden" name="ib_uid" value="{ib_uid}">
+      <input type="hidden" name="ib_user" value="{ib_user}">
+      <input type="hidden" name="pid" value="{post_id}">
+    </form>
+    <a href="javascript:void(0);" class="ack-post">:[[ACK]]:</a>"#,
+    domain = DOMAIN,
+    ib_uid = page_ib_uid,
+    ib_user = escape_html(page_ib_user),
+    post_id = escape_html(post_id)
+  )
+}
+
+fn render_ack_disabled() -> String {
+  String::from(r#"<span class="ack-post-disabled">:[[ACK]]:</span>"#)
+}
+
+async fn acknowledged_post_ids_for_user(pool: &MySqlPool, viewer_uid: Option<i64>, post_ids: &[String]) -> HashSet<String> {
+  let Some(uid) = viewer_uid else {
+    return HashSet::new();
+  };
+
+  if post_ids.is_empty() {
+    return HashSet::new();
+  }
+
+  let placeholders = vec!["?"; post_ids.len()].join(", ");
+  let sql = format!(
+    "SELECT postid FROM post_ack WHERE ib_uid = ? AND postid IN ({})",
+    placeholders
+  );
+
+  let mut query = sqlx::query_scalar::<_, String>(&sql).bind(uid);
+  for post_id in post_ids {
+    query = query.bind(post_id);
+  }
+
+  match query.fetch_all(pool).await {
+    Ok(rows) => rows.into_iter().collect(),
+    Err(_) => HashSet::new(),
+  }
+}
+
 fn get_session_uid(req: &HttpRequest) -> Option<i64> {
   req.cookie("ib_uid")
     .and_then(|cookie| cookie.value().parse::<i64>().ok())
+}
+
+fn remove_cookie(name: &str) -> Cookie<'static> {
+  let mut cookie = Cookie::build(name.to_string(), String::new())
+    .path("/")
+    .http_only(true)
+    .secure(true)
+    .finish();
+  cookie.make_removal();
+  cookie
 }
 
 async fn redirect_to_https(req: HttpRequest) -> HttpResponse {
@@ -753,11 +856,18 @@ async fn redirect_to_https(req: HttpRequest) -> HttpResponse {
 }
 
 async fn create_db_pool() -> Result<MySqlPool, sqlx::Error> {
+  let mysql_host = std::env::var("MYSQL_HOST")
+    .unwrap_or_else(|_| String::from("localhost"));
+  let mysql_port = std::env::var("MYSQL_PORT")
+    .ok()
+    .and_then(|value| value.parse::<u16>().ok())
+    .unwrap_or(3306);
   let mysql_password = std::env::var("MYSQL_PASSWORD")
     .expect("Missing MYSQL_PASSWORD in environment file or shell");
 
   let server_options = sqlx::mysql::MySqlConnectOptions::new()
-    .host("localhost")
+    .host(&mysql_host)
+    .port(mysql_port)
     .username(MYSQL_USER)
     .password(&mysql_password);
 
@@ -799,10 +909,22 @@ async fn ensure_database_schema(pool: &MySqlPool) -> Result<(), sqlx::Error> {
   .await?;
 
   sqlx::query(
-    "CREATE TABLE IF NOT EXISTS post (ib_uid BIGINT NOT NULL, postid VARCHAR(64) PRIMARY KEY, parentid VARCHAR(64) NOT NULL DEFAULT '', post VARCHAR(1024) NOT NULL, timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX idx_post_uid_time (ib_uid, timestamp), INDEX idx_post_parentid (parentid))",
+    "CREATE TABLE IF NOT EXISTS post (ib_uid BIGINT NOT NULL, postid VARCHAR(64) PRIMARY KEY, parentid VARCHAR(64) NOT NULL DEFAULT '', post VARCHAR(1024) NOT NULL, timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, acknowledged_count BIGINT NOT NULL DEFAULT 0, INDEX idx_post_uid_time (ib_uid, timestamp), INDEX idx_post_parentid (parentid))",
   )
   .execute(pool)
   .await?;
+
+  let ack_column_exists = sqlx::query_scalar::<_, i64>(
+      "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'post' AND COLUMN_NAME = 'acknowledged_count'"
+    )
+    .fetch_one(pool)
+    .await?;
+
+  if ack_column_exists == 0 {
+    sqlx::query("ALTER TABLE post ADD COLUMN acknowledged_count BIGINT NOT NULL DEFAULT 0")
+      .execute(pool)
+      .await?;
+  }
 
   sqlx::query(
     "CREATE TABLE IF NOT EXISTS dm (id BIGINT PRIMARY KEY AUTO_INCREMENT, sender_uid BIGINT NOT NULL, recipient_uid BIGINT NOT NULL, message TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, read_at TIMESTAMP NULL DEFAULT NULL, INDEX idx_dm_recipient_read (recipient_uid, read_at), INDEX idx_dm_pair_time (sender_uid, recipient_uid, created_at))",
@@ -812,6 +934,18 @@ async fn ensure_database_schema(pool: &MySqlPool) -> Result<(), sqlx::Error> {
 
   sqlx::query(
     "CREATE TABLE IF NOT EXISTS post_tag (id BIGINT PRIMARY KEY AUTO_INCREMENT, postid VARCHAR(64) NOT NULL, tag VARCHAR(64) NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY uniq_post_tag (postid, tag), INDEX idx_post_tag_created (created_at), INDEX idx_post_tag_tag (tag), INDEX idx_post_tag_postid (postid))",
+  )
+  .execute(pool)
+  .await?;
+
+  sqlx::query(
+    "CREATE TABLE IF NOT EXISTS post_ack (id BIGINT PRIMARY KEY AUTO_INCREMENT, postid VARCHAR(64) NOT NULL, ib_uid BIGINT NOT NULL, acknowledged_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY uniq_post_ack_user_post (postid, ib_uid), INDEX idx_post_ack_user (ib_uid), INDEX idx_post_ack_post (postid))",
+  )
+  .execute(pool)
+  .await?;
+
+  sqlx::query(
+    "CREATE TABLE IF NOT EXISTS project_profile (id BIGINT PRIMARY KEY AUTO_INCREMENT, ib_uid BIGINT NOT NULL, project VARCHAR(255) NOT NULL, description TEXT NOT NULL, languages VARCHAR(255) NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, INDEX idx_project_profile_uid_time (ib_uid, updated_at))",
   )
   .execute(pool)
   .await?;
@@ -840,6 +974,15 @@ async fn replace_post_tags(pool: &MySqlPool, postid: &str, post_text: &str) -> R
 
 async fn remove_post_tags(pool: &MySqlPool, postid: &str) -> Result<(), sqlx::Error> {
   sqlx::query("DELETE FROM post_tag WHERE postid = ?")
+    .bind(postid)
+    .execute(pool)
+    .await?;
+
+  Ok(())
+}
+
+async fn remove_post_acks(pool: &MySqlPool, postid: &str) -> Result<(), sqlx::Error> {
+  sqlx::query("DELETE FROM post_ack WHERE postid = ?")
     .bind(postid)
     .execute(pool)
     .await?;
@@ -1049,6 +1192,7 @@ async fn render_profile_html(
       r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
         <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
         <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
+        <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
         {dm_link}
         <a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>"#,
       domain = DOMAIN,
@@ -1122,7 +1266,7 @@ async fn render_profile_html(
 
   let ib_post_results_maximum: usize = 200;
   let ib_post_results = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = '' OR post.parentid IS NULL)"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = '' OR post.parentid IS NULL)"
     )
     .bind(ib_uid)
     .fetch_all(&state.db_pool)
@@ -1137,6 +1281,12 @@ async fn render_profile_html(
   );
 
   let start_index = ib_post_results_length.saturating_sub(ib_post_results_maximum);
+  let displayed_post_ids: Vec<String> = ib_post_results[start_index..]
+    .iter()
+    .map(|row| row.postid.clone())
+    .collect();
+  let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &displayed_post_ids).await;
+
   for row in ib_post_results[start_index..].iter().rev() {
     let row_owner_uid = row.ib_uid.parse::<i64>().ok();
     let can_manage_post = session_uid.is_some() && session_uid == row_owner_uid;
@@ -1168,6 +1318,7 @@ async fn render_profile_html(
         {post_meta}
         <p>{post_body}</p>
         <div class="post-actions">
+          {ack_controls}
           {manage_actions}
           <form class="show-post-form" action="https://{domain}/v1/showpost" method="GET">
             <input type="hidden" name="ib_uid" value="{ib_uid}">
@@ -1176,11 +1327,18 @@ async fn render_profile_html(
           </form>
           <a href="javascript:void(0);" class="show-post">:[[ :show-post: ]]:</a>
         </div>
+        <p class="acknowledged-count">Acknowleged {acknowledged_count} times.</p>
       </div>"#,
       ib_post_id = escape_html(&row.postid),
       ib_post_timestamp = escape_html(&row.timestamp),
       post_meta = render_post_meta(&row.ib_uid, &row.username, &row.timestamp),
       manage_actions = manage_actions,
+      ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&row.postid) {
+        render_ack_disabled()
+      } else {
+        render_ack_controls(ib_uid, ib_user, &row.postid)
+      },
+      acknowledged_count = row.acknowledged_count,
       post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user),
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user),
@@ -1213,12 +1371,13 @@ async fn render_profile_html(
     html += &format!(r#"
   </div>
   <div id="profile-section">
-    <p><strong>:[[ :<a target="_blank" rel="noopener" href="{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
     <p class="description">{ib_location}</p>
     <p><a target="_blank" rel="noopener" href="{ib_website}">{ib_website}</a></p>
+    <p><a href="https://{DOMAIN}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a></p>
     {follow_controls_html}
     <div id="followers-section">
       <p><strong>:[[ :followers: {followers_count}: ]]:</strong></p>
@@ -1354,6 +1513,7 @@ async fn render_search_users_html(
       r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
         <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
         <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
+        <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
         <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>
         <a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>"#,
       domain = DOMAIN,
@@ -1430,7 +1590,7 @@ async fn render_search_users_html(
 
     html += &format!(r#"
   <div id="profile-section">
-    <p><strong>:[[ :<a target="_blank" rel="noopener" href="{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -1500,7 +1660,7 @@ async fn render_search_posts_html(
     );
 
     let rows = sqlx::query_as::<_, PostRow>(
-        "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(post.post, '')) REGEXP ? ORDER BY post.timestamp DESC LIMIT 200"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(post.post, '')) REGEXP ? ORDER BY post.timestamp DESC LIMIT 200"
       )
       .bind(&pattern)
       .fetch_all(&state.db_pool)
@@ -1511,6 +1671,8 @@ async fn render_search_posts_html(
       "<p><em>:[[ :search-posts-no-results: ]]:</em></p>".to_string()
     } else {
       let mut html = String::new();
+      let row_post_ids: Vec<String> = rows.iter().map(|row| row.postid.clone()).collect();
+      let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &row_post_ids).await;
 
       for row in rows {
         html += &format!(
@@ -1518,6 +1680,7 @@ async fn render_search_posts_html(
             {post_meta}
             <p>{post_body}</p>
             <div class="post-actions">
+              {ack_controls}
               <form class="show-post-form" action="https://{domain}/v1/showpost" method="GET">
                 <input type="hidden" name="ib_uid" value="{post_owner_uid}">
                 <input type="hidden" name="ib_user" value="{post_owner_user}">
@@ -1525,11 +1688,18 @@ async fn render_search_posts_html(
               </form>
               <a href="javascript:void(0);" class="show-post">:[[ :show-post: ]]:</a>
             </div>
+            <p class="acknowledged-count">Acknowleged {acknowledged_count} times.</p>
           </div>"#,
           post_id = escape_html(&row.postid),
           post_timestamp = escape_html(&row.timestamp),
           post_meta = render_post_meta(&row.ib_uid, &row.username, &row.timestamp),
           post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user),
+          ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&row.postid) {
+            render_ack_disabled()
+          } else {
+            render_ack_controls(ib_uid, ib_user, &row.postid)
+          },
+          acknowledged_count = row.acknowledged_count,
           domain = DOMAIN,
           post_owner_uid = escape_html(&row.ib_uid),
           post_owner_user = escape_html(&row.username)
@@ -1547,6 +1717,7 @@ async fn render_search_posts_html(
       r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
         <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
         <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
+        <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
         <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>
         <a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>"#,
       domain = DOMAIN,
@@ -1627,7 +1798,248 @@ async fn render_search_posts_html(
 
     html += &format!(r#"
   <div id="profile-section">
-    <p><strong>:[[ :<a target="_blank" rel="noopener" href="{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p class="paragraph"><em>{ib_ibp}</em></p>
+    <p class="description">{ib_pro}</p>
+    <p class="description">{ib_services}</p>
+    <p class="description">{ib_location}</p>
+    <p><a target="_blank" rel="noopener" href="{ib_website}">{ib_website}</a></p>
+    <div id="userlist-section">
+      <p><strong>:[[ :userlist: ]]:</strong></p><br>
+      <div id="userlist-container">
+        {related_userlist_html}
+      </div>
+    </div><br>
+    <div id="trending-tags-section">
+      <p><strong>:[[ :trending-tags-24h: ]]:</strong></p>
+      <div id="trending-tags-container">
+        {trending_tags_html}
+      </div>
+    </div><br>
+    <div id="user-search-section">
+      <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Users" required>
+        <input type="submit" value="Search">
+      </form>
+    </div>
+  </div>
+</div>
+</body>
+
+</html>"#,
+      ib_uid = ib_uid,
+      ib_github = escape_html(&ib_pro.github),
+      ib_user = escape_html(ib_user),
+      ib_ibp = escape_html(&ib_pro.ibp),
+      ib_pro = escape_html(&ib_pro.pro),
+      ib_services = escape_html(&ib_pro.services),
+      ib_location = escape_html(&ib_pro.location),
+      ib_website = escape_html(&ib_pro.website),
+      related_userlist_html = related_userlist_html,
+      trending_tags_html = trending_tags_html
+    );
+  } else {
+    html += &format!(r#"
+  </div>
+</div>
+</body>
+
+</html>"#);
+  }
+
+  Ok(html)
+}
+
+async fn render_projects_html(
+  state: &AppState,
+  ib_uid: i64,
+  ib_user: &str,
+  session_uid: Option<i64>,
+) -> Result<String, String> {
+  let rows = sqlx::query_as::<_, ProjectProfileRow>(
+      "SELECT project.id, project.ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, project.project, project.description, project.languages, CAST(project.updated_at AS CHAR CHARACTER SET utf8mb4) AS updated_at FROM project_profile AS project LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE project.ib_uid = ? ORDER BY project.updated_at DESC LIMIT 500"
+    )
+    .bind(ib_uid)
+    .fetch_all(&state.db_pool)
+    .await
+    .map_err(|e| format!("Projects query failed: {}", e))?;
+
+  let projects_html = if rows.is_empty() {
+    "<p><em>:[[ :no-projects-yet: ]]:</em></p>".to_string()
+  } else {
+    rows
+      .iter()
+      .map(|row| {
+        let can_edit = session_uid == Some(row.ib_uid);
+
+        if can_edit {
+          format!(
+            r#"<div class="post">
+              <div class="post-meta"><a class="post-author" href="https://{domain}/v1/profile/{owner_username}">{owner_username}</a><span class="post-timestamp">{updated_at}</span></div>
+              <form class="edit-project-form" action="https://{domain}/v1/projects/edit" method="POST">
+                <input type="hidden" name="ib_uid" value="{ib_uid}">
+                <input type="hidden" name="ib_user" value="{ib_user}">
+                <input type="hidden" name="project_id" value="{project_id}">
+                <p><strong>Project:</strong></p>
+                <input class="post" type="text" name="project" value="{project}" maxlength="255" required>
+                <p><strong>Description:</strong></p>
+                <input class="post" type="text" name="description" value="{description}" maxlength="1024" required>
+                <p><strong>Languages:</strong></p>
+                <input class="post" type="text" name="languages" value="{languages}" maxlength="255" required>
+                <input class="post-submit" type="submit" value="Save Project">
+              </form>
+            </div>"#,
+            domain = DOMAIN,
+            owner_username = escape_html(&row.username),
+            updated_at = escape_html(&row.updated_at),
+            ib_uid = ib_uid,
+            ib_user = escape_html(ib_user),
+            project_id = row.id,
+            project = escape_html(&row.project),
+            description = escape_html(&row.description),
+            languages = escape_html(&row.languages)
+          )
+        } else {
+          format!(
+            r#"<div class="post">
+              <div class="post-meta"><a class="post-author" href="https://{domain}/v1/profile/{owner_username}">{owner_username}</a><span class="post-timestamp">{updated_at}</span></div>
+              <p><strong>Project:</strong> {project}</p>
+              <p><strong>Description:</strong> {description}</p>
+              <p><strong>Languages:</strong> {languages}</p>
+            </div>"#,
+            domain = DOMAIN,
+            owner_username = escape_html(&row.username),
+            updated_at = escape_html(&row.updated_at),
+            project = escape_html(&row.project),
+            description = escape_html(&row.description),
+            languages = escape_html(&row.languages)
+          )
+        }
+      })
+      .collect::<Vec<String>>()
+      .join("")
+  };
+
+  let navigation_links = if session_uid.is_some() {
+    format!(
+      r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
+        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
+        <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
+        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>
+        <a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>"#,
+      domain = DOMAIN,
+      ib_uid = ib_uid,
+      ib_user = escape_html(ib_user)
+    )
+  } else {
+    String::new()
+  };
+
+  let add_project_form_html = if session_uid == Some(ib_uid) {
+    format!(
+      r#"<div class="post">
+          <form id="add-project-form" action="https://{domain}/v1/projects" method="POST">
+            <input type="hidden" name="ib_uid" value="{ib_uid}">
+            <input type="hidden" name="ib_user" value="{ib_user}">
+            <p><strong>Project:</strong></p>
+            <input class="post" type="text" name="project" maxlength="255" required>
+            <p><strong>Description:</strong></p>
+            <input class="post" type="text" name="description" maxlength="1024" required>
+            <p><strong>Languages:</strong></p>
+            <input class="post" type="text" name="languages" maxlength="255" required>
+            <input class="post-submit" type="submit" value="Add Project">
+          </form>
+        </div>"#,
+      domain = DOMAIN,
+      ib_uid = ib_uid,
+      ib_user = escape_html(ib_user)
+    )
+  } else {
+    String::new()
+  };
+
+  let mut html = format!(
+    r#"<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
+  <script src="/js/is-by_user.js" type="text/javascript"></script>
+  <title>:[[ :projects: {ib_user}: ]]:</title>
+</head>
+
+<body>
+  <form id="select-user-form" action="/" method="GET">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <form id="select-post-form" action="https://{domain}/v1/showpost" method="POST">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <form id="edit-profile-form" action="https://{domain}/v1/editprofile" method="GET">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <div id="main-section">
+    <div id="media-section">
+      <div>
+      <img src="/images/Death_Angel-555x111.png" alt=":Death_Angel-555x111.png:" width="555"
+          height="111">
+      </div>
+      <div id="navigation-section">
+        {navigation_links}
+      </div>
+      <div id="post-form-section">
+        <form id="post-form" action="https://{domain}/v1/post" method="POST">
+          <div id="post-message"></div>
+          <div id="post-character-count"></div>
+          <input type="hidden" name="ib_uid" value="{ib_uid}">
+          <input type="hidden" name="ib_user" value="{ib_user}">
+          <input class="post" type="text" name="post" autocomplete="off" maxlength="1024" required>
+          <input id="post-cancel" class="post-cancel" type="button" value="Cancel">
+          <input class="post-submit" type="submit" value="Post">
+        </form>
+      </div>
+      <div id="selected-user-posts-section" class="post-section">
+        <div class="notice"><p><em>:[[ :projects: ]]:</em></p></div>
+        {add_project_form_html}
+        {projects_html}
+      </div>
+    </div>"#,
+    domain = DOMAIN,
+    ib_uid = ib_uid,
+    ib_user = escape_html(ib_user),
+    navigation_links = navigation_links,
+    add_project_form_html = add_project_form_html,
+    projects_html = projects_html,
+  );
+
+  let ib_pro_result = sqlx::query_as::<_, ProRow>(
+      "SELECT ibp, pro, location, services, website, github FROM pro WHERE ib_uid = ?"
+    )
+    .bind(ib_uid)
+    .fetch_one(&state.db_pool)
+    .await;
+
+  if let Ok(ib_pro) = ib_pro_result {
+    let source_uid = session_uid.unwrap_or(ib_uid);
+    let source_ibp = if let Some(uid) = session_uid {
+      lookup_ibp_by_uid(state, uid).await.unwrap_or_else(|| ib_pro.ibp.clone())
+    } else {
+      ib_pro.ibp.clone()
+    };
+    let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
+    let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
+
+    html += &format!(r#"
+  <div id="profile-section">
+    <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -1715,11 +2127,11 @@ async fn render_war_room_html(
   let war_room_content = if selected_followers.is_empty() {
     "<div class=\"notice\"><p><em>:[[ :war-room-no-followers: ]]:</em></p></div>".to_string()
   } else {
-    let mut rendered_posts = String::new();
+    let mut selected_posts: Vec<(String, PostRow)> = Vec::new();
 
     for selected_follower in &selected_followers {
-      let post_row = sqlx::query_as::<_, PostRow>(
-          "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) = LOWER(?) AND (post.parentid = '' OR post.parentid IS NULL) ORDER BY post.timestamp DESC LIMIT 1"
+        let post_row = sqlx::query_as::<_, PostRow>(
+          "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) = LOWER(?) AND (post.parentid = '' OR post.parentid IS NULL) ORDER BY post.timestamp DESC LIMIT 1"
         )
         .bind(selected_follower)
         .fetch_optional(&state.db_pool)
@@ -1727,12 +2139,28 @@ async fn render_war_room_html(
         .map_err(|e| format!("War room post lookup failed: {}", e))?;
 
       if let Some(post_row) = post_row {
+        selected_posts.push((selected_follower.clone(), post_row));
+      }
+    }
+
+    if selected_posts.is_empty() {
+      "<div class=\"notice\"><p><em>:[[ :war-room-no-follower-posts: ]]:</em></p></div>".to_string()
+    } else {
+      let mut rendered_posts = String::new();
+      let selected_post_ids: Vec<String> = selected_posts
+        .iter()
+        .map(|(_, post_row)| post_row.postid.clone())
+        .collect();
+      let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &selected_post_ids).await;
+
+      for (selected_follower, post_row) in selected_posts {
         rendered_posts += &format!(
           r#"<div class="notice"><p><em>:[[ :war-room-selected-follower: {selected_follower}: ]]:</em></p></div>
           <div class="post" data-postid="{post_id}" data-timestamp="{post_timestamp}">
             {post_meta}
             <p>{post_body}</p>
             <div class="post-actions">
+              {ack_controls}
               <form class="show-post-form" action="https://{domain}/v1/showpost" method="GET">
                 <input type="hidden" name="ib_uid" value="{post_owner_uid}">
                 <input type="hidden" name="ib_user" value="{post_owner_user}">
@@ -1740,22 +2168,25 @@ async fn render_war_room_html(
               </form>
               <a href="javascript:void(0);" class="show-post">:[[ :show-post: ]]:</a>
             </div>
+            <p class="acknowledged-count">Acknowleged {acknowledged_count} times.</p>
           </div>"#,
-          selected_follower = escape_html(selected_follower),
+          selected_follower = escape_html(&selected_follower),
           post_id = escape_html(&post_row.postid),
           post_timestamp = escape_html(&post_row.timestamp),
           post_meta = render_post_meta(&post_row.ib_uid, &post_row.username, &post_row.timestamp),
           post_body = render_post_with_hashtags(&post_row.post, ib_uid, ib_user),
+          ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&post_row.postid) {
+            render_ack_disabled()
+          } else {
+            render_ack_controls(ib_uid, ib_user, &post_row.postid)
+          },
+          acknowledged_count = post_row.acknowledged_count,
           domain = DOMAIN,
           post_owner_uid = escape_html(&post_row.ib_uid),
           post_owner_user = escape_html(&post_row.username)
         );
       }
-    }
 
-    if rendered_posts.is_empty() {
-      "<div class=\"notice\"><p><em>:[[ :war-room-no-follower-posts: ]]:</em></p></div>".to_string()
-    } else {
       format!(
         r#"<div class="notice"><p><em>:[[ :war-room-followers-selected: {selected_count}: ]]:</em></p></div>{rendered_posts}"#,
         selected_count = selected_followers.len(),
@@ -1769,6 +2200,7 @@ async fn render_war_room_html(
       r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
         <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
         <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
+        <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
         <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>
         <a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>"#,
       domain = DOMAIN,
@@ -1813,6 +2245,17 @@ async fn render_war_room_html(
       <div id="navigation-section">
         {navigation_links}
       </div>
+      <div id="post-form-section">
+        <form id="post-form" action="https://{domain}/v1/post" method="POST">
+          <div id="post-message"></div>
+          <div id="post-character-count"></div>
+          <input type="hidden" name="ib_uid" value="{ib_uid}">
+          <input type="hidden" name="ib_user" value="{ib_user}">
+          <input class="post" type="text" name="post" autocomplete="off" maxlength="1024" required>
+          <input id="post-cancel" class="post-cancel" type="button" value="Cancel">
+          <input class="post-submit" type="submit" value="Post">
+        </form>
+      </div>
       <div id="selected-user-posts-section" class="post-section">
         <div class="notice"><p><em>:[[ :war-room: ]]:</em></p></div>
         {war_room_content}
@@ -1844,7 +2287,7 @@ async fn render_war_room_html(
 
     html += &format!(r#"
   <div id="profile-section">
-    <p><strong>:[[ :<a target="_blank" rel="noopener" href="{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -1974,6 +2417,7 @@ async fn render_inbox_html(
       r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
         <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
         <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
+        <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
         <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>
         <a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>"#,
       domain = DOMAIN,
@@ -2073,7 +2517,7 @@ async fn render_inbox_html(
 
     html += &format!(r#"
   <div id="profile-section">
-    <p><strong>:[[ :<a target="_blank" rel="noopener" href="{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -2135,7 +2579,7 @@ async fn render_single_post_html(
   session_uid: Option<i64>,
 ) -> Result<String, String> {
   let post = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.postid = ? LIMIT 1"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.postid = ? LIMIT 1"
     )
     .bind(ib_uid)
     .bind(pid)
@@ -2149,12 +2593,16 @@ async fn render_single_post_html(
   };
 
   let replies = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.parentid = ? ORDER BY post.timestamp ASC"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.parentid = ? ORDER BY post.timestamp ASC"
     )
     .bind(pid)
     .fetch_all(&state.db_pool)
     .await
     .map_err(|e| format!("Reply lookup failed: {}", e))?;
+
+  let mut visible_post_ids = vec![post.postid.clone()];
+  visible_post_ids.extend(replies.iter().map(|reply| reply.postid.clone()));
+  let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &visible_post_ids).await;
 
   let mut replies_html = String::new();
 
@@ -2164,8 +2612,7 @@ async fn render_single_post_html(
       let can_manage_reply = session_uid.is_some() && session_uid == reply.ib_uid.parse::<i64>().ok();
       let reply_manage_actions = if can_manage_reply {
         format!(
-          r#"<div class="post-actions">
-            <form class="delete-post-form" action="https://{domain}/v1/deletepost" method="POST">
+          r#"<form class="delete-post-form" action="https://{domain}/v1/deletepost" method="POST">
               <input type="hidden" name="ib_uid" value="{page_ib_uid}">
               <input type="hidden" name="ib_user" value="{page_ib_user}">
               <input type="hidden" name="pid" value="{reply_post_id}">
@@ -2179,8 +2626,7 @@ async fn render_single_post_html(
               <input type="hidden" name="root_pid" value="{root_pid}">
               <input type="hidden" name="post_owner_uid" value="{reply_owner_uid}">
             </form>
-            <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a><a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>
-          </div>"#,
+            <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a><a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>"#,
           domain = DOMAIN,
           page_ib_uid = ib_uid,
           page_ib_user = escape_html(ib_user),
@@ -2197,12 +2643,22 @@ async fn render_single_post_html(
         <div class="post reply-post" data-postid="{reply_post_id}" data-timestamp="{reply_post_timestamp}">
           {reply_post_meta}
           <p>{reply_post_body}</p>
-          {reply_manage_actions}
+          <div class="post-actions">
+            {reply_ack_controls}
+            {reply_manage_actions}
+          </div>
+          <p class="acknowledged-count">Acknowleged {reply_acknowledged_count} times.</p>
         </div>"#,
         reply_post_id = escape_html(&reply.postid),
         reply_post_timestamp = escape_html(&reply.timestamp),
         reply_post_meta = render_post_meta(&reply.ib_uid, &reply.username, &reply.timestamp),
         reply_post_body = render_post_with_hashtags(&reply.post, ib_uid, ib_user),
+        reply_ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&reply.postid) {
+          render_ack_disabled()
+        } else {
+          render_ack_controls(ib_uid, ib_user, &reply.postid)
+        },
+        reply_acknowledged_count = reply.acknowledged_count,
         reply_manage_actions = reply_manage_actions
       );
     }
@@ -2234,6 +2690,7 @@ async fn render_single_post_html(
       <div id="navigation-section">
         <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
         {war_room_link}
+        {projects_link}
         {dm_notification_link}
       </div>
       <div id="selected-user-posts-section" class="post-section">
@@ -2241,8 +2698,10 @@ async fn render_single_post_html(
           {post_meta}
           <p>{post_body}</p>
           <div class="post-actions">
+            {ack_controls}
             <p><a href="javascript:void(0);" class="copy-link">:[[ :copy-link: ]]:</a></p>
           </div>
+          <p class="acknowledged-count">Acknowleged {ib_post_acknowledged_count} times.</p>
         </div>
         {replies_html}
         <div id="post-form-section" style="display:block;">
@@ -2269,6 +2728,16 @@ async fn render_single_post_html(
     } else {
       String::new()
     },
+    projects_link = if session_uid.is_some() {
+      format!(
+        r#"<a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>"#,
+        domain = DOMAIN,
+        ib_uid = ib_uid,
+        ib_user = escape_html(ib_user)
+      )
+    } else {
+      String::new()
+    },
     dm_notification_link = if session_uid.is_some() {
       format!(
         r#"<a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
@@ -2281,7 +2750,13 @@ async fn render_single_post_html(
     },
     ib_post_id = escape_html(&post.postid),
     ib_post_timestamp = escape_html(&post.timestamp),
+    ib_post_acknowledged_count = post.acknowledged_count,
     post_meta = render_post_meta(&post.ib_uid, &post.username, &post.timestamp),
+    ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&post.postid) {
+      render_ack_disabled()
+    } else {
+      render_ack_controls(ib_uid, ib_user, &post.postid)
+    },
     post_body = render_post_with_hashtags(&post.post, ib_uid, ib_user),
     replies_html = replies_html
   );
@@ -2306,7 +2781,7 @@ async fn render_single_post_html(
     html += &format!(r#"
   </div>
   <div id="profile-section">
-    <p><strong>:[[ :<a target="_blank" rel="noopener" href="{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -2799,7 +3274,7 @@ async fn edit_profile(
         <form id="edit-profile-form" action="https://{domain}/v1/editprofile" method="POST">
           <input type="hidden" name="ib_uid" value="{ib_uid}">
           <input type="hidden" name="ib_user" value="{ib_user}">
-          GitHub: https://github.com/<input class="post" type="text" name="ib_github" placeholder="{ib_user}" autocomplete="off"><br>
+          GitHub: https://github.com/<input class="post" type="text" name="ib_github" value="{ib_user}" autocomplete="off"><br>
           About Me: <input class="post" type="text" name="ib_ibp" value="{ib_ibp}" placeholder="{ib_ibp}" autocomplete="off"><br>
           Interests: <input class="post" type="text" name="ib_pro" value="{ib_pro}" placeholder="{ib_pro}" autocomplete="off"><br>
           Services: <input class="post" type="text" name="ib_services" value="{ib_services}" placeholder="{ib_services}" autocomplete="off"><br>
@@ -2904,6 +3379,10 @@ async fn delete_post(
     Ok(_) => {
       if let Err(err) = remove_post_tags(&state.db_pool, &payload.pid).await {
         eprintln!("Post tag delete failed for {}: {}", payload.pid, err);
+      }
+
+      if let Err(err) = remove_post_acks(&state.db_pool, &payload.pid).await {
+        eprintln!("Post ack delete failed for {}: {}", payload.pid, err);
       }
 
       let location = if let Some(root_pid) = payload.root_pid.as_deref() {
@@ -3083,6 +3562,69 @@ async fn update_post(
   }
 }
 
+#[post("/v1/ackpost")]
+async fn acknowledge_post(
+  state: web::Data<AppState>,
+  payload: web::Form<AckPostRequest>,
+  req: HttpRequest,
+) -> impl Responder {
+  let session_uid = match get_session_uid(&req) {
+    Some(uid) => uid,
+    None => return HttpResponse::Unauthorized().body("Login required"),
+  };
+
+  if session_uid != payload.ib_uid {
+    return HttpResponse::Forbidden().body("Session mismatch");
+  }
+
+  let insert_result = sqlx::query(
+    "INSERT IGNORE INTO post_ack (postid, ib_uid) VALUES (?, ?)",
+  )
+  .bind(&payload.pid)
+  .bind(session_uid)
+  .execute(&state.db_pool)
+  .await;
+
+  let insert_result = match insert_result {
+    Ok(result) => result,
+    Err(err) => {
+      return HttpResponse::InternalServerError().body(format!("Failed to acknowledge post: {}", err));
+    }
+  };
+
+  if insert_result.rows_affected() > 0 {
+    let update_result = sqlx::query(
+      "UPDATE post SET acknowledged_count = COALESCE(acknowledged_count, 0) + 1 WHERE postid = ? LIMIT 1",
+    )
+    .bind(&payload.pid)
+    .execute(&state.db_pool)
+    .await;
+
+    if let Err(err) = update_result {
+      return HttpResponse::InternalServerError().body(format!("Failed to acknowledge post: {}", err));
+    }
+  }
+
+  let fallback_location = format!(
+    "/v1/showpost?ib_uid={}&ib_user={}&pid={}",
+    payload.ib_uid,
+    payload.ib_user,
+    payload.pid
+  );
+
+  let location = req
+    .headers()
+    .get("referer")
+    .and_then(|value| value.to_str().ok())
+    .filter(|value| !value.trim().is_empty())
+    .unwrap_or(&fallback_location)
+    .to_string();
+
+  HttpResponse::SeeOther()
+    .insert_header(("Location", location))
+    .finish()
+}
+
 #[get("/v1/profile/{ib_user}")]
 async fn view_profile(
   req: HttpRequest,
@@ -3112,7 +3654,11 @@ async fn view_profile(
     .await;
 
     match lookup {
-      Ok(Some(row)) => resolved_uid = Some(row.ib_uid),
+      Ok(Some(row)) => {
+        if let Ok(parsed) = row.ib_uid.parse::<i64>() {
+          resolved_uid = Some(parsed);
+        }
+      }
       Ok(None) => {}
       Err(err) => {
         return HttpResponse::InternalServerError().body(format!("Profile lookup failed: {}", err));
@@ -3200,6 +3746,95 @@ async fn search_posts(
       .content_type("text/html; charset=utf-8")
       .body(html),
     Err(err) => HttpResponse::InternalServerError().body(err),
+  }
+}
+
+#[get("/v1/projects")]
+async fn projects_page(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  query: web::Query<ProjectsRequest>,
+) -> impl Responder {
+  match render_projects_html(&state, query.ib_uid, &query.ib_user, get_session_uid(&req)).await {
+    Ok(html) => HttpResponse::Ok()
+      .content_type("text/html; charset=utf-8")
+      .body(html),
+    Err(err) => HttpResponse::InternalServerError().body(err),
+  }
+}
+
+#[post("/v1/projects")]
+async fn create_project_profile(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  payload: web::Form<CreateProjectRequest>,
+) -> impl Responder {
+  let session_uid = match get_session_uid(&req) {
+    Some(uid) => uid,
+    None => return HttpResponse::Unauthorized().body("Login required"),
+  };
+
+  if session_uid != payload.ib_uid {
+    return HttpResponse::Forbidden().body("Session mismatch");
+  }
+
+  if payload.project.trim().is_empty() || payload.description.trim().is_empty() || payload.languages.trim().is_empty() {
+    return HttpResponse::BadRequest().body("Project, Description, and Languages are required");
+  }
+
+  let insert_result = sqlx::query(
+    "INSERT INTO project_profile (ib_uid, project, description, languages) VALUES (?, ?, ?, ?)",
+  )
+  .bind(payload.ib_uid)
+  .bind(payload.project.trim())
+  .bind(payload.description.trim())
+  .bind(payload.languages.trim())
+  .execute(&state.db_pool)
+  .await;
+
+  match insert_result {
+    Ok(_) => HttpResponse::SeeOther()
+      .insert_header(("Location", format!("/v1/projects?ib_uid={}&ib_user={}", payload.ib_uid, payload.ib_user)))
+      .finish(),
+    Err(err) => HttpResponse::InternalServerError().body(format!("Failed to create project: {}", err)),
+  }
+}
+
+#[post("/v1/projects/edit")]
+async fn update_project_profile(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  payload: web::Form<EditProjectRequest>,
+) -> impl Responder {
+  let session_uid = match get_session_uid(&req) {
+    Some(uid) => uid,
+    None => return HttpResponse::Unauthorized().body("Login required"),
+  };
+
+  if session_uid != payload.ib_uid {
+    return HttpResponse::Forbidden().body("Session mismatch");
+  }
+
+  if payload.project.trim().is_empty() || payload.description.trim().is_empty() || payload.languages.trim().is_empty() {
+    return HttpResponse::BadRequest().body("Project, Description, and Languages are required");
+  }
+
+  let update_result = sqlx::query(
+    "UPDATE project_profile SET project = ?, description = ?, languages = ? WHERE id = ? AND ib_uid = ?",
+  )
+  .bind(payload.project.trim())
+  .bind(payload.description.trim())
+  .bind(payload.languages.trim())
+  .bind(payload.project_id)
+  .bind(session_uid)
+  .execute(&state.db_pool)
+  .await;
+
+  match update_result {
+    Ok(_) => HttpResponse::SeeOther()
+      .insert_header(("Location", format!("/v1/projects?ib_uid={}&ib_user={}", payload.ib_uid, payload.ib_user)))
+      .finish(),
+    Err(err) => HttpResponse::InternalServerError().body(format!("Failed to update project: {}", err)),
   }
 }
 
@@ -3547,29 +4182,45 @@ async fn github_auth_callback(
   };
 
   let token_data = if token_status.is_success() {
+    if let Ok(err_data) = serde_json::from_str::<GithubTokenErrorResponse>(&token_body) {
+      return HttpResponse::BadRequest()
+        .cookie(remove_cookie("gh_oauth_state"))
+        .body(format!(
+          "GitHub login code expired or was already used. Start login again. {} ({})",
+          err_data.error,
+          err_data.error_description.unwrap_or_else(|| "no description".to_string())
+        ));
+    }
+
     match serde_json::from_str::<GithubTokenResponse>(&token_body) {
       Ok(d) => d,
       Err(_) => {
-        return HttpResponse::InternalServerError().body(format!(
-          "Invalid token response body: {}",
-          token_body
-        ))
+        return HttpResponse::InternalServerError()
+          .cookie(remove_cookie("gh_oauth_state"))
+          .body(format!(
+            "Invalid token response body: {}",
+            token_body
+          ))
       }
     }
   } else {
     if let Ok(err_data) = serde_json::from_str::<GithubTokenErrorResponse>(&token_body) {
-      return HttpResponse::BadRequest().body(format!(
-        "GitHub token error: {} ({})",
-        err_data.error,
-        err_data.error_description.unwrap_or_else(|| "no description".to_string())
-      ));
+      return HttpResponse::BadRequest()
+        .cookie(remove_cookie("gh_oauth_state"))
+        .body(format!(
+          "GitHub token error: {} ({})",
+          err_data.error,
+          err_data.error_description.unwrap_or_else(|| "no description".to_string())
+        ));
     }
 
-    return HttpResponse::BadRequest().body(format!(
-      "GitHub token exchange failed (status {}): {}",
-      token_status,
-      token_body
-    ));
+    return HttpResponse::BadRequest()
+      .cookie(remove_cookie("gh_oauth_state"))
+      .body(format!(
+        "GitHub token exchange failed (status {}): {}",
+        token_status,
+        token_body
+      ));
   };
 
   let user_res = match client
@@ -3594,8 +4245,8 @@ async fn github_auth_callback(
   }
 
   match render_profile_html(&state, user.id as i64, &user.login, Some(user.id as i64)).await {
-    Ok(html) => HttpResponse::Ok()
-      .content_type("text/html; charset=utf-8")
+    Ok(_) => HttpResponse::SeeOther()
+      .insert_header(("Location", format!("/v1/profile/{}", user.login)))
       .cookie(
         Cookie::build("ib_uid", user.id.to_string())
           .path("/")
@@ -3610,8 +4261,11 @@ async fn github_auth_callback(
           .secure(true)
           .finish(),
       )
-      .body(html),
-    Err(err) => HttpResponse::InternalServerError().body(err),
+      .cookie(remove_cookie("gh_oauth_state"))
+      .finish(),
+    Err(err) => HttpResponse::InternalServerError()
+      .cookie(remove_cookie("gh_oauth_state"))
+      .body(err),
   }
 }
 
@@ -3670,7 +4324,7 @@ async fn main() -> std::io::Result<()> {
 
   let _ = dotenvy::from_filename(".env");
   let _ = dotenvy::from_filename(".env/GITHUB_CLIENT_SECRET.env");
-  let _ = dotenvy::from_filename(".env/MYSQL_PASSWORD.env");
+  let _ = dotenvy::from_filename(".env/MYSQL.env");
 
   let db_pool = create_db_pool()
     .await
@@ -3777,11 +4431,15 @@ async fn main() -> std::io::Result<()> {
       .service(delete_post)
       .service(edit_post)
       .service(update_post)
+      .service(acknowledge_post)
       .service(view_profile)
       .service(follow_user)
       .service(unfollow_user)
       .service(search_users)
       .service(search_posts)
+      .service(projects_page)
+      .service(create_project_profile)
+      .service(update_project_profile)
       .service(war_room)
       .service(inbox)
       .service(send_direct_message)
