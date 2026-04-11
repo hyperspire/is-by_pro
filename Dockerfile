@@ -9,7 +9,6 @@ WORKDIR /app
 
 RUN dnf update -y\
   && dnf install -y ca-certificates curl gcc \
-  && dnf install gcc -y \
   && dnf clean all
 
 COPY . .
