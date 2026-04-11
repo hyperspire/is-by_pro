@@ -8,7 +8,7 @@ FROM fedora:latest AS runtime
 WORKDIR /app
 
 RUN dnf update -y\
-  && dnf install -y --no-install-recommends ca-certificates \
+  && dnf install -y ca-certificates \
   && dnf clean all
 
 COPY . .
