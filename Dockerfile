@@ -4,6 +4,9 @@ ARG RUST_VERSION=1.94.1
 FROM rust:${RUST_VERSION}-bookworm AS builder
 WORKDIR /app
 
+FROM oraclelinux-10-slim AS runtime
+WORKDIR /app
+
 RUN dnf update -y\
   && dnf install -y --no-install-recommends ca-certificates \
   && dnf clean all
@@ -12,8 +15,7 @@ COPY . .
 
 RUN cargo build --release
 
-FROM oraclelinux-10-slim AS runtime
-WORKDIR /app
+
 
 RUN dnf update -y \
     && dnf install -y ca-certificates curl \
