@@ -1,14 +1,14 @@
 # syntax=docker/dockerfile:1
 
-FROM rust:1.86-bookworm AS builder
+ARG RUST_VERSION=1.94.1
+FROM rust:${RUST_VERSION}-bookworm AS builder
 WORKDIR /app
 
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends git ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
+RUN yum update \
+  && yum install -y --no-install-recommends ca-certificates \
+  && yum clean all
 
-RUN git clone https://github.com/hyperspire/is-by_pro.git
-WORKDIR /app/is-by_pro
+COPY . .
 
 RUN cargo build --release
 
@@ -19,8 +19,8 @@ RUN yum update -y \
     && yum install -y ca-certificates curl \
     && yum clean all
 
-COPY --from=builder /app/is-by_pro/target/release/is-by_pro /usr/local/bin/is-by_pro
-COPY --from=builder /app/is-by_pro/webroot ./webroot
+COPY --from=builder /app/target/release/is-by_pro /usr/local/bin/is-by_pro
+COPY --from=builder /app/webroot ./webroot
 COPY ssl /usr/local/bin/ssl
 COPY .env /usr/local/bin/.env
 COPY healthcheck.sh /usr/local/bin/healthcheck.sh
