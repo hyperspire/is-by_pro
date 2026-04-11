@@ -37,7 +37,17 @@
 // or logo of HyperSpire Foundation or its affiliates." ]]
 // [[ "Nothing else follows." ]]
 
-use is_by_pro::{COPYRIGHT, DOMAIN, IB_CA_CERT, IB_CA_KEY, MYSQL_USER, MYSQL_DATABASE};
+use is_by_pro::{
+  COPYRIGHT,
+  DOMAIN,
+  GITHUB_CLIENT_SECRET_ENV,
+  IB_CA_CERT,
+  IB_CA_KEY,
+  IB_ENV,
+  MYSQL_DATABASE,
+  MYSQL_ENV,
+  MYSQL_USER,
+};
 use actix_cors::Cors;
 use actix_files::Files;
 use actix_web::{cookie::Cookie, dev::Service, get, http::Method, post, web, App, Either, HttpRequest, HttpResponse, HttpServer, Responder};
@@ -1178,6 +1188,11 @@ async fn render_profile_html(
     .map(|username| !username.eq_ignore_ascii_case(&viewed_username))
     .unwrap_or(false);
 
+  let show_edit_profile_link = session_username
+    .as_ref()
+    .map(|username| username.eq_ignore_ascii_case(&viewed_username))
+    .unwrap_or(false);
+
   let followers_html = if follower_list.is_empty() {
     "<p><em>:[[ :no-followers: ]]:</em></p>".to_string()
   } else {
@@ -1240,10 +1255,15 @@ async fn render_profile_html(
         <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
         <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
         {dm_link}
-        <a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>"#,
+        {edit_profile_link}"#,
       domain = DOMAIN,
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user),
+      edit_profile_link = if show_edit_profile_link {
+        r#"<a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>"#.to_string()
+      } else {
+        String::new()
+      },
       dm_link = if show_profile_dm_link {
         format!(
           r#"<a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
@@ -1560,8 +1580,7 @@ async fn render_search_users_html(
         <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
         <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
         <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
-        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>
-        <a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>"#,
+        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
       domain = DOMAIN,
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user)
@@ -1764,8 +1783,7 @@ async fn render_search_posts_html(
         <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
         <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
         <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
-        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>
-        <a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>"#,
+        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
       domain = DOMAIN,
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user)
@@ -1974,8 +1992,7 @@ async fn render_projects_html(
         <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
         <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
         <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
-        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>
-        <a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>"#,
+        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
       domain = DOMAIN,
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user)
@@ -2247,8 +2264,7 @@ async fn render_war_room_html(
         <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
         <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
         <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
-        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>
-        <a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>"#,
+        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
       domain = DOMAIN,
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user)
@@ -2464,8 +2480,7 @@ async fn render_inbox_html(
         <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
         <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
         <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
-        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>
-        <a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>"#,
+        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
       domain = DOMAIN,
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user)
@@ -3274,9 +3289,19 @@ async fn unfollow_user(
 
 #[get("/v1/editprofile")]
 async fn edit_profile(
+  req: HttpRequest,
   state: web::Data<AppState>,
   query: web::Query<EditProfileRequest>,
 ) -> impl Responder {
+  let session_uid = match get_session_uid(&req) {
+    Some(uid) => uid,
+    None => return HttpResponse::Unauthorized().body("Login required"),
+  };
+
+  if session_uid != query.ib_uid {
+    return HttpResponse::Forbidden().body("You can only edit your own profile");
+  }
+
   let row = match sqlx::query_as::<_, EditProfileRow>(
     "SELECT github AS ib_github, ibp AS ib_ibp, pro AS ib_pro, services AS ib_services, location AS ib_location, website AS ib_website FROM pro WHERE ib_uid = ? LIMIT 1",
   )
@@ -3350,9 +3375,19 @@ async fn edit_profile(
 
 #[post("/v1/editprofile")]
 async fn update_profile(
+  req: HttpRequest,
   state: web::Data<AppState>,
   payload: web::Form<EditProfileUpdateRequest>,
 ) -> impl Responder {
+  let session_uid = match get_session_uid(&req) {
+    Some(uid) => uid,
+    None => return HttpResponse::Unauthorized().body("Login required"),
+  };
+
+  if session_uid != payload.ib_uid {
+    return HttpResponse::Forbidden().body("You can only edit your own profile");
+  }
+
   let update_result = sqlx::query(
     "UPDATE pro SET github = ?, ibp = ?, pro = ?, services = ?, location = ?, website = ? WHERE ib_uid = ?",
   )
@@ -4368,9 +4403,9 @@ async fn main() -> std::io::Result<()> {
     .install_default()
     .expect("Failed to install rustls crypto provider");
 
-  let _ = dotenvy::from_filename(".env");
-  let _ = dotenvy::from_filename(".env/GITHUB_CLIENT_SECRET.env");
-  let _ = dotenvy::from_filename(".env/MYSQL.env");
+  let _ = dotenvy::from_filename(IB_ENV);
+  let _ = dotenvy::from_filename(GITHUB_CLIENT_SECRET_ENV);
+  let _ = dotenvy::from_filename(MYSQL_ENV);
 
   let db_pool = create_db_pool()
     .await
