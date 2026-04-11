@@ -2,7 +2,7 @@
 
 ARG RUST_VERSION=1.94.1
 FROM rust:${RUST_VERSION}-bookworm AS builder
-WORKDIR $HOME/is-by_pro/
+WORKDIR /is-by_pro/
 
 FROM fedora:latest AS runtime
 WORKDIR $HOME/is-by_pro/
@@ -15,13 +15,13 @@ COPY . .
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
-RUN source $HOME/.cargo/env && rustup default ${RUST_VERSION}
+RUN source /is-by_pro/.cargo/env && rustup default ${RUST_VERSION}
 RUN cargo build --release
 
-COPY --from=builder $HOME/is-by_pro/target/release/is-by_pro /usr/local/bin/is-by_pro
-COPY --from=builder $HOME/is-by_pro/webroot ./webroot
-COPY $HOME/is-by_pro/ssl /usr/local/bin/ssl
-COPY $HOME/is-by_pro/.env /usr/local/bin/.env
+COPY --from=builder /is-by_pro/target/release/is-by_pro /usr/local/bin/is-by_pro
+COPY --from=builder /is-by_pro/webroot ./webroot
+COPY --from=builder /is-by_pro/ssl /usr/local/bin/ssl
+COPY --from=builder /is-by_pro/.env /usr/local/bin/.env
 COPY healthcheck.sh /usr/local/bin/healthcheck.sh
 
 RUN chmod +x /usr/local/bin/healthcheck.sh
