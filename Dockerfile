@@ -15,7 +15,7 @@ COPY . .
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
-RUN source $HOME/is-by_pro/.cargo/env && rustup default ${RUST_VERSION}
+RUN source .cargo/env && rustup default ${RUST_VERSION}
 RUN cargo build --release
 
 COPY --from=builder /is-by_pro/target/release/is-by_pro /usr/local/bin/is-by_pro
