@@ -4,7 +4,7 @@ ARG RUST_VERSION=1.94.1
 FROM rust:${RUST_VERSION}-bookworm AS builder
 WORKDIR /app
 
-FROM oraclelinux-10-slim AS runtime
+FROM fedora:latest AS runtime
 WORKDIR /app
 
 RUN dnf update -y\
