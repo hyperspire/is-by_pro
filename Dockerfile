@@ -8,20 +8,16 @@ FROM fedora:latest AS runtime
 WORKDIR /app
 
 RUN dnf update -y\
-  && dnf install -y ca-certificates \
+  && dnf install -y ca-certificates curl gcc \
+  && dnf install gcc -y \
   && dnf clean all
 
 COPY . .
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
+RUN source $HOME/.cargo/env && rustup default ${RUST_VERSION}
 RUN cargo build --release
-
-
-
-RUN dnf update -y \
-    && dnf install -y ca-certificates curl \
-    && dnf clean all
 
 COPY --from=builder /app/target/release/is-by_pro /usr/local/bin/is-by_pro
 COPY --from=builder /app/webroot ./webroot
