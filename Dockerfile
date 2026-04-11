@@ -4,10 +4,6 @@ ARG RUST_VERSION=1.94.1
 FROM rust:${RUST_VERSION}-bookworm AS builder
 WORKDIR /is-by_pro/
 
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
-
 COPY . .
 
 RUN cargo build --release
