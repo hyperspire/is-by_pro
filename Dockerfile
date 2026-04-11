@@ -18,8 +18,8 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 RUN source $HOME/.cargo/env && rustup default ${RUST_VERSION}
 RUN cargo build --release
 
-COPY --from=builder /app/target/release/is-by_pro /usr/local/bin/is-by_pro
-COPY --from=builder /app/webroot ./webroot
+COPY --from=builder target/release/is-by_pro /usr/local/bin/is-by_pro
+COPY --from=builder webroot ./webroot
 COPY ssl /usr/local/bin/ssl
 COPY .env /usr/local/bin/.env
 COPY healthcheck.sh /usr/local/bin/healthcheck.sh
