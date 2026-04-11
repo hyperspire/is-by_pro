@@ -1959,7 +1959,7 @@ async fn render_projects_html(
             owner_username = escape_html(&row.username),
             updated_at = escape_html(&row.updated_at),
             project = escape_html(&row.project),
-            description = escape_html(&row.description),
+            description = render_post_with_hashtags(&row.description, ib_uid, ib_user),
             languages = escape_html(&row.languages)
           )
         }
