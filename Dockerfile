@@ -4,9 +4,9 @@ ARG RUST_VERSION=1.94.1
 FROM rust:${RUST_VERSION}-bookworm AS builder
 WORKDIR /app
 
-RUN yum update \
-  && yum install -y --no-install-recommends ca-certificates \
-  && yum clean all
+RUN dnf update -y\
+  && dnf install -y --no-install-recommends ca-certificates \
+  && dnf clean all
 
 COPY . .
 
@@ -15,9 +15,9 @@ RUN cargo build --release
 FROM oraclelinux-10-slim AS runtime
 WORKDIR /app
 
-RUN yum update -y \
-    && yum install -y ca-certificates curl \
-    && yum clean all
+RUN dnf update -y \
+    && dnf install -y ca-certificates curl \
+    && dnf clean all
 
 COPY --from=builder /app/target/release/is-by_pro /usr/local/bin/is-by_pro
 COPY --from=builder /app/webroot ./webroot
