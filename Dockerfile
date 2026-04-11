@@ -13,7 +13,8 @@ RUN dnf update -y\
 
 COPY . .
 
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs  -y | sh
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_VERSION}
+ENV PATH="/root/.cargo/bin:${PATH}"
 RUN cargo build --release
 
 
