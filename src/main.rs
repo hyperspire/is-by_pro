@@ -4535,7 +4535,11 @@ async fn main() -> std::io::Result<()> {
       .service(direct_message_unread_count)
       .service(github_auth_start)
       .service(github_auth_callback)
-      .service(Files::new("/", "./webroot"))
+      .service(Files::new("/", "./webroot").default_handler(
+          actix_web::web::to(|| async {
+              actix_web::HttpResponse::NotFound().body("404 Not Found")
+          })
+      ))
   })
   .bind_rustls_0_23(("0.0.0.0", 443), load_rustls_config())?
   .run();
