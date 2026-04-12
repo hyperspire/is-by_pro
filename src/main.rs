@@ -4369,7 +4369,7 @@ async fn hello() -> impl Responder {
       <img src="/images/Death_Angel-555x222.png" alt=":Death_Angel-555x222.png:" width="555"
         height="222">
       <div class="for-the">
-        <p><em>:[[ :for-the: [[ QWOD-MJ12: ATSOSSDEV-A: HyperSpire-Foundation: is-with: GitHub-driven: social-media: ]]: ]]:</em></p>
+        <p><em>:[[ :for-the: [[ QWOD-MJ12: ATSOSSDEV-A: HyperSpire-Foundation: is-with: GitHub-driven: social-media: for-the: GitHub-enthusiasts: ]]: ]]:</em></p>
       </div>
       <div class="is-by">
         <h1 class="warno">:[[ :is-by: pro: for-the: [[ anti-social: social-media: for-the: [[ PEOPLE: is-by: WE: people: ]]: ]]: ]]:</h1>
