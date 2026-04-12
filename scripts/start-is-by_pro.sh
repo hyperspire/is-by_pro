@@ -2,8 +2,8 @@
 set -eu
 
 SERVICE_NAME="is-by_pro.service"
-SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-REPO_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
+SCRIPT_DIR="/home/opc/is-by_pro/scripts"
+REPO_DIR="/home/opc/is-by_pro"
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Please run as root: sudo $0"
