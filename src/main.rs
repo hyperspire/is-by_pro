@@ -2735,7 +2735,7 @@ async fn render_single_post_html(
   <meta name="twitter:card" content=":[[ :for-the: [[ QWOD-MJ12: ATSOSSDEV-A: HyperSpire-Foundation: is-with: GitHub-driven: social-media: for-the: GitHub-enthusiasts: ]]: ]]:">
   <meta name="twitter:site" content="@mj12_agency">
   <meta property="og:title" content=":[[ :is-by: pro: {ib_user}: ]]:">
-  <meta property="og:description" content=":[[ :is-by: pro: {ib_user}: ]]:">
+  <meta property="og:description" content="{post_body}">
   <meta property="og:image" content="https://is-by.pro/images/Death_Angel-555x222.png">
   <meta property="og:url" content="https://is-by.pro">
 
