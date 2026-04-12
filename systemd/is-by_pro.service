@@ -1,0 +1,15 @@
+[Unit]
+Description=is-by_pro social network service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/usr/local/bin
+ExecStart=/usr/local/bin/is-by_pro
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
