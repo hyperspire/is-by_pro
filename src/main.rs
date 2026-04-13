@@ -831,7 +831,7 @@ fn render_post_meta(ib_uid: &str, username: &str, timestamp: &str) -> String {
   };
 
   format!(
-    r#"<div class="post-meta"><a class="post-author" href="https://{domain}/v1/profile/{profile_target}">{username}</a><span class="post-timestamp">{timestamp}</span></div>"#,
+    r#"<div class="post-meta"><a class="post-author" href="https://{domain}/v1/profile/{profile_target}"><img class="post-author-avatar" src="https://github.com/{profile_target}.png?size=32" alt="{username}" width="32" height="32">{username}</a><span class="post-timestamp">{timestamp}</span></div>"#,
     domain = DOMAIN,
     profile_target = escape_html(profile_target),
     username = escape_html(username),

@@ -609,7 +609,9 @@ input[type=password] {
 .post-meta a:visited,
 .post-meta a:hover,
 .post-meta a:active {
-    display: inline;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     width: auto;
     height: auto;
     padding: 0;
@@ -619,6 +621,14 @@ input[type=password] {
     font-size: 13px;
     font-weight: bold;
     text-decoration: none;
+}
+
+.post-author-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    vertical-align: middle;
+    flex-shrink: 0;
 }
 
 .post-timestamp {
