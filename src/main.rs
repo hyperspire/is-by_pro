@@ -4391,7 +4391,8 @@ async fn hello() -> impl Responder {
           rel="noopener" href="http://hyperspire.com/">HyperSpire-Foundation</a>:
           for-the: [[ Death-Angel: is-by: @: is-with: <a target="_blank"
             rel="noopener" href="https://www.youtube.com/@WhiteBatAudio">Karl-Casey</a>: [[ :for-the: <a target="_blank"
-          rel="noopener" href="https://is-by.pro/tos.html">Terms-of-Service</a>: ]]: ]]: ]]: ]]:</p>
+          rel="noopener" href="https://is-by.pro/tos.html">Terms-of-Service</a>: :[[ :for-the: <a target="_blank"
+          rel="noopener" href="https://is-by.pro/privacy.html">Privacy-Policy</a>: ]]: ]]: ]]: ]]:</p>
       </div>
     </div>
     <div id="actions-section">
