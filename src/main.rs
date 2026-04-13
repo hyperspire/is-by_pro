@@ -46,20 +46,25 @@ use is_by_pro::{
   IB_ENV,
   MYSQL_DATABASE,
   MYSQL_ENV,
+  PAYPAL_ENV,
   MYSQL_USER,
   AD_ADMIN_UID,
   AD_ADMIN_USER,
 };
 use actix_cors::Cors;
 use actix_files::Files;
+use actix_multipart::Multipart;
 use actix_web::{cookie::Cookie, dev::Service, get, http::Method, post, web, App, Either, HttpRequest, HttpResponse, HttpServer, Responder};
+use futures_util::StreamExt;
+use image::GenericImageView;
 use rand::{distributions::Alphanumeric, seq::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use rustls::{ServerConfig, pki_types::CertificateDer};
 use sqlx::{mysql::MySqlPoolOptions, MySqlPool};
 use rustls_pemfile::{certs, private_key};
 use std::collections::HashSet;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::BufReader;
 use uuid::Uuid;
 
@@ -143,6 +148,16 @@ struct AdvertImageAdminRow {
   url: String,
   clicks: i64,
   views: i64,
+}
+
+#[derive(sqlx::FromRow)]
+struct AdvertOwnedRow {
+  imageid: i64,
+  imagepath: String,
+  url: String,
+  clicks: i64,
+  views: i64,
+  payment_status: String,
 }
 
 #[derive(Deserialize)]
@@ -316,6 +331,22 @@ struct AdsDeleteRequest {
   ib_uid: i64,
   ib_user: String,
   imageid: i64,
+}
+
+#[derive(Deserialize)]
+struct AdsUserUpdateRequest {
+  imageid: i64,
+  url: String,
+}
+
+#[derive(Deserialize)]
+struct AdsUserDeleteRequest {
+  imageid: i64,
+}
+
+#[derive(Deserialize)]
+struct PayPalReturnQuery {
+  token: String,
 }
 
 #[derive(Deserialize)]
@@ -892,7 +923,7 @@ async fn render_advert_html(state: &AppState) -> String {
   const FALLBACK_URL: &str = "https://is-by.pro/advertise.html";
 
   let ad_row = sqlx::query_as::<_, AdvertImageRow>(
-      "SELECT imageid, imagepath, url FROM advert_image ORDER BY RAND() LIMIT 1"
+      "SELECT imageid, imagepath, url FROM advert_image WHERE payment_status = 'paid' ORDER BY RAND() LIMIT 1"
     )
     .fetch_optional(&state.db_pool)
     .await;
@@ -1002,6 +1033,123 @@ async fn is_ad_admin_session(req: &HttpRequest, state: &AppState) -> bool {
   };
 
   session_username == AD_ADMIN_USER
+}
+
+async fn get_session_identity(req: &HttpRequest, state: &AppState) -> Option<(i64, String)> {
+  let session_uid = get_session_uid(req)?;
+
+  let username = match sqlx::query_as::<_, SessionUserRow>(
+    "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
+  )
+  .bind(session_uid.to_string())
+  .fetch_optional(&state.db_pool)
+  .await
+  {
+    Ok(Some(row)) if !row.username.trim().is_empty() => row.username,
+    _ => req
+      .cookie("ib_user")
+      .map(|cookie| cookie.value().to_string())
+      .unwrap_or_default(),
+  };
+
+  if username.trim().is_empty() {
+    None
+  } else {
+    Some((session_uid, username))
+  }
+}
+
+fn paypal_base_url() -> String {
+  std::env::var("PAYPAL_BASE_URL").unwrap_or_else(|_| "https://api-m.sandbox.paypal.com".to_string())
+}
+
+async fn paypal_access_token() -> Result<String, String> {
+  let client_id = std::env::var("PAYPAL_CLIENT_ID")
+    .map_err(|_| "Missing PAYPAL_CLIENT_ID".to_string())?;
+  let client_secret = std::env::var("PAYPAL_CLIENT_SECRET")
+    .map_err(|_| "Missing PAYPAL_CLIENT_SECRET".to_string())?;
+
+  let endpoint = format!("{}/v1/oauth2/token", paypal_base_url().trim_end_matches('/'));
+  let response = reqwest::Client::new()
+    .post(endpoint)
+    .basic_auth(client_id, Some(client_secret))
+    .form(&[("grant_type", "client_credentials")])
+    .send()
+    .await
+    .map_err(|e| format!("PayPal token request failed: {}", e))?;
+
+  if !response.status().is_success() {
+    let body = response.text().await.unwrap_or_default();
+    return Err(format!("PayPal token request rejected: {}", body));
+  }
+
+  let json: Value = response
+    .json()
+    .await
+    .map_err(|e| format!("PayPal token parse failed: {}", e))?;
+
+  json
+    .get("access_token")
+    .and_then(Value::as_str)
+    .map(|value| value.to_string())
+    .ok_or_else(|| "PayPal token missing access_token".to_string())
+}
+
+async fn paypal_create_order(imageid: i64) -> Result<String, String> {
+  let token = paypal_access_token().await?;
+  let endpoint = format!("{}/v2/checkout/orders", paypal_base_url().trim_end_matches('/'));
+  let ad_price = std::env::var("AD_PRICE_USD").unwrap_or_else(|_| "25.00".to_string());
+
+  let body = json!({
+    "intent": "CAPTURE",
+    "purchase_units": [{
+      "amount": {
+        "currency_code": "USD",
+        "value": ad_price
+      },
+      "custom_id": imageid.to_string(),
+      "description": "is-by.pro advertisement placement"
+    }],
+    "application_context": {
+      "return_url": format!("https://{}/v1/ads/paypal/return", DOMAIN),
+      "cancel_url": format!("https://{}/v1/ads/paypal/cancel", DOMAIN)
+    }
+  });
+
+  let response = reqwest::Client::new()
+    .post(endpoint)
+    .bearer_auth(token)
+    .json(&body)
+    .send()
+    .await
+    .map_err(|e| format!("PayPal create order failed: {}", e))?;
+
+  if !response.status().is_success() {
+    let body = response.text().await.unwrap_or_default();
+    return Err(format!("PayPal create order rejected: {}", body));
+  }
+
+  let json: Value = response
+    .json()
+    .await
+    .map_err(|e| format!("PayPal create order parse failed: {}", e))?;
+
+  let approve_url = json
+    .get("links")
+    .and_then(Value::as_array)
+    .and_then(|links| {
+      links.iter().find_map(|item| {
+        let is_approve = item.get("rel").and_then(Value::as_str) == Some("approve");
+        if is_approve {
+          item.get("href").and_then(Value::as_str)
+        } else {
+          None
+        }
+      })
+    })
+    .ok_or_else(|| "PayPal create order missing approval URL".to_string())?;
+
+  Ok(approve_url.to_string())
 }
 
 fn remove_cookie(name: &str) -> Cookie<'static> {
@@ -1118,10 +1266,54 @@ async fn ensure_database_schema(pool: &MySqlPool) -> Result<(), sqlx::Error> {
   .await?;
 
   sqlx::query(
-    "CREATE TABLE IF NOT EXISTS advert_image (imageid BIGINT PRIMARY KEY AUTO_INCREMENT, imagepath VARCHAR(1024) NOT NULL, url VARCHAR(2048) NOT NULL, clicks BIGINT NOT NULL DEFAULT 0, views BIGINT NOT NULL DEFAULT 0)",
+    "CREATE TABLE IF NOT EXISTS advert_image (imageid BIGINT PRIMARY KEY AUTO_INCREMENT, imagepath VARCHAR(1024) NOT NULL, url VARCHAR(2048) NOT NULL, owner_uid BIGINT NOT NULL DEFAULT 0, owner_username VARCHAR(255) NOT NULL DEFAULT '', paypal_order_id VARCHAR(128) NULL, payment_status VARCHAR(32) NOT NULL DEFAULT 'pending', clicks BIGINT NOT NULL DEFAULT 0, views BIGINT NOT NULL DEFAULT 0, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)",
   )
   .execute(pool)
   .await?;
+
+  let owner_uid_exists = sqlx::query_scalar::<_, i64>(
+      "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'advert_image' AND COLUMN_NAME = 'owner_uid'"
+    )
+    .fetch_one(pool)
+    .await?;
+  if owner_uid_exists == 0 {
+    sqlx::query("ALTER TABLE advert_image ADD COLUMN owner_uid BIGINT NOT NULL DEFAULT 0")
+      .execute(pool)
+      .await?;
+  }
+
+  let owner_username_exists = sqlx::query_scalar::<_, i64>(
+      "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'advert_image' AND COLUMN_NAME = 'owner_username'"
+    )
+    .fetch_one(pool)
+    .await?;
+  if owner_username_exists == 0 {
+    sqlx::query("ALTER TABLE advert_image ADD COLUMN owner_username VARCHAR(255) NOT NULL DEFAULT ''")
+      .execute(pool)
+      .await?;
+  }
+
+  let paypal_order_id_exists = sqlx::query_scalar::<_, i64>(
+      "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'advert_image' AND COLUMN_NAME = 'paypal_order_id'"
+    )
+    .fetch_one(pool)
+    .await?;
+  if paypal_order_id_exists == 0 {
+    sqlx::query("ALTER TABLE advert_image ADD COLUMN paypal_order_id VARCHAR(128) NULL")
+      .execute(pool)
+      .await?;
+  }
+
+  let payment_status_exists = sqlx::query_scalar::<_, i64>(
+      "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'advert_image' AND COLUMN_NAME = 'payment_status'"
+    )
+    .fetch_one(pool)
+    .await?;
+  if payment_status_exists == 0 {
+    sqlx::query("ALTER TABLE advert_image ADD COLUMN payment_status VARCHAR(32) NOT NULL DEFAULT 'pending'")
+      .execute(pool)
+      .await?;
+  }
 
   Ok(())
 }
@@ -4284,6 +4476,453 @@ async fn ads_admin_delete(
   }
 }
 
+#[get("/v1/ads")]
+async fn ads_user_page(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+) -> impl Responder {
+  let Some((session_uid, session_user)) = get_session_identity(&req, &state).await else {
+    return HttpResponse::Unauthorized().body("Login required");
+  };
+
+  let rows = match sqlx::query_as::<_, AdvertOwnedRow>(
+    "SELECT imageid, imagepath, url, COALESCE(clicks, 0) AS clicks, COALESCE(views, 0) AS views, COALESCE(payment_status, 'pending') AS payment_status FROM advert_image WHERE owner_uid = ? ORDER BY imageid DESC",
+  )
+  .bind(session_uid)
+  .fetch_all(&state.db_pool)
+  .await
+  {
+    Ok(rows) => rows,
+    Err(err) => {
+      return HttpResponse::InternalServerError().body(format!("Ad query failed: {}", err));
+    }
+  };
+
+  let mut ad_rows_html = String::new();
+  for row in rows {
+    let pay_now_html = if row.payment_status == "paid" {
+      String::new()
+    } else {
+      format!(
+        r#"<form action="https://{domain}/v1/ads/pay/{imageid}" method="POST" style="display:inline-flex; margin:0 0 0 10px;"><input class="post-submit" type="submit" value="Pay with PayPal" style="position:static; left:0; margin:0;"></form>"#,
+        domain = DOMAIN,
+        imageid = row.imageid,
+      )
+    };
+
+    ad_rows_html += &format!(
+      r#"<div class="post" style="margin-bottom:16px;">
+  <p><strong>ID:</strong> {imageid} | <strong>Status:</strong> {status}</p>
+  <p><strong>Views:</strong> {views} | <strong>Clicks:</strong> {clicks}</p>
+  <p><img src="{imagepath}" width="555" height="111" alt="{imageid}"></p>
+  <form id="ad-user-update-{imageid}" action="https://{domain}/v1/ads/update" method="POST">
+    <input type="hidden" name="imageid" value="{imageid}">
+    <p>Target URL: <input class="post" type="text" name="url" value="{url}" maxlength="2048" required></p>
+  </form>
+  <div style="display:flex; justify-content:center; align-items:center; gap:10px; margin-top:8px;">
+    <input class="post-submit" type="submit" form="ad-user-update-{imageid}" value="Update Ad" style="position:static; left:0; margin:0;">
+    <form action="https://{domain}/v1/ads/delete" method="POST" style="display:inline-flex; margin:0;">
+      <input type="hidden" name="imageid" value="{imageid}">
+      <input class="post-cancel" type="submit" value="Delete Ad" style="position:static; left:0; margin:0;">
+    </form>
+    {pay_now_html}
+  </div>
+</div>"#,
+      domain = DOMAIN,
+      imageid = row.imageid,
+      status = escape_html(&row.payment_status),
+      views = row.views,
+      clicks = row.clicks,
+      imagepath = escape_html(&row.imagepath),
+      url = escape_html(&row.url),
+      pay_now_html = pay_now_html,
+    );
+  }
+
+  let html = format!(
+    r#"<!DOCTYPE html>
+<html lang="en-US">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css" />
+  <title>My Ads</title>
+</head>
+<body>
+  <div id="main-section">
+    <div id="media-section">
+      <div id="navigation-section">
+        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+      </div>
+      <div id="selected-user-posts-section" class="post-section">
+        <div class="notice"><p><em>My Ads (PayPal + 555x111 upload)</em></p></div>
+        <div class="post" style="margin-bottom:16px;">
+          <form action="https://{domain}/v1/ads/create" method="POST" enctype="multipart/form-data">
+            <p>Target URL: <input class="post" type="text" name="url" maxlength="2048" placeholder="https://example.com" required></p>
+            <p>Image (must be exactly 555x111): <input type="file" name="ad_image" accept="image/png,image/jpeg,image/gif,image/webp" required></p>
+            <input class="post-submit" type="submit" value="Upload + Pay with PayPal" style="position:static; left:0; margin:0;">
+          </form>
+        </div>
+        {ad_rows_html}
+      </div>
+    </div>
+  </div>
+</body>
+</html>"#,
+    domain = DOMAIN,
+    ib_user = escape_html(&session_user),
+    ad_rows_html = ad_rows_html,
+  );
+
+  HttpResponse::Ok()
+    .content_type("text/html; charset=utf-8")
+    .body(html)
+}
+
+#[post("/v1/ads/create")]
+async fn ads_user_create(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  mut payload: Multipart,
+) -> impl Responder {
+  let Some((session_uid, session_user)) = get_session_identity(&req, &state).await else {
+    return HttpResponse::Unauthorized().body("Login required");
+  };
+
+  let mut url_bytes: Vec<u8> = Vec::new();
+  let mut image_bytes: Vec<u8> = Vec::new();
+  let mut image_uploaded = false;
+
+  while let Some(item) = payload.next().await {
+    let mut field = match item {
+      Ok(field) => field,
+      Err(err) => return HttpResponse::BadRequest().body(format!("Upload read failed: {}", err)),
+    };
+
+    let field_name = field
+      .content_disposition()
+      .and_then(|cd| cd.get_name())
+      .unwrap_or_default()
+      .to_string();
+
+    while let Some(chunk) = field.next().await {
+      let data = match chunk {
+        Ok(data) => data,
+        Err(err) => return HttpResponse::BadRequest().body(format!("Upload chunk failed: {}", err)),
+      };
+
+      if field_name == "url" {
+        if url_bytes.len() + data.len() > 4096 {
+          return HttpResponse::BadRequest().body("Target URL is too large");
+        }
+        url_bytes.extend_from_slice(&data);
+      } else if field_name == "ad_image" {
+        if image_bytes.len() + data.len() > 8 * 1024 * 1024 {
+          return HttpResponse::BadRequest().body("Image is too large");
+        }
+        image_bytes.extend_from_slice(&data);
+        image_uploaded = true;
+      }
+    }
+  }
+
+  let target_url = String::from_utf8_lossy(&url_bytes).trim().to_string();
+  if !(target_url.starts_with("https://") || target_url.starts_with("http://")) {
+    return HttpResponse::BadRequest().body("Target URL must start with http:// or https://");
+  }
+
+  if !image_uploaded || image_bytes.is_empty() {
+    return HttpResponse::BadRequest().body("Ad image is required");
+  }
+
+  let detected_format = match image::guess_format(&image_bytes) {
+    Ok(format) => format,
+    Err(_) => return HttpResponse::BadRequest().body("Unsupported image format"),
+  };
+
+  let extension = match detected_format {
+    image::ImageFormat::Png => "png",
+    image::ImageFormat::Jpeg => "jpg",
+    image::ImageFormat::Gif => "gif",
+    image::ImageFormat::WebP => "webp",
+    _ => return HttpResponse::BadRequest().body("Only png, jpg, gif, webp are allowed"),
+  };
+
+  let image_dimensions = match image::load_from_memory(&image_bytes) {
+    Ok(image) => image.dimensions(),
+    Err(_) => return HttpResponse::BadRequest().body("Invalid image data"),
+  };
+
+  if image_dimensions != (555, 111) {
+    return HttpResponse::BadRequest().body("Image must be exactly 555x111 pixels");
+  }
+
+  if let Err(err) = fs::create_dir_all("./webroot/images/advert") {
+    return HttpResponse::InternalServerError().body(format!("Failed to prepare advert directory: {}", err));
+  }
+
+  let file_name = format!("ad_{}_{}.{}", session_uid, Uuid::new_v4(), extension);
+  let relative_image_path = format!("/images/advert/{}", file_name);
+  let disk_path = format!("./webroot{}", relative_image_path);
+
+  if let Err(err) = fs::write(&disk_path, &image_bytes) {
+    return HttpResponse::InternalServerError().body(format!("Failed to save image: {}", err));
+  }
+
+  let insert_result = sqlx::query(
+    "INSERT INTO advert_image (imagepath, url, owner_uid, owner_username, payment_status, clicks, views) VALUES (?, ?, ?, ?, 'pending', 0, 0)",
+  )
+  .bind(&relative_image_path)
+  .bind(&target_url)
+  .bind(session_uid)
+  .bind(&session_user)
+  .execute(&state.db_pool)
+  .await;
+
+  let imageid = match insert_result {
+    Ok(result) => result.last_insert_id() as i64,
+    Err(err) => return HttpResponse::InternalServerError().body(format!("Failed to create ad: {}", err)),
+  };
+
+  match paypal_create_order(imageid).await {
+    Ok(approval_url) => HttpResponse::SeeOther()
+      .insert_header(("Location", approval_url))
+      .finish(),
+    Err(err) => HttpResponse::InternalServerError().body(format!("Ad created but PayPal order failed: {}", err)),
+  }
+}
+
+#[post("/v1/ads/pay/{imageid}")]
+async fn ads_user_pay(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  imageid: web::Path<i64>,
+) -> impl Responder {
+  let Some((session_uid, _)) = get_session_identity(&req, &state).await else {
+    return HttpResponse::Unauthorized().body("Login required");
+  };
+
+  let imageid = imageid.into_inner();
+  let ownership_count = sqlx::query_scalar::<_, i64>(
+    "SELECT COUNT(*) FROM advert_image WHERE imageid = ? AND owner_uid = ?",
+  )
+  .bind(imageid)
+  .bind(session_uid)
+  .fetch_one(&state.db_pool)
+  .await;
+
+  match ownership_count {
+    Ok(count) if count > 0 => {}
+    Ok(_) => return HttpResponse::Forbidden().body("Not your ad"),
+    Err(err) => return HttpResponse::InternalServerError().body(format!("Ownership check failed: {}", err)),
+  }
+
+  match paypal_create_order(imageid).await {
+    Ok(approval_url) => HttpResponse::SeeOther()
+      .insert_header(("Location", approval_url))
+      .finish(),
+    Err(err) => HttpResponse::InternalServerError().body(format!("PayPal order failed: {}", err)),
+  }
+}
+
+#[get("/v1/ads/paypal/return")]
+async fn ads_paypal_return(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  query: web::Query<PayPalReturnQuery>,
+) -> impl Responder {
+  let Some((session_uid, _)) = get_session_identity(&req, &state).await else {
+    return HttpResponse::Unauthorized().body("Login required");
+  };
+
+  let access_token = match paypal_access_token().await {
+    Ok(token) => token,
+    Err(err) => return HttpResponse::InternalServerError().body(err),
+  };
+
+  let order_endpoint = format!(
+    "{}/v2/checkout/orders/{}",
+    paypal_base_url().trim_end_matches('/'),
+    query.token
+  );
+
+  let order_response = match reqwest::Client::new()
+    .get(order_endpoint)
+    .bearer_auth(&access_token)
+    .send()
+    .await
+  {
+    Ok(response) => response,
+    Err(err) => return HttpResponse::InternalServerError().body(format!("PayPal order lookup failed: {}", err)),
+  };
+
+  if !order_response.status().is_success() {
+    let body = order_response.text().await.unwrap_or_default();
+    return HttpResponse::InternalServerError().body(format!("PayPal order lookup rejected: {}", body));
+  }
+
+  let order_json: Value = match order_response.json().await {
+    Ok(json) => json,
+    Err(err) => return HttpResponse::InternalServerError().body(format!("PayPal order lookup parse failed: {}", err)),
+  };
+
+  let custom_id = order_json
+    .get("purchase_units")
+    .and_then(Value::as_array)
+    .and_then(|units| units.first())
+    .and_then(|unit| unit.get("custom_id"))
+    .and_then(Value::as_str)
+    .unwrap_or_default();
+
+  let imageid = match custom_id.parse::<i64>() {
+    Ok(id) => id,
+    Err(_) => return HttpResponse::BadRequest().body("Invalid PayPal custom_id"),
+  };
+
+  let ownership_count = match sqlx::query_scalar::<_, i64>(
+    "SELECT COUNT(*) FROM advert_image WHERE imageid = ? AND owner_uid = ?",
+  )
+  .bind(imageid)
+  .bind(session_uid)
+  .fetch_one(&state.db_pool)
+  .await
+  {
+    Ok(count) => count,
+    Err(err) => return HttpResponse::InternalServerError().body(format!("Ownership check failed: {}", err)),
+  };
+
+  if ownership_count == 0 {
+    return HttpResponse::Forbidden().body("Not your ad");
+  }
+
+  let capture_endpoint = format!(
+    "{}/v2/checkout/orders/{}/capture",
+    paypal_base_url().trim_end_matches('/'),
+    query.token
+  );
+
+  let capture_response = match reqwest::Client::new()
+    .post(capture_endpoint)
+    .bearer_auth(&access_token)
+    .json(&json!({}))
+    .send()
+    .await
+  {
+    Ok(response) => response,
+    Err(err) => return HttpResponse::InternalServerError().body(format!("PayPal capture failed: {}", err)),
+  };
+
+  if !capture_response.status().is_success() {
+    let body = capture_response.text().await.unwrap_or_default();
+    return HttpResponse::InternalServerError().body(format!("PayPal capture rejected: {}", body));
+  }
+
+  let update_result = sqlx::query(
+    "UPDATE advert_image SET payment_status = 'paid', paypal_order_id = ? WHERE imageid = ? AND owner_uid = ? LIMIT 1",
+  )
+  .bind(&query.token)
+  .bind(imageid)
+  .bind(session_uid)
+  .execute(&state.db_pool)
+  .await;
+
+  match update_result {
+    Ok(_) => HttpResponse::SeeOther()
+      .insert_header(("Location", "/v1/ads"))
+      .finish(),
+    Err(err) => HttpResponse::InternalServerError().body(format!("Failed to mark ad as paid: {}", err)),
+  }
+}
+
+#[get("/v1/ads/paypal/cancel")]
+async fn ads_paypal_cancel(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+) -> impl Responder {
+  if get_session_identity(&req, &state).await.is_none() {
+    return HttpResponse::Unauthorized().body("Login required");
+  }
+
+  HttpResponse::SeeOther()
+    .insert_header(("Location", "/v1/ads"))
+    .finish()
+}
+
+#[post("/v1/ads/update")]
+async fn ads_user_update(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  payload: web::Form<AdsUserUpdateRequest>,
+) -> impl Responder {
+  let Some((session_uid, _)) = get_session_identity(&req, &state).await else {
+    return HttpResponse::Unauthorized().body("Login required");
+  };
+
+  if !(payload.url.starts_with("https://") || payload.url.starts_with("http://")) {
+    return HttpResponse::BadRequest().body("Target URL must start with http:// or https://");
+  }
+
+  let update_result = sqlx::query(
+    "UPDATE advert_image SET url = ? WHERE imageid = ? AND owner_uid = ? LIMIT 1",
+  )
+  .bind(payload.url.trim())
+  .bind(payload.imageid)
+  .bind(session_uid)
+  .execute(&state.db_pool)
+  .await;
+
+  match update_result {
+    Ok(_) => HttpResponse::SeeOther()
+      .insert_header(("Location", "/v1/ads"))
+      .finish(),
+    Err(err) => HttpResponse::InternalServerError().body(format!("Failed to update ad: {}", err)),
+  }
+}
+
+#[post("/v1/ads/delete")]
+async fn ads_user_delete(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  payload: web::Form<AdsUserDeleteRequest>,
+) -> impl Responder {
+  let Some((session_uid, _)) = get_session_identity(&req, &state).await else {
+    return HttpResponse::Unauthorized().body("Login required");
+  };
+
+  let imagepath = sqlx::query_scalar::<_, String>(
+    "SELECT imagepath FROM advert_image WHERE imageid = ? AND owner_uid = ? LIMIT 1",
+  )
+  .bind(payload.imageid)
+  .bind(session_uid)
+  .fetch_optional(&state.db_pool)
+  .await;
+
+  let imagepath = match imagepath {
+    Ok(Some(path)) => path,
+    Ok(None) => return HttpResponse::Forbidden().body("Not your ad"),
+    Err(err) => return HttpResponse::InternalServerError().body(format!("Ad lookup failed: {}", err)),
+  };
+
+  let delete_result = sqlx::query("DELETE FROM advert_image WHERE imageid = ? AND owner_uid = ? LIMIT 1")
+    .bind(payload.imageid)
+    .bind(session_uid)
+    .execute(&state.db_pool)
+    .await;
+
+  if let Err(err) = delete_result {
+    return HttpResponse::InternalServerError().body(format!("Failed to delete ad: {}", err));
+  }
+
+  if imagepath.starts_with("/images/advert/") {
+    let disk_path = format!("./webroot{}", imagepath);
+    let _ = fs::remove_file(disk_path);
+  }
+
+  HttpResponse::SeeOther()
+    .insert_header(("Location", "/v1/ads"))
+    .finish()
+}
+
 #[get("/v1/warroom")]
 async fn war_room(
   req: HttpRequest,
@@ -4451,7 +5090,7 @@ async fn ad_click(
   let imageid = path.into_inner();
 
   let ad_row = sqlx::query_as::<_, AdvertImageRow>(
-      "SELECT imageid, imagepath, url FROM advert_image WHERE imageid = ? LIMIT 1"
+      "SELECT imageid, imagepath, url FROM advert_image WHERE imageid = ? AND payment_status = 'paid' LIMIT 1"
     )
     .bind(imageid)
     .fetch_optional(&state.db_pool)
@@ -4806,6 +5445,8 @@ async fn main() -> std::io::Result<()> {
   let _ = dotenvy::from_filename(IB_ENV);
   let _ = dotenvy::from_filename(GITHUB_CLIENT_SECRET_ENV);
   let _ = dotenvy::from_filename(MYSQL_ENV);
+  let _ = dotenvy::from_filename(PAYPAL_ENV);
+  let _ = dotenvy::from_filename("PAYPAL.env");
 
   let db_pool = create_db_pool()
     .await
@@ -4925,6 +5566,13 @@ async fn main() -> std::io::Result<()> {
       .service(ads_admin_create)
       .service(ads_admin_update)
       .service(ads_admin_delete)
+      .service(ads_user_page)
+      .service(ads_user_create)
+      .service(ads_user_pay)
+      .service(ads_paypal_return)
+      .service(ads_paypal_cancel)
+      .service(ads_user_update)
+      .service(ads_user_delete)
       .service(war_room)
       .service(inbox)
       .service(send_direct_message)
