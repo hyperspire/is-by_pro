@@ -1684,6 +1684,9 @@ async fn render_search_users_html(
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
+    </div><br>
+    <div id="sidebar-footer">
+      <p><a target="_blank" rel="noopener" href="https://{DOMAIN}/advertise.html">Advertise</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/privacy.html">Privacy</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/tos.html">ToS</a> | @ {COPYRIGHT} HyperSpire Foundation</p>
     </div>
   </div>
 </div>
@@ -1891,6 +1894,9 @@ async fn render_search_posts_html(
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
+    </div><br>
+    <div id="sidebar-footer">
+      <p><a target="_blank" rel="noopener" href="https://{DOMAIN}/advertise.html">Advertise</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/privacy.html">Privacy</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/tos.html">ToS</a> | @ {COPYRIGHT} HyperSpire Foundation</p>
     </div>
   </div>
 </div>
@@ -2131,6 +2137,9 @@ async fn render_projects_html(
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
+    </div><br>
+    <div id="sidebar-footer">
+      <p><a target="_blank" rel="noopener" href="https://{DOMAIN}/advertise.html">Advertise</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/privacy.html">Privacy</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/tos.html">ToS</a> | @ {COPYRIGHT} HyperSpire Foundation</p>
     </div>
   </div>
 </div>
@@ -2378,6 +2387,9 @@ async fn render_war_room_html(
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
+    </div><br>
+    <div id="sidebar-footer">
+      <p><a target="_blank" rel="noopener" href="https://{DOMAIN}/advertise.html">Advertise</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/privacy.html">Privacy</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/tos.html">ToS</a> | @ {COPYRIGHT} HyperSpire Foundation</p>
     </div>
   </div>
 </div>
@@ -2607,6 +2619,9 @@ async fn render_inbox_html(
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
+    </div><br>
+    <div id="sidebar-footer">
+      <p><a target="_blank" rel="noopener" href="https://{DOMAIN}/advertise.html">Advertise</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/privacy.html">Privacy</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/tos.html">ToS</a> | @ {COPYRIGHT} HyperSpire Foundation</p>
     </div>
   </div>
 </div>
@@ -2878,6 +2893,9 @@ async fn render_single_post_html(
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
+    </div><br>
+    <div id="sidebar-footer">
+      <p><a target="_blank" rel="noopener" href="https://{DOMAIN}/advertise.html">Advertise</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/privacy.html">Privacy</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/tos.html">ToS</a> | @ {COPYRIGHT} HyperSpire Foundation</p>
     </div>
   </div>
 </div>
