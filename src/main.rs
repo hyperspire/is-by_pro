@@ -5441,7 +5441,6 @@ async fn main() -> std::io::Result<()> {
   let _ = dotenvy::from_filename(GITHUB_CLIENT_SECRET_ENV);
   let _ = dotenvy::from_filename(MYSQL_ENV);
   let _ = dotenvy::from_filename(PAYPAL_ENV);
-  let _ = dotenvy::from_filename(".env/PAYPAL.env");
 
   let db_pool = create_db_pool()
     .await
