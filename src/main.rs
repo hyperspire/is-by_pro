@@ -57,7 +57,7 @@ use rustls::{ServerConfig, pki_types::CertificateDer};
 use sqlx::{mysql::MySqlPoolOptions, MySqlPool};
 use rustls_pemfile::{certs, private_key};
 use std::collections::HashSet;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::BufReader;
 use uuid::Uuid;
 
@@ -837,6 +837,32 @@ fn render_post_meta(ib_uid: &str, username: &str, timestamp: &str) -> String {
     username = escape_html(username),
     timestamp = escape_html(timestamp)
   )
+}
+
+fn random_advert_image() -> String {
+  const ADVERT_DIRECTORY: &str = "./webroot/images/advert";
+  const FALLBACK_IMAGE: &str = "/images/advert/Death_Angel-555x111.png";
+
+  let advert_images: Vec<String> = fs::read_dir(ADVERT_DIRECTORY)
+    .ok()
+    .into_iter()
+    .flat_map(|entries| entries.filter_map(Result::ok))
+    .filter_map(|entry| {
+      let file_type = entry.file_type().ok()?;
+      if !file_type.is_file() {
+        return None;
+      }
+
+      let file_name = entry.file_name();
+      let file_name = file_name.to_str()?;
+      Some(format!("/images/advert/{file_name}"))
+    })
+    .collect();
+
+  advert_images
+    .choose(&mut rand::thread_rng())
+    .cloned()
+    .unwrap_or_else(|| FALLBACK_IMAGE.to_string())
 }
 
 fn render_ack_controls(page_ib_uid: i64, page_ib_user: &str, post_id: &str) -> String {
@@ -2771,7 +2797,7 @@ async fn render_single_post_html(
   <div id="main-section">
     <div id="media-section">
       <div>
-      <img src="/images/Death_Angel-555x111.png" alt=":Death_Angel-555x111.png:" width="555"
+      <img src="{advert_image}" alt=":Death_Angel-555x111.png:" width="555"
           height="111">
       </div>
       <div id="navigation-section">
@@ -2845,6 +2871,7 @@ async fn render_single_post_html(
       render_ack_controls(ib_uid, ib_user, &post.postid)
     },
     post_body = render_post_with_hashtags(&post.post, ib_uid, ib_user),
+    advert_image = random_advert_image(),
     replies_html = replies_html
   );
 
