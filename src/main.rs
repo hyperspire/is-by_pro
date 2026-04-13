@@ -4390,7 +4390,8 @@ async fn hello() -> impl Responder {
         <p class="copyright">:[[ :for-the: [[ is-by: pro: is-by: @: {copyright}: is-with: <a target="_blank"
           rel="noopener" href="http://hyperspire.com/">HyperSpire-Foundation</a>:
           for-the: [[ Death-Angel: is-by: @: is-with: <a target="_blank"
-            rel="noopener" href="https://www.youtube.com/@WhiteBatAudio">Karl-Casey</a>: [[ :for-the: Terms-of-Service: https://is-by.pro/tos.html: ]]: ]]: ]]: ]]:</p>
+            rel="noopener" href="https://www.youtube.com/@WhiteBatAudio">Karl-Casey</a>: [[ :for-the: <a target="_blank"
+          rel="noopener" href="https://is-by.pro/tos.html">Terms-of-Service</a>: ]]: ]]: ]]: ]]:</p>
       </div>
     </div>
     <div id="actions-section">
