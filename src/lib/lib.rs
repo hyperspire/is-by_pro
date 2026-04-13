@@ -7,3 +7,5 @@ pub const MYSQL_ENV: &str = "/usr/local/bin/.env/MYSQL.env";
 pub const COPYRIGHT: u32 = 2026;
 pub const MYSQL_USER: &str = "hyperuser";
 pub const MYSQL_DATABASE: &str = "isby";
+pub const AD_ADMIN_UID: i64 = 138945726;
+pub const AD_ADMIN_USER: &str = "QWOD";

@@ -47,6 +47,8 @@ use is_by_pro::{
   MYSQL_DATABASE,
   MYSQL_ENV,
   MYSQL_USER,
+  AD_ADMIN_UID,
+  AD_ADMIN_USER,
 };
 use actix_cors::Cors;
 use actix_files::Files;
@@ -57,10 +59,8 @@ use rustls::{ServerConfig, pki_types::CertificateDer};
 use sqlx::{mysql::MySqlPoolOptions, MySqlPool};
 use rustls_pemfile::{certs, private_key};
 use std::collections::HashSet;
-use std::env;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::BufReader;
-use std::path::PathBuf;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -127,6 +127,22 @@ struct TrendingTagRow {
 struct RecentPostTagBackfillRow {
   postid: String,
   post: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct AdvertImageRow {
+  imageid: i64,
+  imagepath: String,
+  url: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct AdvertImageAdminRow {
+  imageid: i64,
+  imagepath: String,
+  url: String,
+  clicks: i64,
+  views: i64,
 }
 
 #[derive(Deserialize)]
@@ -270,6 +286,36 @@ struct InboxRequest {
   ib_uid: i64,
   ib_user: String,
   target_user: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct AdsAdminRequest {
+  ib_uid: i64,
+  ib_user: String,
+}
+
+#[derive(Deserialize)]
+struct AdsCreateRequest {
+  ib_uid: i64,
+  ib_user: String,
+  imagepath: String,
+  url: String,
+}
+
+#[derive(Deserialize)]
+struct AdsUpdateRequest {
+  ib_uid: i64,
+  ib_user: String,
+  imageid: i64,
+  imagepath: String,
+  url: String,
+}
+
+#[derive(Deserialize)]
+struct AdsDeleteRequest {
+  ib_uid: i64,
+  ib_user: String,
+  imageid: i64,
 }
 
 #[derive(Deserialize)]
@@ -841,57 +887,37 @@ fn render_post_meta(ib_uid: &str, username: &str, timestamp: &str) -> String {
   )
 }
 
-fn random_advert_image() -> String {
+async fn render_advert_html(state: &AppState) -> String {
   const FALLBACK_IMAGE: &str = "/images/advert/Death_Angel-555x111.png";
+  const FALLBACK_URL: &str = "https://is-by.pro/advertise.html";
 
-  let mut candidate_directories = vec![
-    PathBuf::from("./webroot/images/advert"),
-    PathBuf::from("webroot/images/advert"),
-    PathBuf::from("/usr/local/bin/webroot/images/advert"),
-  ];
+  let ad_row = sqlx::query_as::<_, AdvertImageRow>(
+      "SELECT imageid, imagepath, url FROM advert_image ORDER BY RAND() LIMIT 1"
+    )
+    .fetch_optional(&state.db_pool)
+    .await;
 
-  if let Ok(current_exe) = env::current_exe() {
-    if let Some(exe_dir) = current_exe.parent() {
-      candidate_directories.push(exe_dir.join("webroot/images/advert"));
-    }
-  }
+  let Some(ad_row) = ad_row.ok().flatten() else {
+    return format!(
+      r#"<a href="{url}" target="_blank" rel="noopener noreferrer"><img src="{imagepath}" width="555" height="111" alt="fallback"></a>"#,
+      url = FALLBACK_URL,
+      imagepath = FALLBACK_IMAGE,
+    );
+  };
 
-  let advert_images: Vec<String> = candidate_directories
-    .into_iter()
-    .find_map(|directory| {
-      let images: Vec<String> = fs::read_dir(directory)
-        .ok()?
-        .filter_map(Result::ok)
-        .filter_map(|entry| {
-          let file_type = entry.file_type().ok()?;
-          if !file_type.is_file() {
-            return None;
-          }
+  let _ = sqlx::query(
+    "UPDATE advert_image SET views = COALESCE(views, 0) + 1 WHERE imageid = ? LIMIT 1",
+  )
+  .bind(ad_row.imageid)
+  .execute(&state.db_pool)
+  .await;
 
-          let file_name = entry.file_name();
-          let file_name = file_name.to_str()?;
-          let extension = file_name.rsplit('.').next()?.to_ascii_lowercase();
-          if !matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp") {
-            return None;
-          }
-
-          Some(format!("/images/advert/{file_name}"))
-        })
-        .collect();
-
-      if images.is_empty() {
-        None
-      } else {
-        Some(images)
-      }
-    })
-    .unwrap_or_default();
-
-  advert_images
-    .choose(&mut rand::thread_rng())
-    .cloned()
-    .unwrap_or_else(|| FALLBACK_IMAGE.to_string())
-    + &format!("?v={}", rand::random::<u64>())
+  format!(
+    r#"<a href="https://{domain}/v1/ad/click/{imageid}"><img src="{imagepath}" width="555" height="111" alt="{imageid}"></a>"#,
+    domain = DOMAIN,
+    imageid = ad_row.imageid,
+    imagepath = escape_html(&ad_row.imagepath),
+  )
 }
 
 fn render_ack_controls(page_ib_uid: i64, page_ib_user: &str, post_id: &str) -> String {
@@ -946,6 +972,36 @@ async fn acknowledged_post_ids_for_user(pool: &MySqlPool, viewer_uid: Option<i64
 fn get_session_uid(req: &HttpRequest) -> Option<i64> {
   req.cookie("ib_uid")
     .and_then(|cookie| cookie.value().parse::<i64>().ok())
+}
+
+fn is_expected_ad_admin_identity(ib_uid: i64, ib_user: &str) -> bool {
+  ib_uid == AD_ADMIN_UID && ib_user == AD_ADMIN_USER
+}
+
+async fn is_ad_admin_session(req: &HttpRequest, state: &AppState) -> bool {
+  let Some(session_uid) = get_session_uid(req) else {
+    return false;
+  };
+
+  if session_uid != AD_ADMIN_UID {
+    return false;
+  }
+
+  let session_username = match sqlx::query_as::<_, SessionUserRow>(
+    "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
+  )
+  .bind(session_uid.to_string())
+  .fetch_optional(&state.db_pool)
+  .await
+  {
+    Ok(Some(row)) if !row.username.trim().is_empty() => row.username,
+    _ => req
+      .cookie("ib_user")
+      .map(|cookie| cookie.value().to_string())
+      .unwrap_or_default(),
+  };
+
+  session_username == AD_ADMIN_USER
 }
 
 fn remove_cookie(name: &str) -> Cookie<'static> {
@@ -1057,6 +1113,12 @@ async fn ensure_database_schema(pool: &MySqlPool) -> Result<(), sqlx::Error> {
 
   sqlx::query(
     "CREATE TABLE IF NOT EXISTS project_profile (id BIGINT PRIMARY KEY AUTO_INCREMENT, ib_uid BIGINT NOT NULL, project VARCHAR(255) NOT NULL, description TEXT NOT NULL, languages VARCHAR(255) NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, INDEX idx_project_profile_uid_time (ib_uid, updated_at))",
+  )
+  .execute(pool)
+  .await?;
+
+  sqlx::query(
+    "CREATE TABLE IF NOT EXISTS advert_image (imageid BIGINT PRIMARY KEY AUTO_INCREMENT, imagepath VARCHAR(1024) NOT NULL, url VARCHAR(2048) NOT NULL, clicks BIGINT NOT NULL DEFAULT 0, views BIGINT NOT NULL DEFAULT 0)",
   )
   .execute(pool)
   .await?;
@@ -1181,6 +1243,8 @@ async fn render_profile_html(
   ib_user: &str,
   session_uid: Option<i64>,
 ) -> Result<String, String> {
+  let advert_html = render_advert_html(state).await;
+
   let viewed_user_row = sqlx::query_as::<_, FollowLookupRow>(
       "SELECT username, COALESCE(followers, '') AS followers FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1"
     )
@@ -1362,8 +1426,7 @@ async fn render_profile_html(
   <div id="main-section">
     <div id="media-section">
       <div>
-      <img src="{advert_image}" width="555"
-          height="111">
+        {advert_html}
       </div>
       <div id="navigation-section">
         {navigation_links}
@@ -1381,7 +1444,7 @@ async fn render_profile_html(
       </div>"#,
     ib_user = escape_html(ib_user),
     ib_uid = ib_uid,
-    advert_image = random_advert_image(),
+    advert_html = advert_html,
     navigation_links = navigation_links,
     domain = DOMAIN
   );
@@ -1577,6 +1640,8 @@ async fn render_search_users_html(
   raw_query: &str,
   session_uid: Option<i64>,
 ) -> Result<String, String> {
+  let advert_html = render_advert_html(state).await;
+
   let search_terms: Vec<String> = raw_query
     .split_whitespace()
     .map(|term| term.trim().to_lowercase())
@@ -1677,8 +1742,7 @@ async fn render_search_users_html(
   <div id="main-section">
     <div id="media-section">
       <div>
-      <img src="{advert_image}" width="555"
-          height="111">
+        {advert_html}
       </div>
       <div id="navigation-section">
         {navigation_links}
@@ -1691,7 +1755,7 @@ async fn render_search_users_html(
     domain = DOMAIN,
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
-    advert_image = random_advert_image(),
+    advert_html = advert_html,
     navigation_links = navigation_links,
     raw_query = escape_html(raw_query),
     search_results_html = search_results_html
@@ -1780,6 +1844,8 @@ async fn render_search_posts_html(
   raw_tag: &str,
   session_uid: Option<i64>,
 ) -> Result<String, String> {
+  let advert_html = render_advert_html(state).await;
+
   let normalized_tag = normalize_hashtag(raw_tag);
 
   let search_results_html = if let Some(tag) = normalized_tag.clone() {
@@ -1884,8 +1950,7 @@ async fn render_search_posts_html(
   <div id="main-section">
     <div id="media-section">
       <div>
-      <img src="{advert_image}" width="555"
-          height="111">
+        {advert_html}
       </div>
       <div id="navigation-section">
         {navigation_links}
@@ -1898,7 +1963,7 @@ async fn render_search_posts_html(
     domain = DOMAIN,
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
-    advert_image = random_advert_image(),
+    advert_html = advert_html,
     navigation_links = navigation_links,
     tag = escape_html(
       normalized_tag
@@ -1990,6 +2055,8 @@ async fn render_projects_html(
   ib_user: &str,
   session_uid: Option<i64>,
 ) -> Result<String, String> {
+  let advert_html = render_advert_html(state).await;
+
   let rows = sqlx::query_as::<_, ProjectProfileRow>(
       "SELECT project.id, project.ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, project.project, project.description, project.languages, CAST(project.updated_at AS CHAR CHARACTER SET utf8mb4) AS updated_at FROM project_profile AS project LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE project.ib_uid = ? ORDER BY project.updated_at DESC LIMIT 500"
     )
@@ -2120,8 +2187,7 @@ async fn render_projects_html(
   <div id="main-section">
     <div id="media-section">
       <div>
-      <img src="{advert_image}" width="555"
-          height="111">
+        {advert_html}
       </div>
       <div id="navigation-section">
         {navigation_links}
@@ -2146,7 +2212,7 @@ async fn render_projects_html(
     domain = DOMAIN,
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
-    advert_image = random_advert_image(),
+    advert_html = advert_html,
     navigation_links = navigation_links,
     add_project_form_html = add_project_form_html,
     projects_html = projects_html,
@@ -2234,6 +2300,8 @@ async fn render_war_room_html(
   ib_user: &str,
   session_uid: Option<i64>,
 ) -> Result<String, String> {
+  let advert_html = render_advert_html(state).await;
+
   let followers_row = sqlx::query_as::<_, FollowLookupRow>(
       "SELECT username, COALESCE(followers, '') AS followers FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1"
     )
@@ -2373,8 +2441,7 @@ async fn render_war_room_html(
   <div id="main-section">
     <div id="media-section">
       <div>
-      <img src="{advert_image}" width="555"
-          height="111">
+        {advert_html}
       </div>
       <div id="navigation-section">
         {navigation_links}
@@ -2398,7 +2465,7 @@ async fn render_war_room_html(
     domain = DOMAIN,
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
-    advert_image = random_advert_image(),
+    advert_html = advert_html,
     navigation_links = navigation_links,
     war_room_content = war_room_content
   );
@@ -2486,6 +2553,8 @@ async fn render_inbox_html(
   session_uid: Option<i64>,
   requested_target_user: Option<&str>,
 ) -> Result<String, String> {
+  let advert_html = render_advert_html(state).await;
+
   let followers_row = sqlx::query_as::<_, FollowLookupRow>(
       "SELECT username, COALESCE(followers, '') AS followers FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1"
     )
@@ -2593,8 +2662,7 @@ async fn render_inbox_html(
   <div id="main-section">
     <div id="media-section">
       <div>
-      <img src="{advert_image}" width="555"
-          height="111">
+        {advert_html}
       </div>
       <div id="navigation-section">
         {navigation_links}
@@ -2630,7 +2698,7 @@ async fn render_inbox_html(
     domain = DOMAIN,
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
-    advert_image = random_advert_image(),
+    advert_html = advert_html,
     navigation_links = navigation_links,
     contact_list_html = contact_list_html,
     default_target_user = escape_html(&default_target_user)
@@ -2719,6 +2787,8 @@ async fn render_single_post_html(
   pid: &str,
   session_uid: Option<i64>,
 ) -> Result<String, String> {
+  let advert_html = render_advert_html(state).await;
+
   let post = sqlx::query_as::<_, PostRow>(
       "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.postid = ? LIMIT 1"
     )
@@ -2832,8 +2902,7 @@ async fn render_single_post_html(
   <div id="main-section">
     <div id="media-section">
       <div>
-      <img src="{advert_image}" width="555"
-          height="111">
+        {advert_html}
       </div>
       <div id="navigation-section">
         <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
@@ -2906,7 +2975,7 @@ async fn render_single_post_html(
       render_ack_controls(ib_uid, ib_user, &post.postid)
     },
     post_body = render_post_with_hashtags(&post.post, ib_uid, ib_user),
-    advert_image = random_advert_image(),
+    advert_html = advert_html,
     replies_html = replies_html
   );
 
@@ -3413,6 +3482,8 @@ async fn edit_profile(
     }
   };
 
+  let advert_html = render_advert_html(&state).await;
+
   let html = format!(
     r#"<!DOCTYPE html>
 <html lang="en-US">
@@ -3427,7 +3498,7 @@ async fn edit_profile(
   <div id="main-section">
     <div id="media-section">
       <div>
-        <img src="{advert_image}" width="555" height="111">
+        {advert_html}
       </div>
       <div id="navigation-section">
         <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
@@ -3452,7 +3523,7 @@ async fn edit_profile(
     domain = DOMAIN,
     ib_uid = query.ib_uid,
     ib_user = escape_html(&query.ib_user),
-    advert_image = random_advert_image(),
+    advert_html = advert_html,
     ib_ibp = escape_html(&row.ib_ibp),
     ib_pro = escape_html(&row.ib_pro),
     ib_services = escape_html(&row.ib_services),
@@ -4011,6 +4082,206 @@ async fn update_project_profile(
   }
 }
 
+#[get("/v1/admin/ads")]
+async fn ads_admin_page(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  query: web::Query<AdsAdminRequest>,
+) -> impl Responder {
+  if !is_expected_ad_admin_identity(query.ib_uid, &query.ib_user)
+    || !is_ad_admin_session(&req, &state).await
+  {
+    return HttpResponse::Forbidden().body("Forbidden");
+  }
+
+  let rows = match sqlx::query_as::<_, AdvertImageAdminRow>(
+    "SELECT imageid, imagepath, url, COALESCE(clicks, 0) AS clicks, COALESCE(views, 0) AS views FROM advert_image ORDER BY imageid DESC",
+  )
+  .fetch_all(&state.db_pool)
+  .await
+  {
+    Ok(rows) => rows,
+    Err(err) => {
+      return HttpResponse::InternalServerError().body(format!("Ad list query failed: {}", err));
+    }
+  };
+
+  let mut ad_rows_html = String::new();
+
+  for row in rows {
+    ad_rows_html += &format!(
+      r#"<div class="post" style="margin-bottom:16px;">
+  <p><strong>ID:</strong> {imageid}</p>
+  <p><strong>Views:</strong> {views} | <strong>Clicks:</strong> {clicks}</p>
+  <p><strong>Preview:</strong><br><img src="{imagepath}" width="555" height="111" alt="{imageid}"></p>
+  <form action="https://{domain}/v1/admin/ads/update" method="POST">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+    <input type="hidden" name="imageid" value="{imageid}">
+    <p>Image Path: <input class="post" type="text" name="imagepath" value="{imagepath}" maxlength="1024" required></p>
+    <p>Target URL: <input class="post" type="text" name="url" value="{url}" maxlength="2048" required></p>
+    <input class="post-submit" type="submit" value="Update Ad">
+  </form>
+  <form action="https://{domain}/v1/admin/ads/delete" method="POST" style="margin-top:8px;">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+    <input type="hidden" name="imageid" value="{imageid}">
+    <input class="post-cancel" type="submit" value="Delete Ad">
+  </form>
+</div>"#,
+      domain = DOMAIN,
+      ib_uid = AD_ADMIN_UID,
+      ib_user = AD_ADMIN_USER,
+      imageid = row.imageid,
+      imagepath = escape_html(&row.imagepath),
+      url = escape_html(&row.url),
+      clicks = row.clicks,
+      views = row.views,
+    );
+  }
+
+  let html = format!(
+    r#"<!DOCTYPE html>
+<html lang="en-US">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css" />
+  <title>Ad Admin</title>
+</head>
+<body>
+  <div id="main-section">
+    <div id="media-section">
+      <div id="navigation-section">
+        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+      </div>
+      <div id="selected-user-posts-section" class="post-section">
+        <div class="notice"><p><em>Ad Admin Panel</em></p></div>
+        <div class="post" style="margin-bottom:16px;">
+          <form action="https://{domain}/v1/admin/ads/create" method="POST">
+            <input type="hidden" name="ib_uid" value="{ib_uid}">
+            <input type="hidden" name="ib_user" value="{ib_user}">
+            <p>Image Path: <input class="post" type="text" name="imagepath" maxlength="1024" placeholder="/images/advert/example.png" required></p>
+            <p>Target URL: <input class="post" type="text" name="url" maxlength="2048" placeholder="https://example.com" required></p>
+            <input class="post-submit" type="submit" value="Create Ad">
+          </form>
+        </div>
+        {ad_rows_html}
+      </div>
+    </div>
+  </div>
+</body>
+</html>"#,
+    domain = DOMAIN,
+    ib_uid = AD_ADMIN_UID,
+    ib_user = AD_ADMIN_USER,
+    ad_rows_html = ad_rows_html,
+  );
+
+  HttpResponse::Ok()
+    .content_type("text/html; charset=utf-8")
+    .body(html)
+}
+
+#[post("/v1/admin/ads/create")]
+async fn ads_admin_create(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  payload: web::Form<AdsCreateRequest>,
+) -> impl Responder {
+  if !is_expected_ad_admin_identity(payload.ib_uid, &payload.ib_user)
+    || !is_ad_admin_session(&req, &state).await
+  {
+    return HttpResponse::Forbidden().body("Forbidden");
+  }
+
+  if payload.imagepath.trim().is_empty() || payload.url.trim().is_empty() {
+    return HttpResponse::BadRequest().body("imagepath and url are required");
+  }
+
+  let insert_result = sqlx::query(
+    "INSERT INTO advert_image (imagepath, url, clicks, views) VALUES (?, ?, 0, 0)",
+  )
+  .bind(payload.imagepath.trim())
+  .bind(payload.url.trim())
+  .execute(&state.db_pool)
+  .await;
+
+  match insert_result {
+    Ok(_) => HttpResponse::SeeOther()
+      .insert_header((
+        "Location",
+        format!("/v1/admin/ads?ib_uid={}&ib_user={}", AD_ADMIN_UID, AD_ADMIN_USER),
+      ))
+      .finish(),
+    Err(err) => HttpResponse::InternalServerError().body(format!("Failed to create ad: {}", err)),
+  }
+}
+
+#[post("/v1/admin/ads/update")]
+async fn ads_admin_update(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  payload: web::Form<AdsUpdateRequest>,
+) -> impl Responder {
+  if !is_expected_ad_admin_identity(payload.ib_uid, &payload.ib_user)
+    || !is_ad_admin_session(&req, &state).await
+  {
+    return HttpResponse::Forbidden().body("Forbidden");
+  }
+
+  if payload.imagepath.trim().is_empty() || payload.url.trim().is_empty() {
+    return HttpResponse::BadRequest().body("imagepath and url are required");
+  }
+
+  let update_result = sqlx::query(
+    "UPDATE advert_image SET imagepath = ?, url = ? WHERE imageid = ? LIMIT 1",
+  )
+  .bind(payload.imagepath.trim())
+  .bind(payload.url.trim())
+  .bind(payload.imageid)
+  .execute(&state.db_pool)
+  .await;
+
+  match update_result {
+    Ok(_) => HttpResponse::SeeOther()
+      .insert_header((
+        "Location",
+        format!("/v1/admin/ads?ib_uid={}&ib_user={}", AD_ADMIN_UID, AD_ADMIN_USER),
+      ))
+      .finish(),
+    Err(err) => HttpResponse::InternalServerError().body(format!("Failed to update ad: {}", err)),
+  }
+}
+
+#[post("/v1/admin/ads/delete")]
+async fn ads_admin_delete(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  payload: web::Form<AdsDeleteRequest>,
+) -> impl Responder {
+  if !is_expected_ad_admin_identity(payload.ib_uid, &payload.ib_user)
+    || !is_ad_admin_session(&req, &state).await
+  {
+    return HttpResponse::Forbidden().body("Forbidden");
+  }
+
+  let delete_result = sqlx::query("DELETE FROM advert_image WHERE imageid = ? LIMIT 1")
+    .bind(payload.imageid)
+    .execute(&state.db_pool)
+    .await;
+
+  match delete_result {
+    Ok(_) => HttpResponse::SeeOther()
+      .insert_header((
+        "Location",
+        format!("/v1/admin/ads?ib_uid={}&ib_user={}", AD_ADMIN_UID, AD_ADMIN_USER),
+      ))
+      .finish(),
+    Err(err) => HttpResponse::InternalServerError().body(format!("Failed to delete ad: {}", err)),
+  }
+}
+
 #[get("/v1/warroom")]
 async fn war_room(
   req: HttpRequest,
@@ -4168,6 +4439,38 @@ async fn send_direct_message(
       }
     }
   }
+}
+
+#[get("/v1/ad/click/{imageid}")]
+async fn ad_click(
+  state: web::Data<AppState>,
+  path: web::Path<i64>,
+) -> impl Responder {
+  let imageid = path.into_inner();
+
+  let ad_row = sqlx::query_as::<_, AdvertImageRow>(
+      "SELECT imageid, imagepath, url FROM advert_image WHERE imageid = ? LIMIT 1"
+    )
+    .bind(imageid)
+    .fetch_optional(&state.db_pool)
+    .await;
+
+  let Some(ad_row) = ad_row.ok().flatten() else {
+    return HttpResponse::SeeOther()
+      .insert_header(("Location", "https://is-by.pro/advertise.html"))
+      .finish();
+  };
+
+  let _ = sqlx::query(
+    "UPDATE advert_image SET clicks = COALESCE(clicks, 0) + 1 WHERE imageid = ? LIMIT 1",
+  )
+  .bind(imageid)
+  .execute(&state.db_pool)
+  .await;
+
+  HttpResponse::SeeOther()
+    .insert_header(("Location", ad_row.url))
+    .finish()
 }
 
 #[get("/v1/dm/messages")]
@@ -4616,9 +4919,14 @@ async fn main() -> std::io::Result<()> {
       .service(projects_page)
       .service(create_project_profile)
       .service(update_project_profile)
+      .service(ads_admin_page)
+      .service(ads_admin_create)
+      .service(ads_admin_update)
+      .service(ads_admin_delete)
       .service(war_room)
       .service(inbox)
       .service(send_direct_message)
+      .service(ad_click)
       .service(direct_messages)
       .service(direct_message_unread_count)
       .service(github_auth_start)
