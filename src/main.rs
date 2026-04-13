@@ -346,7 +346,9 @@ struct AdsUserDeleteRequest {
 
 #[derive(Deserialize)]
 struct PayPalReturnQuery {
-  token: String,
+  token: Option<String>,
+  subscription_id: Option<String>,
+  ba_token: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1095,21 +1097,15 @@ async fn paypal_access_token() -> Result<String, String> {
     .ok_or_else(|| "PayPal token missing access_token".to_string())
 }
 
-async fn paypal_create_order(imageid: i64) -> Result<String, String> {
+async fn paypal_create_subscription(imageid: i64) -> Result<String, String> {
   let token = paypal_access_token().await?;
-  let endpoint = format!("{}/v2/checkout/orders", paypal_base_url().trim_end_matches('/'));
-  let ad_price = std::env::var("AD_PRICE_USD").unwrap_or_else(|_| "25.00".to_string());
+  let endpoint = format!("{}/v1/billing/subscriptions", paypal_base_url().trim_end_matches('/'));
+  let plan_id = std::env::var("PAYPAL_PLAN_ID")
+    .map_err(|_| "Missing PAYPAL_PLAN_ID (monthly billing plan id)".to_string())?;
 
   let body = json!({
-    "intent": "CAPTURE",
-    "purchase_units": [{
-      "amount": {
-        "currency_code": "USD",
-        "value": ad_price
-      },
-      "custom_id": imageid.to_string(),
-      "description": "is-by.pro advertisement placement"
-    }],
+    "plan_id": plan_id,
+    "custom_id": imageid.to_string(),
     "application_context": {
       "return_url": format!("https://{}/v1/ads/paypal/return", DOMAIN),
       "cancel_url": format!("https://{}/v1/ads/paypal/cancel", DOMAIN)
@@ -1122,17 +1118,17 @@ async fn paypal_create_order(imageid: i64) -> Result<String, String> {
     .json(&body)
     .send()
     .await
-    .map_err(|e| format!("PayPal create order failed: {}", e))?;
+    .map_err(|e| format!("PayPal create subscription failed: {}", e))?;
 
   if !response.status().is_success() {
     let body = response.text().await.unwrap_or_default();
-    return Err(format!("PayPal create order rejected: {}", body));
+    return Err(format!("PayPal create subscription rejected: {}", body));
   }
 
   let json: Value = response
     .json()
     .await
-    .map_err(|e| format!("PayPal create order parse failed: {}", e))?;
+    .map_err(|e| format!("PayPal create subscription parse failed: {}", e))?;
 
   let approve_url = json
     .get("links")
@@ -1147,7 +1143,7 @@ async fn paypal_create_order(imageid: i64) -> Result<String, String> {
         }
       })
     })
-    .ok_or_else(|| "PayPal create order missing approval URL".to_string())?;
+    .ok_or_else(|| "PayPal create subscription missing approval URL".to_string())?;
 
   Ok(approve_url.to_string())
 }
@@ -4684,11 +4680,11 @@ async fn ads_user_create(
     Err(err) => return HttpResponse::InternalServerError().body(format!("Failed to create ad: {}", err)),
   };
 
-  match paypal_create_order(imageid).await {
+  match paypal_create_subscription(imageid).await {
     Ok(approval_url) => HttpResponse::SeeOther()
       .insert_header(("Location", approval_url))
       .finish(),
-    Err(err) => HttpResponse::InternalServerError().body(format!("Ad created but PayPal order failed: {}", err)),
+    Err(err) => HttpResponse::InternalServerError().body(format!("Ad created but PayPal subscription failed: {}", err)),
   }
 }
 
@@ -4717,11 +4713,11 @@ async fn ads_user_pay(
     Err(err) => return HttpResponse::InternalServerError().body(format!("Ownership check failed: {}", err)),
   }
 
-  match paypal_create_order(imageid).await {
+  match paypal_create_subscription(imageid).await {
     Ok(approval_url) => HttpResponse::SeeOther()
       .insert_header(("Location", approval_url))
       .finish(),
-    Err(err) => HttpResponse::InternalServerError().body(format!("PayPal order failed: {}", err)),
+    Err(err) => HttpResponse::InternalServerError().body(format!("PayPal subscription failed: {}", err)),
   }
 }
 
@@ -4740,37 +4736,51 @@ async fn ads_paypal_return(
     Err(err) => return HttpResponse::InternalServerError().body(err),
   };
 
-  let order_endpoint = format!(
-    "{}/v2/checkout/orders/{}",
+  let subscription_id = query
+    .subscription_id
+    .clone()
+    .or_else(|| query.token.clone())
+    .or_else(|| query.ba_token.clone())
+    .unwrap_or_default();
+
+  if subscription_id.trim().is_empty() {
+    return HttpResponse::BadRequest().body("Missing PayPal subscription identifier");
+  }
+
+  let subscription_endpoint = format!(
+    "{}/v1/billing/subscriptions/{}",
     paypal_base_url().trim_end_matches('/'),
-    query.token
+    subscription_id
   );
 
-  let order_response = match reqwest::Client::new()
-    .get(order_endpoint)
+  let subscription_response = match reqwest::Client::new()
+    .get(subscription_endpoint)
     .bearer_auth(&access_token)
     .send()
     .await
   {
     Ok(response) => response,
-    Err(err) => return HttpResponse::InternalServerError().body(format!("PayPal order lookup failed: {}", err)),
+    Err(err) => return HttpResponse::InternalServerError().body(format!("PayPal subscription lookup failed: {}", err)),
   };
 
-  if !order_response.status().is_success() {
-    let body = order_response.text().await.unwrap_or_default();
-    return HttpResponse::InternalServerError().body(format!("PayPal order lookup rejected: {}", body));
+  if !subscription_response.status().is_success() {
+    let body = subscription_response.text().await.unwrap_or_default();
+    return HttpResponse::InternalServerError().body(format!("PayPal subscription lookup rejected: {}", body));
   }
 
-  let order_json: Value = match order_response.json().await {
+  let subscription_json: Value = match subscription_response.json().await {
     Ok(json) => json,
-    Err(err) => return HttpResponse::InternalServerError().body(format!("PayPal order lookup parse failed: {}", err)),
+    Err(err) => return HttpResponse::InternalServerError().body(format!("PayPal subscription lookup parse failed: {}", err)),
   };
 
-  let custom_id = order_json
-    .get("purchase_units")
-    .and_then(Value::as_array)
-    .and_then(|units| units.first())
-    .and_then(|unit| unit.get("custom_id"))
+  let subscription_status = subscription_json
+    .get("status")
+    .and_then(Value::as_str)
+    .unwrap_or_default()
+    .to_string();
+
+  let custom_id = subscription_json
+    .get("custom_id")
     .and_then(Value::as_str)
     .unwrap_or_default();
 
@@ -4795,32 +4805,17 @@ async fn ads_paypal_return(
     return HttpResponse::Forbidden().body("Not your ad");
   }
 
-  let capture_endpoint = format!(
-    "{}/v2/checkout/orders/{}/capture",
-    paypal_base_url().trim_end_matches('/'),
-    query.token
-  );
-
-  let capture_response = match reqwest::Client::new()
-    .post(capture_endpoint)
-    .bearer_auth(&access_token)
-    .json(&json!({}))
-    .send()
-    .await
-  {
-    Ok(response) => response,
-    Err(err) => return HttpResponse::InternalServerError().body(format!("PayPal capture failed: {}", err)),
+  let local_payment_status = if subscription_status == "ACTIVE" {
+    "paid"
+  } else {
+    "pending"
   };
 
-  if !capture_response.status().is_success() {
-    let body = capture_response.text().await.unwrap_or_default();
-    return HttpResponse::InternalServerError().body(format!("PayPal capture rejected: {}", body));
-  }
-
   let update_result = sqlx::query(
-    "UPDATE advert_image SET payment_status = 'paid', paypal_order_id = ? WHERE imageid = ? AND owner_uid = ? LIMIT 1",
+    "UPDATE advert_image SET payment_status = ?, paypal_order_id = ? WHERE imageid = ? AND owner_uid = ? LIMIT 1",
   )
-  .bind(&query.token)
+  .bind(local_payment_status)
+  .bind(&subscription_id)
   .bind(imageid)
   .bind(session_uid)
   .execute(&state.db_pool)
@@ -5446,7 +5441,7 @@ async fn main() -> std::io::Result<()> {
   let _ = dotenvy::from_filename(GITHUB_CLIENT_SECRET_ENV);
   let _ = dotenvy::from_filename(MYSQL_ENV);
   let _ = dotenvy::from_filename(PAYPAL_ENV);
-  let _ = dotenvy::from_filename("PAYPAL.env");
+  let _ = dotenvy::from_filename(".env/PAYPAL.env");
 
   let db_pool = create_db_pool()
     .await
