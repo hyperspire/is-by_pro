@@ -4114,20 +4114,22 @@ async fn ads_admin_page(
   <p><strong>ID:</strong> {imageid}</p>
   <p><strong>Views:</strong> {views} | <strong>Clicks:</strong> {clicks}</p>
   <p><strong>Preview:</strong><br><img src="{imagepath}" width="555" height="111" alt="{imageid}"></p>
-  <form action="https://{domain}/v1/admin/ads/update" method="POST">
+  <form id="ad-update-{imageid}" action="https://{domain}/v1/admin/ads/update" method="POST">
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
     <input type="hidden" name="imageid" value="{imageid}">
     <p>Image Path: <input class="post" type="text" name="imagepath" value="{imagepath}" maxlength="1024" required></p>
     <p>Target URL: <input class="post" type="text" name="url" value="{url}" maxlength="2048" required></p>
-    <input class="post-submit" type="submit" value="Update Ad">
   </form>
-  <form action="https://{domain}/v1/admin/ads/delete" method="POST" style="margin-top:8px;">
-    <input type="hidden" name="ib_uid" value="{ib_uid}">
-    <input type="hidden" name="ib_user" value="{ib_user}">
-    <input type="hidden" name="imageid" value="{imageid}">
-    <input class="post-cancel" type="submit" value="Delete Ad">
-  </form>
+  <div style="text-align:center; margin-top:8px;">
+    <input class="post-submit" type="submit" form="ad-update-{imageid}" value="Update Ad">
+    <form action="https://{domain}/v1/admin/ads/delete" method="POST" style="display:inline-block; margin-left:10px;">
+      <input type="hidden" name="ib_uid" value="{ib_uid}">
+      <input type="hidden" name="ib_user" value="{ib_user}">
+      <input type="hidden" name="imageid" value="{imageid}">
+      <input class="post-cancel" type="submit" value="Delete Ad">
+    </form>
+  </div>
 </div>"#,
       domain = DOMAIN,
       ib_uid = AD_ADMIN_UID,
