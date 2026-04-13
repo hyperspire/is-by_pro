@@ -57,8 +57,10 @@ use rustls::{ServerConfig, pki_types::CertificateDer};
 use sqlx::{mysql::MySqlPoolOptions, MySqlPool};
 use rustls_pemfile::{certs, private_key};
 use std::collections::HashSet;
+use std::env;
 use std::fs::{self, File};
 use std::io::BufReader;
+use std::path::PathBuf;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -840,29 +842,56 @@ fn render_post_meta(ib_uid: &str, username: &str, timestamp: &str) -> String {
 }
 
 fn random_advert_image() -> String {
-  const ADVERT_DIRECTORY: &str = "./webroot/images/advert";
   const FALLBACK_IMAGE: &str = "/images/advert/Death_Angel-555x111.png";
 
-  let advert_images: Vec<String> = fs::read_dir(ADVERT_DIRECTORY)
-    .ok()
-    .into_iter()
-    .flat_map(|entries| entries.filter_map(Result::ok))
-    .filter_map(|entry| {
-      let file_type = entry.file_type().ok()?;
-      if !file_type.is_file() {
-        return None;
-      }
+  let mut candidate_directories = vec![
+    PathBuf::from("./webroot/images/advert"),
+    PathBuf::from("webroot/images/advert"),
+    PathBuf::from("/usr/local/bin/webroot/images/advert"),
+  ];
 
-      let file_name = entry.file_name();
-      let file_name = file_name.to_str()?;
-      Some(format!("/images/advert/{file_name}"))
+  if let Ok(current_exe) = env::current_exe() {
+    if let Some(exe_dir) = current_exe.parent() {
+      candidate_directories.push(exe_dir.join("webroot/images/advert"));
+    }
+  }
+
+  let advert_images: Vec<String> = candidate_directories
+    .into_iter()
+    .find_map(|directory| {
+      let images: Vec<String> = fs::read_dir(directory)
+        .ok()?
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+          let file_type = entry.file_type().ok()?;
+          if !file_type.is_file() {
+            return None;
+          }
+
+          let file_name = entry.file_name();
+          let file_name = file_name.to_str()?;
+          let extension = file_name.rsplit('.').next()?.to_ascii_lowercase();
+          if !matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp") {
+            return None;
+          }
+
+          Some(format!("/images/advert/{file_name}"))
+        })
+        .collect();
+
+      if images.is_empty() {
+        None
+      } else {
+        Some(images)
+      }
     })
-    .collect();
+    .unwrap_or_default();
 
   advert_images
     .choose(&mut rand::thread_rng())
     .cloned()
     .unwrap_or_else(|| FALLBACK_IMAGE.to_string())
+    + &format!("?v={}", rand::random::<u64>())
 }
 
 fn render_ack_controls(page_ib_uid: i64, page_ib_user: &str, post_id: &str) -> String {
