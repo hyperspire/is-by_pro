@@ -4556,7 +4556,7 @@ async fn ads_user_page(
           <form action="https://{domain}/v1/ads/create" method="POST" enctype="multipart/form-data">
             <p>Target URL: <input class="post" type="text" name="url" maxlength="2048" placeholder="https://example.com" required></p>
             <p>Image (must be exactly 555x111): <input type="file" name="ad_image" accept="image/png,image/jpeg,image/gif,image/webp" required></p>
-            <input class="post-submit" type="submit" value="Upload + Pay with PayPal" style="position:static; left:0; margin:0;">
+            <input class="post-submit" type="submit" value="Upload + Pay with PayPal" style="position:static; left:0; display:block; width:auto; min-width:280px; padding:6px 16px; margin:12px auto 0 auto;">
           </form>
         </div>
         {ad_rows_html}
