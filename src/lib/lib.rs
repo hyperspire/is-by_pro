@@ -1,10 +1,10 @@
 pub const DOMAIN: &str = "is-by.pro";
-pub const IB_CA_KEY: &str = "/usr/local/bin/ssl/is-by.pro.key";
-pub const IB_CA_CERT: &str = "/usr/local/bin/ssl/is-by.pro.crt";
-pub const IB_ENV: &str = "/usr/local/bin/.env";
-pub const GITHUB_CLIENT_SECRET_ENV: &str = "/usr/local/bin/.env/GITHUB_CLIENT_SECRET.env";
-pub const MYSQL_ENV: &str = "/usr/local/bin/.env/MYSQL.env";
-pub const PAYPAL_ENV: &str = "/usr/local/bin/.env/PAYPAL.env";
+pub const IB_CA_KEY: &str = "ssl/is-by.pro.key";
+pub const IB_CA_CERT: &str = "ssl/is-by.pro.crt";
+pub const IB_ENV: &str = ".env";
+pub const GITHUB_CLIENT_SECRET_ENV: &str = ".env/GITHUB_CLIENT_SECRET.env";
+pub const MYSQL_ENV: &str = ".env/MYSQL.env";
+pub const PAYPAL_ENV: &str = ".env/PAYPAL.env";
 pub const COPYRIGHT: u32 = 2026;
 pub const MYSQL_USER: &str = "hyperuser";
 pub const MYSQL_DATABASE: &str = "isby";

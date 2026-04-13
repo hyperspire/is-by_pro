@@ -1073,8 +1073,8 @@ async fn paypal_access_token() -> Result<String, String> {
 
   let endpoint = format!("{}/v1/oauth2/token", paypal_base_url().trim_end_matches('/'));
   let response = reqwest::Client::new()
-    .post(endpoint)
-    .basic_auth(client_id, Some(client_secret))
+    .post(&endpoint)
+    .basic_auth(&client_id, Some(client_secret))
     .form(&[("grant_type", "client_credentials")])
     .send()
     .await
@@ -1082,7 +1082,18 @@ async fn paypal_access_token() -> Result<String, String> {
 
   if !response.status().is_success() {
     let body = response.text().await.unwrap_or_default();
-    return Err(format!("PayPal token request rejected: {}", body));
+    let client_id_preview = if client_id.len() >= 6 {
+      format!("{}...", &client_id[..6])
+    } else {
+      "<short>".to_string()
+    };
+    return Err(format!(
+      "PayPal token request rejected from {} (client_id={}, len={}): {}",
+      endpoint,
+      client_id_preview,
+      client_id.len(),
+      body
+    ));
   }
 
   let json: Value = response
