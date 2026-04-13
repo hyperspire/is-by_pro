@@ -1362,7 +1362,7 @@ async fn render_profile_html(
   <div id="main-section">
     <div id="media-section">
       <div>
-      <img src="/images/Death_Angel-555x111.png" alt=":Death_Angel-555x111.png:" width="555"
+      <img src="{advert_image}" width="555"
           height="111">
       </div>
       <div id="navigation-section">
@@ -1381,6 +1381,7 @@ async fn render_profile_html(
       </div>"#,
     ib_user = escape_html(ib_user),
     ib_uid = ib_uid,
+    advert_image = random_advert_image(),
     navigation_links = navigation_links,
     domain = DOMAIN
   );
@@ -1676,7 +1677,7 @@ async fn render_search_users_html(
   <div id="main-section">
     <div id="media-section">
       <div>
-      <img src="/images/Death_Angel-555x111.png" alt=":Death_Angel-555x111.png:" width="555"
+      <img src="{advert_image}" width="555"
           height="111">
       </div>
       <div id="navigation-section">
@@ -1690,6 +1691,7 @@ async fn render_search_users_html(
     domain = DOMAIN,
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
+    advert_image = random_advert_image(),
     navigation_links = navigation_links,
     raw_query = escape_html(raw_query),
     search_results_html = search_results_html
@@ -1882,7 +1884,7 @@ async fn render_search_posts_html(
   <div id="main-section">
     <div id="media-section">
       <div>
-      <img src="/images/Death_Angel-555x111.png" alt=":Death_Angel-555x111.png:" width="555"
+      <img src="{advert_image}" width="555"
           height="111">
       </div>
       <div id="navigation-section">
@@ -1896,6 +1898,7 @@ async fn render_search_posts_html(
     domain = DOMAIN,
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
+    advert_image = random_advert_image(),
     navigation_links = navigation_links,
     tag = escape_html(
       normalized_tag
@@ -2117,7 +2120,7 @@ async fn render_projects_html(
   <div id="main-section">
     <div id="media-section">
       <div>
-      <img src="/images/Death_Angel-555x111.png" alt=":Death_Angel-555x111.png:" width="555"
+      <img src="{advert_image}" width="555"
           height="111">
       </div>
       <div id="navigation-section">
@@ -2143,6 +2146,7 @@ async fn render_projects_html(
     domain = DOMAIN,
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
+    advert_image = random_advert_image(),
     navigation_links = navigation_links,
     add_project_form_html = add_project_form_html,
     projects_html = projects_html,
@@ -2369,7 +2373,7 @@ async fn render_war_room_html(
   <div id="main-section">
     <div id="media-section">
       <div>
-      <img src="/images/Death_Angel-555x111.png" alt=":Death_Angel-555x111.png:" width="555"
+      <img src="{advert_image}" width="555"
           height="111">
       </div>
       <div id="navigation-section">
@@ -2394,6 +2398,7 @@ async fn render_war_room_html(
     domain = DOMAIN,
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
+    advert_image = random_advert_image(),
     navigation_links = navigation_links,
     war_room_content = war_room_content
   );
@@ -2588,7 +2593,7 @@ async fn render_inbox_html(
   <div id="main-section">
     <div id="media-section">
       <div>
-      <img src="/images/Death_Angel-555x111.png" alt=":Death_Angel-555x111.png:" width="555"
+      <img src="{advert_image}" width="555"
           height="111">
       </div>
       <div id="navigation-section">
@@ -2625,6 +2630,7 @@ async fn render_inbox_html(
     domain = DOMAIN,
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
+    advert_image = random_advert_image(),
     navigation_links = navigation_links,
     contact_list_html = contact_list_html,
     default_target_user = escape_html(&default_target_user)
@@ -2826,7 +2832,7 @@ async fn render_single_post_html(
   <div id="main-section">
     <div id="media-section">
       <div>
-      <img src="{advert_image}" alt=":Death_Angel-555x111.png:" width="555"
+      <img src="{advert_image}" width="555"
           height="111">
       </div>
       <div id="navigation-section">
@@ -3421,7 +3427,7 @@ async fn edit_profile(
   <div id="main-section">
     <div id="media-section">
       <div>
-        <img src="/images/Death_Angel-555x111.png" alt=":Death_Angel-555x111.png:" width="555" height="111">
+        <img src="{advert_image}" width="555" height="111">
       </div>
       <div id="navigation-section">
         <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
@@ -3446,6 +3452,7 @@ async fn edit_profile(
     domain = DOMAIN,
     ib_uid = query.ib_uid,
     ib_user = escape_html(&query.ib_user),
+    advert_image = random_advert_image(),
     ib_ibp = escape_html(&row.ib_ibp),
     ib_pro = escape_html(&row.ib_pro),
     ib_services = escape_html(&row.ib_services),
