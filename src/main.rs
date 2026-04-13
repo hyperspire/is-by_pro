@@ -2732,7 +2732,7 @@ async fn render_single_post_html(
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="twitter:card" content=":[[ :for-the: [[ QWOD-MJ12: ATSOSSDEV-A: HyperSpire-Foundation: is-with: GitHub-driven: social-media: for-the: GitHub-enthusiasts: ]]: ]]:">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:site" content="@mj12_agency">
   <meta property="og:title" content=":[[ :is-by: pro: {ib_user}: ]]:">
   <meta property="og:description" content="GitHub-driven social media for the GitHub enthusiasts.">
@@ -4368,6 +4368,7 @@ async fn hello() -> impl Responder {
   <link rel="stylesheet" type="text/css" href="/css/is-by.css">
   <script src="/js/is-by_user.js" type="text/javascript"></script>
   <title>:[[ :is-by: pro: anti-social: social-media: ]]:</title>
+  <meta name="description" content="GitHub-driven social media for the GitHub enthusiasts.">
 </head>
 
 <body>
