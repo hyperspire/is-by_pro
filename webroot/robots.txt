@@ -1,2 +1,3 @@
 User-agent: *
 Allow: /
+Sitemap: https://is-by.pro/sitemap.xml
