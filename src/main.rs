@@ -5739,7 +5739,7 @@ async fn main() -> std::io::Result<()> {
           >,
         >;
 
-        if !host_ok || !origin_ok {
+        if !host_ok || (method == Method::POST && !origin_ok) {
           let response = req.into_response(HttpResponse::Forbidden().body("Forbidden"));
           let fut: MiddlewareFuture = Box::pin(async move {
             Ok(response.map_into_right_body::<actix_web::body::BoxBody>())
