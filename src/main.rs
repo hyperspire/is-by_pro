@@ -6415,7 +6415,7 @@ async fn github_auth_callback(
 
   match render_profile_html(&state, user.id as i64, &user.login, Some(user.id as i64)).await {
     Ok(_) => HttpResponse::SeeOther()
-      .insert_header(("Location", format!("/v1/profile/{}", user.login)))
+      .insert_header(("Location", format!("/v1/profile/{}", user.id)))
       .cookie(
         Cookie::build("ib_uid", user.id.to_string())
           .path("/")
