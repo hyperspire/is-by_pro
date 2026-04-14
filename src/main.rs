@@ -3717,7 +3717,7 @@ async fn user_hover_card_data(
   }))
 }
 
-#[get("/api/badge/{username}")]
+#[get("/api/badge/{username}.png")]
 async fn get_commander_badge(
   path: web::Path<String>,
   state: web::Data<AppState>,
