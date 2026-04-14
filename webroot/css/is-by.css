@@ -475,6 +475,10 @@ input[type=password] {
     gap: 8px;
 }
 
+#dm-form input[type=submit] {
+    align-self: center;
+}
+
 #dm-form input[type=text] {
     color: #cccccc !important;
     font-weight: bold;
