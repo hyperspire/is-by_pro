@@ -353,9 +353,10 @@ input[type=password] {
     align-items: center;
     justify-content: center;
     flex-wrap: wrap;
+    margin: 0 auto;
 }
 
-#profile-section #user-search-form input[name=query] {
+#user-search-form input[name=query] {
     color: #cccccc !important;
     text-decoration: none;
     font-weight: bold;
@@ -371,7 +372,7 @@ input[type=password] {
     width: 156px;
 }
 
-#profile-section #project-search-form input[name=query] {
+#project-search-form input[name=query] {
     color: #cccccc !important;
     text-decoration: none;
     font-weight: bold;
@@ -387,8 +388,8 @@ input[type=password] {
     width: 156px;
 }
 
-#profile-section #user-search-form input[type=submit],
-#profile-section #project-search-form input[type=submit],
+#user-search-form input[type=submit],
+#project-search-form input[type=submit],
 #profile-section #follow-form input[type=submit],
 #profile-section #unfollow-form input[type=submit],
 #profile-section #dm-form input[type=submit],
