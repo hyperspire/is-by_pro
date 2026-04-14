@@ -6285,8 +6285,7 @@ async fn direct_message_unread_count(
   }
 }
 
-#[get("/auth/github")]
-async fn github_auth_start(state: web::Data<AppState>) -> impl Responder {
+async fn github_auth_start_impl(state: web::Data<AppState>) -> HttpResponse {
   let oauth_state: String = rand::thread_rng()
     .sample_iter(&Alphanumeric)
     .take(32)
@@ -6312,12 +6311,21 @@ async fn github_auth_start(state: web::Data<AppState>) -> impl Responder {
     .finish()
 }
 
-#[get("/auth/github/callback")]
-async fn github_auth_callback(
+#[get("/auth/github")]
+async fn github_auth_start(state: web::Data<AppState>) -> impl Responder {
+  github_auth_start_impl(state).await
+}
+
+#[get("/v1/auth/github")]
+async fn github_auth_start_v1(state: web::Data<AppState>) -> impl Responder {
+  github_auth_start_impl(state).await
+}
+
+async fn github_auth_callback_impl(
   req: HttpRequest,
   query: web::Query<GithubCallback>,
   state: web::Data<AppState>,
-) -> impl Responder {
+) -> HttpResponse {
   let cookie_state = match req.cookie("gh_oauth_state") {
     Some(c) => c.value().to_string(),
     None => return HttpResponse::BadRequest().body("Missing oauth state cookie"),
@@ -6436,6 +6444,24 @@ async fn github_auth_callback(
       .cookie(remove_cookie("gh_oauth_state"))
       .body(err),
   }
+}
+
+#[get("/auth/github/callback")]
+async fn github_auth_callback(
+  req: HttpRequest,
+  query: web::Query<GithubCallback>,
+  state: web::Data<AppState>,
+) -> impl Responder {
+  github_auth_callback_impl(req, query, state).await
+}
+
+#[get("/v1/auth/github/callback")]
+async fn github_auth_callback_v1(
+  req: HttpRequest,
+  query: web::Query<GithubCallback>,
+  state: web::Data<AppState>,
+) -> impl Responder {
+  github_auth_callback_impl(req, query, state).await
 }
 
 #[get("/")]
@@ -6637,7 +6663,9 @@ async fn main() -> std::io::Result<()> {
       .service(direct_messages)
       .service(direct_message_unread_count)
       .service(github_auth_start)
+        .service(github_auth_start_v1)
       .service(github_auth_callback)
+        .service(github_auth_callback_v1)
       .service(Files::new("/", "./webroot").default_handler(
           actix_web::web::to(|| async {
               actix_web::HttpResponse::NotFound().body("404 Not Found")
