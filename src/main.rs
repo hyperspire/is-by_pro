@@ -913,21 +913,37 @@ async fn lookup_ibp_by_uid(state: &AppState, uid: i64) -> Option<String> {
   Some(row.ibp)
 }
 
-fn get_rank_asset(total_unique_acknowledgments: i64) -> &'static str {
-  let (rank_level, _) = rank_from_unique_acknowledgments(total_unique_acknowledgments);
+struct RankInfo {
+  level: i64,
+  name: &'static str,
+  asset: &'static str,
+  threshold: i64,
+}
 
-  match rank_level {
-    1 => "pvt.svg",
-    2 => "cpl.svg",
-    3 => "sgt.svg",
-    4 => "ssg.svg",
-    5 => "sfc.svg",
-    6 => "msg.svg",
-    7 => "1sg.svg",
-    8 => "sgm.svg",
-    9 => "lt.svg",
-    _ => "cdr.svg",
+const RANK_TABLE: &[RankInfo] = &[
+  RankInfo { level: 10, name: "Commander", asset: "cdr.svg", threshold: 9001 },
+  RankInfo { level: 9, name: "Lieutenant", asset: "lt.svg", threshold: 8001 },
+  RankInfo { level: 8, name: "Sergeant Major", asset: "sgm.svg", threshold: 7001 },
+  RankInfo { level: 7, name: "First Sergeant", asset: "1sg.svg", threshold: 6001 },
+  RankInfo { level: 6, name: "Master Sergeant", asset: "msg.svg", threshold: 5001 },
+  RankInfo { level: 5, name: "Sergeant First Class", asset: "sfc.svg", threshold: 4001 },
+  RankInfo { level: 4, name: "Staff Sergeant", asset: "ssg.svg", threshold: 3001 },
+  RankInfo { level: 3, name: "Sergeant", asset: "sgt.svg", threshold: 2001 },
+  RankInfo { level: 2, name: "Corporal", asset: "cpl.svg", threshold: 1001 },
+  RankInfo { level: 1, name: "Private", asset: "pvt.svg", threshold: 0 },
+];
+
+fn get_rank_info(acks: i64) -> &'static RankInfo {
+  for rank in RANK_TABLE {
+    if acks >= rank.threshold {
+      return rank;
+    }
   }
+  &RANK_TABLE[RANK_TABLE.len() - 1]
+}
+
+fn get_rank_asset(acks: i64) -> &'static str {
+  get_rank_info(acks).asset
 }
 
 fn render_post_meta(ib_uid: &str, username: &str, timestamp: &str, user_total_acks: i64) -> String {
@@ -1091,27 +1107,8 @@ async fn get_session_identity(req: &HttpRequest, state: &AppState) -> Option<(i6
 }
 
 fn rank_from_unique_acknowledgments(total: i64) -> (i64, &'static str) {
-  if total < 1001 {
-    (1, "Private")
-  } else if total < 2001 {
-    (2, "Corporal")
-  } else if total < 3001 {
-    (3, "Sergeant")
-  } else if total < 4001 {
-    (4, "Staff Sergeant")
-  } else if total < 5001 {
-    (5, "Sergeant First Class")
-  } else if total < 6001 {
-    (6, "Master Sergeant")
-  } else if total < 7001 {
-    (7, "First Sergeant")
-  } else if total < 8001 {
-    (8, "Sergeant Major")
-  } else if total < 9001 {
-    (9, "Lieutenant")
-  } else {
-    (10, "Commander")
-  }
+  let rank = get_rank_info(total);
+  (rank.level, rank.name)
 }
 
 fn paypal_base_url() -> String {
