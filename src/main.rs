@@ -1572,9 +1572,20 @@ async fn ensure_legacy_user_from_github(
   github_id: u64,
   github_username: &str,
 ) -> Result<(), sqlx::Error> {
-  // CREATE TABLE user (ib_uid varchar(64) PRIMARY KEY, username varchar(255), followers text);
-  sqlx::query("INSERT IGNORE INTO user (ib_uid, username, followers) VALUES (?, ?, '')")
+  // Keep the legacy user row in sync so profile redirects resolve by current GitHub login.
+  sqlx::query(
+    "INSERT INTO user (ib_uid, username, followers) VALUES (?, ?, '') ON DUPLICATE KEY UPDATE username = VALUES(username)",
+  )
     .bind(github_id.to_string())
+    .bind(github_username)
+    .execute(&state.db_pool)
+    .await?;
+
+  // Ensure the profile lookup table has at least a minimal row for GitHub-authenticated users.
+  sqlx::query(
+    "INSERT INTO pro (ib_uid, github, ibp, pro, services, location, website) VALUES (?, ?, '', '', '', '', '') ON DUPLICATE KEY UPDATE github = VALUES(github)",
+  )
+    .bind(github_id as i64)
     .bind(github_username)
     .execute(&state.db_pool)
     .await?;
