@@ -1835,8 +1835,8 @@ async fn render_profile_html(
     html += &format!(r#"
   </div>
   <div id="profile-section">
-    <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
     {sidebar_login_html}
+    <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -2058,9 +2058,20 @@ async fn render_search_users_html(
     };
     let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
+    let sidebar_login_html = if session_uid.is_none() {
+      r#"<div id="actions-section">
+      <div class="login-section">
+        <p><a href="/auth/github">Login with GitHub</a></p>
+      </div>
+    </div>"#
+        .to_string()
+    } else {
+      String::new()
+    };
 
     html += &format!(r#"
   <div id="profile-section">
+    {sidebar_login_html}
     <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
@@ -2103,6 +2114,7 @@ async fn render_search_users_html(
       ib_services = escape_html(&ib_pro.services),
       ib_location = escape_html(&ib_pro.location),
       ib_website = escape_html(&ib_pro.website),
+      sidebar_login_html = sidebar_login_html,
       related_userlist_html = related_userlist_html,
       trending_tags_html = trending_tags_html
     );
@@ -2270,9 +2282,20 @@ async fn render_search_posts_html(
     };
     let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
+    let sidebar_login_html = if session_uid.is_none() {
+      r#"<div id="actions-section">
+      <div class="login-section">
+        <p><a href="/auth/github">Login with GitHub</a></p>
+      </div>
+    </div>"#
+        .to_string()
+    } else {
+      String::new()
+    };
 
     html += &format!(r#"
   <div id="profile-section">
+    {sidebar_login_html}
     <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
@@ -2315,6 +2338,7 @@ async fn render_search_posts_html(
       ib_services = escape_html(&ib_pro.services),
       ib_location = escape_html(&ib_pro.location),
       ib_website = escape_html(&ib_pro.website),
+      sidebar_login_html = sidebar_login_html,
       related_userlist_html = related_userlist_html,
       trending_tags_html = trending_tags_html
     );
@@ -2515,9 +2539,20 @@ async fn render_projects_html(
     };
     let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
+    let sidebar_login_html = if session_uid.is_none() {
+      r#"<div id="actions-section">
+      <div class="login-section">
+        <p><a href="/auth/github">Login with GitHub</a></p>
+      </div>
+    </div>"#
+        .to_string()
+    } else {
+      String::new()
+    };
 
     html += &format!(r#"
   <div id="profile-section">
+    {sidebar_login_html}
     <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
@@ -2560,6 +2595,7 @@ async fn render_projects_html(
       ib_services = escape_html(&ib_pro.services),
       ib_location = escape_html(&ib_pro.location),
       ib_website = escape_html(&ib_pro.website),
+      sidebar_login_html = sidebar_login_html,
       related_userlist_html = related_userlist_html,
       trending_tags_html = trending_tags_html
     );
@@ -2767,9 +2803,20 @@ async fn render_war_room_html(
     };
     let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
+    let sidebar_login_html = if session_uid.is_none() {
+      r#"<div id="actions-section">
+      <div class="login-section">
+        <p><a href="/auth/github">Login with GitHub</a></p>
+      </div>
+    </div>"#
+        .to_string()
+    } else {
+      String::new()
+    };
 
     html += &format!(r#"
   <div id="profile-section">
+    {sidebar_login_html}
     <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
@@ -2812,6 +2859,7 @@ async fn render_war_room_html(
       ib_services = escape_html(&ib_pro.services),
       ib_location = escape_html(&ib_pro.location),
       ib_website = escape_html(&ib_pro.website),
+      sidebar_login_html = sidebar_login_html,
       related_userlist_html = related_userlist_html,
       trending_tags_html = trending_tags_html
     );
@@ -3001,9 +3049,20 @@ async fn render_inbox_html(
     };
     let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
+    let sidebar_login_html = if session_uid.is_none() {
+      r#"<div id="actions-section">
+      <div class="login-section">
+        <p><a href="/auth/github">Login with GitHub</a></p>
+      </div>
+    </div>"#
+        .to_string()
+    } else {
+      String::new()
+    };
 
     html += &format!(r#"
   <div id="profile-section">
+    {sidebar_login_html}
     <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
@@ -3046,6 +3105,7 @@ async fn render_inbox_html(
       ib_services = escape_html(&ib_pro.services),
       ib_location = escape_html(&ib_pro.location),
       ib_website = escape_html(&ib_pro.website),
+      sidebar_login_html = sidebar_login_html,
       related_userlist_html = related_userlist_html,
       trending_tags_html = trending_tags_html
     );
@@ -3276,10 +3336,21 @@ async fn render_single_post_html(
     };
     let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
+    let sidebar_login_html = if session_uid.is_none() {
+      r#"<div id="actions-section">
+      <div class="login-section">
+        <p><a href="/auth/github">Login with GitHub</a></p>
+      </div>
+    </div>"#
+        .to_string()
+    } else {
+      String::new()
+    };
 
     html += &format!(r#"
   </div>
   <div id="profile-section">
+    {sidebar_login_html}
     <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
@@ -3321,6 +3392,7 @@ async fn render_single_post_html(
       ib_services = escape_html(&ib_pro.services),
       ib_location = escape_html(&ib_pro.location),
       ib_website = escape_html(&ib_pro.website),
+      sidebar_login_html = sidebar_login_html,
       related_userlist_html = related_userlist_html,
       trending_tags_html = trending_tags_html
     );
