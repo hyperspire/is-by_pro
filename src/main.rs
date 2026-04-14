@@ -4250,43 +4250,39 @@ async fn acknowledge_post(
     return HttpResponse::Forbidden().body("Session mismatch");
   }
 
-  let insert_result = sqlx::query(
-    "INSERT IGNORE INTO post_ack (postid, ib_uid) VALUES (?, ?)",
-  )
-  .bind(&payload.pid)
-  .bind(session_uid)
-  .execute(&state.db_pool)
-  .await;
-
-  let insert_result = match insert_result {
-    Ok(result) => result,
-    Err(err) => {
-      return HttpResponse::InternalServerError().body(format!("Failed to acknowledge post: {}", err));
-    }
+  let mut tx = match state.db_pool.begin().await {
+    Ok(t) => t,
+    Err(err) => return HttpResponse::InternalServerError().body(format!("Failed to start transaction: {}", err)),
   };
 
-  if insert_result.rows_affected() > 0 {
-    let update_result = sqlx::query(
-      "UPDATE post SET acknowledged_count = COALESCE(acknowledged_count, 0) + 1 WHERE postid = ? LIMIT 1",
-    )
+  let insert_result = sqlx::query("INSERT IGNORE INTO post_ack (postid, ib_uid) VALUES (?, ?)")
     .bind(&payload.pid)
-    .execute(&state.db_pool)
+    .bind(session_uid)
+    .execute(&mut *tx)
     .await;
 
-    if let Err(err) = update_result {
-      return HttpResponse::InternalServerError().body(format!("Failed to acknowledge post: {}", err));
-    }
+  match insert_result {
+    Ok(res) if res.rows_affected() > 0 => {
+      if let Err(err) = sqlx::query("UPDATE post SET acknowledged_count = COALESCE(acknowledged_count, 0) + 1 WHERE postid = ? LIMIT 1")
+        .bind(&payload.pid)
+        .execute(&mut *tx)
+        .await {
+          return HttpResponse::InternalServerError().body(format!("Failed to update post count: {}", err));
+        }
 
-    let update_user_total_ack_result = sqlx::query(
-      "UPDATE user SET total_acknowledgments = COALESCE(total_acknowledgments, 0) + 1 WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = (SELECT CAST(ib_uid AS CHAR CHARACTER SET utf8mb4) FROM post WHERE postid = ? LIMIT 1) COLLATE utf8mb4_unicode_ci LIMIT 1",
-    )
-    .bind(&payload.pid)
-    .execute(&state.db_pool)
-    .await;
-
-    if let Err(err) = update_user_total_ack_result {
-      return HttpResponse::InternalServerError().body(format!("Failed to update user acknowledgment total: {}", err));
+      if let Err(err) = sqlx::query("UPDATE user SET total_acknowledgments = COALESCE(total_acknowledgments, 0) + 1 WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = (SELECT CAST(ib_uid AS CHAR CHARACTER SET utf8mb4) FROM post WHERE postid = ? LIMIT 1) COLLATE utf8mb4_unicode_ci LIMIT 1")
+        .bind(&payload.pid)
+        .execute(&mut *tx)
+        .await {
+          return HttpResponse::InternalServerError().body(format!("Failed to update user total: {}", err));
+        }
     }
+    Ok(_) => (), // Already acknowledged
+    Err(err) => return HttpResponse::InternalServerError().body(format!("Failed to record acknowledgment: {}", err)),
+  };
+
+  if let Err(err) = tx.commit().await {
+    return HttpResponse::InternalServerError().body(format!("Failed to commit acknowledgment: {}", err));
   }
 
   let fallback_location = format!(
