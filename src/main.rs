@@ -5717,7 +5717,7 @@ async fn hello() -> impl Responder {
   <link rel="stylesheet" type="text/css" href="/css/is-by.css">
   <script src="/js/is-by_user.js" type="text/javascript"></script>
   <title>:[[ :is-by: pro: anti-social: social-media: ]]:</title>
-  <meta name="description" content="GitHub-driven social media for the GitHub enthusiasts.">
+  <meta name="description" content="GitHub-driven social media for the GitHub enthusiasts, rebels, misfits and outcasts.">
 </head>
 
 <body>
@@ -5726,7 +5726,7 @@ async fn hello() -> impl Responder {
       <img src="/images/Death_Angel-555x222.png" alt=":Death_Angel-555x222.png:" width="555"
         height="222">
       <div class="for-the">
-        <p><em>:[[ :for-the: [[ QWOD-MJ12: ATSOSSDEV-A: HyperSpire-Foundation: is-with: GitHub-driven: social-media: for-the: GitHub-enthusiasts: ]]: ]]:</em></p>
+        <p><em>:[[ :for-the: [[ QWOD-MJ12: ATSOSSDEV-A: HyperSpire-Foundation: is-with: GitHub-driven: social-media: for-the: GitHub-enthusiasts: rebels: misfits: outcasts: ]]: ]]:</em></p>
       </div>
       <div class="is-by">
         <h1 class="warno">:[[ :is-by: pro: for-the: [[ anti-social: social-media: for-the: [[ PEOPLE: is-by: WE: people: ]]: ]]: ]]:</h1>
