@@ -954,15 +954,22 @@ fn render_post_meta(ib_uid: &str, username: &str, timestamp: &str, user_total_ac
     username
   };
 
-  let rank_icon = get_rank_asset(user_total_acks);
+  let rank_info = get_rank_info(user_total_acks);
+  let rank_icon = rank_info.asset;
+  let glow_style = if rank_info.level >= 11 {
+    "filter: drop-shadow(0 0 3px #fff) drop-shadow(0 0 5px #fff); "
+  } else {
+    ""
+  };
 
   format!(
-    r#"<div class="post-meta"><a class="post-author" href="https://{domain}/v1/profile/{profile_target}"><img class="post-author-avatar" src="https://github.com/{profile_target}.png?size=32" alt="{username}" width="32" height="32"><img class="rank-insignia" src="/images/ranks/{rank_icon}" alt="Rank" width="16" height="16" style="vertical-align: middle; margin-left: 4px; margin-right: 4px;">{username}</a><span class="post-timestamp">{timestamp}</span></div>"#,
+    r#"<div class="post-meta"><a class="post-author" href="https://{domain}/v1/profile/{profile_target}"><img class="post-author-avatar" src="https://github.com/{profile_target}.png?size=32" alt="{username}" width="32" height="32"><img class="rank-insignia" src="/images/ranks/{rank_icon}" alt="Rank" width="16" height="16" style="{glow_style}vertical-align: middle; margin-left: 4px; margin-right: 4px;">{username}</a><span class="post-timestamp">{timestamp}</span></div>"#,
     domain = DOMAIN,
     profile_target = escape_html(profile_target),
     username = escape_html(username),
     timestamp = escape_html(timestamp),
-    rank_icon = rank_icon
+    rank_icon = rank_icon,
+    glow_style = glow_style
   )
 }
 
