@@ -3756,6 +3756,8 @@ async fn get_commander_badge(
       Either::Right(
         HttpResponse::Ok()
           .content_type("image/png")
+          .insert_header(("Access-Control-Allow-Origin", "*"))
+          .insert_header(("Cache-Control", "public, max-age=3600"))
           .body(image_data)
       )
     }
