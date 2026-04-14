@@ -1959,7 +1959,7 @@ async fn render_profile_html(
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
-      <p><strong>Project Language Search:</strong></p>
+      <p><strong>Project Search:</strong></p>
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
@@ -2185,7 +2185,7 @@ async fn render_search_users_html(
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
-      <p><strong>Project Language Search:</strong></p>
+      <p><strong>Project Search:</strong></p>
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
@@ -2417,7 +2417,7 @@ async fn render_search_posts_html(
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
-      <p><strong>Project Language Search:</strong></p>
+      <p><strong>Project Search:</strong></p>
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
@@ -2724,7 +2724,7 @@ async fn render_projects_html(
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
-      <p><strong>Project Language Search:</strong></p>
+      <p><strong>Project Search:</strong></p>
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
@@ -2979,7 +2979,7 @@ async fn render_search_projects_html(
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
-      <p><strong>Project Language Search:</strong></p>
+      <p><strong>Project Search:</strong></p>
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
@@ -3286,7 +3286,7 @@ async fn render_war_room_html(
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
-      <p><strong>Project Language Search:</strong></p>
+      <p><strong>Project Search:</strong></p>
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
@@ -3540,7 +3540,7 @@ async fn render_inbox_html(
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
-      <p><strong>Project Language Search:</strong></p>
+      <p><strong>Project Search:</strong></p>
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
@@ -3836,7 +3836,7 @@ async fn render_single_post_html(
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
-      <p><strong>Project Language Search:</strong></p>
+      <p><strong>Project Search:</strong></p>
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
