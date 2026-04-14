@@ -5726,7 +5726,7 @@ async fn main() -> std::io::Result<()> {
           .map(|origin| origin.eq_ignore_ascii_case(&allowed_origin))
           .unwrap_or(true);
 
-        let method_ok = method == Method::GET || method == Method::POST;
+        let method_ok = method == Method::GET || method == Method::POST || method == Method::HEAD;
 
         type MiddlewareFuture = std::pin::Pin<
           Box<
