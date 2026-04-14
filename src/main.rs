@@ -1976,7 +1976,7 @@ async fn render_profile_html(
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
-        <input type="text" name="query" placeholder="Search Project Languages" required>
+        <input type="text" name="query" placeholder="Search Projects" required>
         <input type="submit" value="Search Projects">
       </form>
     </div><br>
@@ -2202,7 +2202,7 @@ async fn render_search_users_html(
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
-        <input type="text" name="query" placeholder="Search Project Languages" required>
+        <input type="text" name="query" placeholder="Search Projects" required>
         <input type="submit" value="Search Projects">
       </form>
     </div><br>
@@ -2434,7 +2434,7 @@ async fn render_search_posts_html(
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
-        <input type="text" name="query" placeholder="Search Project Languages" required>
+        <input type="text" name="query" placeholder="Search Projects" required>
         <input type="submit" value="Search Projects">
       </form>
     </div><br>
@@ -2741,7 +2741,7 @@ async fn render_projects_html(
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
-        <input type="text" name="query" placeholder="Search Project Languages" required>
+        <input type="text" name="query" placeholder="Search Projects" required>
         <input type="submit" value="Search Projects">
       </form>
     </div><br>
@@ -2996,7 +2996,7 @@ async fn render_search_projects_html(
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
-        <input type="text" name="query" placeholder="Search Project Languages" required>
+        <input type="text" name="query" placeholder="Search Projects" required>
         <input type="submit" value="Search Projects">
       </form>
     </div><br>
@@ -3303,7 +3303,7 @@ async fn render_war_room_html(
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
-        <input type="text" name="query" placeholder="Search Project Languages" required>
+        <input type="text" name="query" placeholder="Search Projects" required>
         <input type="submit" value="Search Projects">
       </form>
     </div><br>
@@ -3557,7 +3557,7 @@ async fn render_inbox_html(
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
-        <input type="text" name="query" placeholder="Search Project Languages" required>
+        <input type="text" name="query" placeholder="Search Projects" required>
         <input type="submit" value="Search Projects">
       </form>
     </div><br>
@@ -3853,7 +3853,7 @@ async fn render_single_post_html(
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
-        <input type="text" name="query" placeholder="Search Project Languages" required>
+        <input type="text" name="query" placeholder="Search Projects" required>
         <input type="submit" value="Search Projects">
       </form>
     </div><br>
