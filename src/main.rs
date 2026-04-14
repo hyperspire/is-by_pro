@@ -84,6 +84,7 @@ struct PostRow {
   post: String,
   timestamp: String,
   acknowledged_count: i64,
+  user_total_acks: i64,
 }
 
 #[derive(sqlx::FromRow)]
@@ -392,6 +393,14 @@ struct EditPostRow {
 struct FollowLookupRow {
   username: String,
   followers: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct UserHoverLookupRow {
+  ib_uid: String,
+  username: String,
+  followers: String,
+  total_acknowledgments: i64,
 }
 
 #[derive(sqlx::FromRow)]
@@ -904,19 +913,39 @@ async fn lookup_ibp_by_uid(state: &AppState, uid: i64) -> Option<String> {
   Some(row.ibp)
 }
 
-fn render_post_meta(ib_uid: &str, username: &str, timestamp: &str) -> String {
+fn get_rank_asset(total_unique_acknowledgments: i64) -> &'static str {
+  let (rank_level, _) = rank_from_unique_acknowledgments(total_unique_acknowledgments);
+
+  match rank_level {
+    1 => "pvt.svg",
+    2 => "cpl.svg",
+    3 => "sgt.svg",
+    4 => "ssg.svg",
+    5 => "sfc.svg",
+    6 => "msg.svg",
+    7 => "1sg.svg",
+    8 => "sgm.svg",
+    9 => "lt.svg",
+    _ => "cdr.svg",
+  }
+}
+
+fn render_post_meta(ib_uid: &str, username: &str, timestamp: &str, user_total_acks: i64) -> String {
   let profile_target = if username.trim().is_empty() {
     ib_uid
   } else {
     username
   };
 
+  let rank_icon = get_rank_asset(user_total_acks);
+
   format!(
-    r#"<div class="post-meta"><a class="post-author" href="https://{domain}/v1/profile/{profile_target}"><img class="post-author-avatar" src="https://github.com/{profile_target}.png?size=32" alt="{username}" width="32" height="32">{username}</a><span class="post-timestamp">{timestamp}</span></div>"#,
+    r#"<div class="post-meta"><a class="post-author" href="https://{domain}/v1/profile/{profile_target}"><img class="post-author-avatar" src="https://github.com/{profile_target}.png?size=32" alt="{username}" width="32" height="32"><img class="rank-insignia" src="/images/ranks/{rank_icon}" alt="Rank" width="16" height="16" style="vertical-align: middle; margin-left: 4px; margin-right: 4px;">{username}</a><span class="post-timestamp">{timestamp}</span></div>"#,
     domain = DOMAIN,
     profile_target = escape_html(profile_target),
     username = escape_html(username),
-    timestamp = escape_html(timestamp)
+    timestamp = escape_html(timestamp),
+    rank_icon = rank_icon
   )
 }
 
@@ -1058,6 +1087,30 @@ async fn get_session_identity(req: &HttpRequest, state: &AppState) -> Option<(i6
     None
   } else {
     Some((session_uid, username))
+  }
+}
+
+fn rank_from_unique_acknowledgments(total: i64) -> (i64, &'static str) {
+  if total < 1001 {
+    (1, "Private")
+  } else if total < 2001 {
+    (2, "Corporal")
+  } else if total < 3001 {
+    (3, "Sergeant")
+  } else if total < 4001 {
+    (4, "Staff Sergeant")
+  } else if total < 5001 {
+    (5, "Sergeant First Class")
+  } else if total < 6001 {
+    (6, "Master Sergeant")
+  } else if total < 7001 {
+    (7, "First Sergeant")
+  } else if total < 8001 {
+    (8, "Sergeant Major")
+  } else if total < 9001 {
+    (9, "Lieutenant")
+  } else {
+    (10, "Commander")
   }
 }
 
@@ -1219,10 +1272,22 @@ async fn create_db_pool() -> Result<MySqlPool, sqlx::Error> {
 
 async fn ensure_database_schema(pool: &MySqlPool) -> Result<(), sqlx::Error> {
   sqlx::query(
-    "CREATE TABLE IF NOT EXISTS user (ib_uid VARCHAR(64) PRIMARY KEY, username VARCHAR(255) NOT NULL, followers TEXT NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS user (ib_uid VARCHAR(64) PRIMARY KEY, username VARCHAR(255) NOT NULL, followers TEXT NOT NULL, total_acknowledgments BIGINT NOT NULL DEFAULT 0)",
   )
   .execute(pool)
   .await?;
+
+  let total_acknowledgments_exists = sqlx::query_scalar::<_, i64>(
+      "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user' AND COLUMN_NAME = 'total_acknowledgments'"
+    )
+    .fetch_one(pool)
+    .await?;
+
+  if total_acknowledgments_exists == 0 {
+    sqlx::query("ALTER TABLE user ADD COLUMN total_acknowledgments BIGINT NOT NULL DEFAULT 0")
+      .execute(pool)
+      .await?;
+  }
 
   sqlx::query(
     "CREATE TABLE IF NOT EXISTS pro (ib_uid BIGINT PRIMARY KEY, github VARCHAR(255) NOT NULL, ibp TEXT NOT NULL, pro TEXT NOT NULL, services TEXT NOT NULL, location TEXT NOT NULL, website TEXT NOT NULL)",
@@ -1650,7 +1715,7 @@ async fn render_profile_html(
 
   let ib_post_results_maximum: usize = 200;
   let ib_post_results = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = '' OR post.parentid IS NULL)"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = '' OR post.parentid IS NULL)"
     )
     .bind(ib_uid)
     .fetch_all(&state.db_pool)
@@ -1715,7 +1780,7 @@ async fn render_profile_html(
       </div>"#,
       ib_post_id = escape_html(&row.postid),
       ib_post_timestamp = escape_html(&row.timestamp),
-      post_meta = render_post_meta(&row.ib_uid, &row.username, &row.timestamp),
+      post_meta = render_post_meta(&row.ib_uid, &row.username, &row.timestamp, row.user_total_acks),
       manage_actions = manage_actions,
       ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&row.postid) {
         render_ack_disabled()
@@ -2054,7 +2119,7 @@ async fn render_search_posts_html(
     );
 
     let rows = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(post.post, '')) REGEXP ? ORDER BY post.timestamp DESC LIMIT 200"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(post.post, '')) REGEXP ? ORDER BY post.timestamp DESC LIMIT 200"
       )
       .bind(&pattern)
       .fetch_all(&state.db_pool)
@@ -2086,7 +2151,7 @@ async fn render_search_posts_html(
           </div>"#,
           post_id = escape_html(&row.postid),
           post_timestamp = escape_html(&row.timestamp),
-          post_meta = render_post_meta(&row.ib_uid, &row.username, &row.timestamp),
+          post_meta = render_post_meta(&row.ib_uid, &row.username, &row.timestamp, row.user_total_acks),
           post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user),
           ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&row.postid) {
             render_ack_disabled()
@@ -2533,7 +2598,7 @@ async fn render_war_room_html(
 
     for selected_follower in &selected_followers {
         let post_row = sqlx::query_as::<_, PostRow>(
-          "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) = LOWER(?) AND (post.parentid = '' OR post.parentid IS NULL) ORDER BY post.timestamp DESC LIMIT 1"
+          "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) = LOWER(?) AND (post.parentid = '' OR post.parentid IS NULL) ORDER BY post.timestamp DESC LIMIT 1"
         )
         .bind(selected_follower)
         .fetch_optional(&state.db_pool)
@@ -2575,7 +2640,7 @@ async fn render_war_room_html(
           selected_follower = escape_html(&selected_follower),
           post_id = escape_html(&post_row.postid),
           post_timestamp = escape_html(&post_row.timestamp),
-          post_meta = render_post_meta(&post_row.ib_uid, &post_row.username, &post_row.timestamp),
+          post_meta = render_post_meta(&post_row.ib_uid, &post_row.username, &post_row.timestamp, post_row.user_total_acks),
           post_body = render_post_with_hashtags(&post_row.post, ib_uid, ib_user),
           ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&post_row.postid) {
             render_ack_disabled()
@@ -2989,7 +3054,7 @@ async fn render_single_post_html(
   let advert_html = render_advert_html(state).await;
 
   let post = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.postid = ? LIMIT 1"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.postid = ? LIMIT 1"
     )
     .bind(ib_uid)
     .bind(pid)
@@ -3003,7 +3068,7 @@ async fn render_single_post_html(
   };
 
   let replies = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.parentid = ? ORDER BY post.timestamp ASC"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.parentid = ? ORDER BY post.timestamp ASC"
     )
     .bind(pid)
     .fetch_all(&state.db_pool)
@@ -3061,7 +3126,7 @@ async fn render_single_post_html(
         </div>"#,
         reply_post_id = escape_html(&reply.postid),
         reply_post_timestamp = escape_html(&reply.timestamp),
-        reply_post_meta = render_post_meta(&reply.ib_uid, &reply.username, &reply.timestamp),
+        reply_post_meta = render_post_meta(&reply.ib_uid, &reply.username, &reply.timestamp, reply.user_total_acks),
         reply_post_body = render_post_with_hashtags(&reply.post, ib_uid, ib_user),
         reply_ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&reply.postid) {
           render_ack_disabled()
@@ -3167,7 +3232,7 @@ async fn render_single_post_html(
     ib_post_id = escape_html(&post.postid),
     ib_post_timestamp = escape_html(&post.timestamp),
     ib_post_acknowledged_count = post.acknowledged_count,
-    post_meta = render_post_meta(&post.ib_uid, &post.username, &post.timestamp),
+    post_meta = render_post_meta(&post.ib_uid, &post.username, &post.timestamp, post.user_total_acks),
     ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&post.postid) {
       render_ack_disabled()
     } else {
@@ -3558,6 +3623,98 @@ async fn follow_user(
   HttpResponse::SeeOther()
     .insert_header(("Location", format!("/v1/profile/{}", target_row.username)))
     .finish()
+}
+
+#[get("/v1/user/hover/{ib_user}")]
+async fn user_hover_card_data(
+  req: HttpRequest,
+  path: web::Path<String>,
+  state: web::Data<AppState>,
+) -> impl Responder {
+  let ib_user = path.into_inner();
+  let target_user = ib_user.trim();
+  if target_user.is_empty() {
+    return HttpResponse::BadRequest().json(json!({
+      "success": false,
+      "message": "Target user is required"
+    }));
+  }
+
+  let target_row = match sqlx::query_as::<_, UserHoverLookupRow>(
+    "SELECT CONVERT(ib_uid USING utf8mb4) AS ib_uid, username, COALESCE(followers, '') AS followers, COALESCE(total_acknowledgments, 0) AS total_acknowledgments FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1",
+  )
+  .bind(target_user)
+  .fetch_optional(&state.db_pool)
+  .await
+  {
+    Ok(Some(row)) => row,
+    Ok(None) => {
+      return HttpResponse::NotFound().json(json!({
+        "success": false,
+        "message": "User not found"
+      }));
+    }
+    Err(err) => {
+      return HttpResponse::InternalServerError().json(json!({
+        "success": false,
+        "message": format!("Hover lookup failed: {}", err)
+      }));
+    }
+  };
+
+  let session_username = get_session_identity(&req, &state)
+    .await
+    .map(|(_, username)| username);
+
+  let follower_list: Vec<String> = target_row
+    .followers
+    .split(',')
+    .map(|value| value.trim())
+    .filter(|value| !value.is_empty())
+    .map(|value| value.to_string())
+    .collect();
+
+  let is_self = session_username
+    .as_ref()
+    .map(|value| value.eq_ignore_ascii_case(&target_row.username))
+    .unwrap_or(false);
+
+  let show_unfollow = session_username
+    .as_ref()
+    .map(|value| {
+      !is_self
+        && follower_list
+          .iter()
+          .any(|follower| follower.eq_ignore_ascii_case(value))
+    })
+    .unwrap_or(false);
+
+  let show_follow = session_username
+    .as_ref()
+    .map(|value| {
+      !is_self
+        && !follower_list
+          .iter()
+          .any(|follower| follower.eq_ignore_ascii_case(value))
+    })
+    .unwrap_or(false);
+
+  let (rank_level, rank_name) = rank_from_unique_acknowledgments(target_row.total_acknowledgments);
+  let rank_icon = get_rank_asset(target_row.total_acknowledgments);
+
+  HttpResponse::Ok().json(json!({
+    "success": true,
+    "ib_uid": target_row.ib_uid,
+    "username": target_row.username,
+    "total_acknowledgments": target_row.total_acknowledgments,
+    "unique_acknowledgments": target_row.total_acknowledgments,
+    "rank_level": rank_level,
+    "rank_name": rank_name,
+    "rank_icon": format!("/images/ranks/{}", rank_icon),
+    "show_follow": show_follow,
+    "show_unfollow": show_unfollow,
+    "logged_in": session_username.is_some()
+  }))
 }
 
 #[post("/v1/unfollow")]
@@ -4045,6 +4202,17 @@ async fn acknowledge_post(
 
     if let Err(err) = update_result {
       return HttpResponse::InternalServerError().body(format!("Failed to acknowledge post: {}", err));
+    }
+
+    let update_user_total_ack_result = sqlx::query(
+      "UPDATE user SET total_acknowledgments = COALESCE(total_acknowledgments, 0) + 1 WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = (SELECT CAST(ib_uid AS CHAR CHARACTER SET utf8mb4) FROM post WHERE postid = ? LIMIT 1) COLLATE utf8mb4_unicode_ci LIMIT 1",
+    )
+    .bind(&payload.pid)
+    .execute(&state.db_pool)
+    .await;
+
+    if let Err(err) = update_user_total_ack_result {
+      return HttpResponse::InternalServerError().body(format!("Failed to update user acknowledgment total: {}", err));
     }
   }
 
@@ -5560,6 +5728,7 @@ async fn main() -> std::io::Result<()> {
       .service(update_post)
       .service(acknowledge_post)
       .service(view_profile)
+      .service(user_hover_card_data)
       .service(follow_user)
       .service(unfollow_user)
       .service(search_users)

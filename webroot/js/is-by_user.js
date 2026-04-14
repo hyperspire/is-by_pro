@@ -8,6 +8,7 @@ function attachEventListeners() {
   stopDMPolling();
 
   const listeners = [
+    attachUsernameHoverCardEventListener,
     attachAcknowledgePostEventListener,
     attachCopyLinkEventListener,
     attachDeletePostEventListener,
@@ -28,6 +29,188 @@ function attachEventListeners() {
       console.error('Listener setup failed:', setup.name, error);
     }
   });
+}
+
+function attachUsernameHoverCardEventListener() {
+  const profileLinks = Array.from(document.querySelectorAll('a[href*="/v1/profile/"]'));
+  if (profileLinks.length === 0) {
+    return;
+  }
+
+  let hoverCard = document.getElementById('user-hover-card');
+  if (!hoverCard) {
+    hoverCard = document.createElement('div');
+    hoverCard.id = 'user-hover-card';
+    hoverCard.style.display = 'none';
+    document.body.appendChild(hoverCard);
+  }
+
+  let showTimer = null;
+  let hideTimer = null;
+
+  const clearTimers = () => {
+    if (showTimer) {
+      window.clearTimeout(showTimer);
+      showTimer = null;
+    }
+    if (hideTimer) {
+      window.clearTimeout(hideTimer);
+      hideTimer = null;
+    }
+  };
+
+  const hideCard = () => {
+    hoverCard.style.display = 'none';
+  };
+
+  const scheduleHide = () => {
+    if (hideTimer) {
+      window.clearTimeout(hideTimer);
+    }
+    hideTimer = window.setTimeout(() => {
+      hideCard();
+    }, 180);
+  };
+
+  hoverCard.addEventListener('mouseenter', () => {
+    if (hideTimer) {
+      window.clearTimeout(hideTimer);
+      hideTimer = null;
+    }
+  });
+
+  hoverCard.addEventListener('mouseleave', () => {
+    scheduleHide();
+  });
+
+  profileLinks.forEach((link) => {
+    if (link.dataset.hoverCardBound === '1') {
+      return;
+    }
+
+    const username = extractProfileUsernameFromHref(link.getAttribute('href'));
+    if (!username) {
+      return;
+    }
+
+    link.dataset.hoverCardBound = '1';
+    link.dataset.hoverUsername = username;
+
+    const showForLink = () => {
+      clearTimers();
+      showTimer = window.setTimeout(async () => {
+        await showUsernameHoverCard(link, username, hoverCard);
+      }, 180);
+    };
+
+    link.addEventListener('mouseenter', showForLink);
+    link.addEventListener('focus', showForLink);
+    link.addEventListener('mouseleave', scheduleHide);
+    link.addEventListener('blur', scheduleHide);
+  });
+}
+
+function extractProfileUsernameFromHref(href) {
+  if (!href) {
+    return '';
+  }
+
+  try {
+    const parsed = new URL(href, window.location.origin);
+    const segments = parsed.pathname.split('/').filter(Boolean);
+    if (segments.length < 3) {
+      return '';
+    }
+    if (segments[0] !== 'v1' || segments[1] !== 'profile') {
+      return '';
+    }
+    return decodeURIComponent(segments[2] || '').trim();
+  } catch (error) {
+    return '';
+  }
+}
+
+function positionHoverCard(anchor, hoverCard) {
+  const rect = anchor.getBoundingClientRect();
+  const cardWidth = hoverCard.offsetWidth || 260;
+  const cardHeight = hoverCard.offsetHeight || 140;
+
+  let left = window.scrollX + rect.left;
+  let top = window.scrollY + rect.bottom + 8;
+
+  const maxLeft = window.scrollX + window.innerWidth - cardWidth - 10;
+  if (left > maxLeft) {
+    left = Math.max(window.scrollX + 10, maxLeft);
+  }
+
+  const maxTop = window.scrollY + window.innerHeight - cardHeight - 10;
+  if (top > maxTop) {
+    top = Math.max(window.scrollY + 10, window.scrollY + rect.top - cardHeight - 8);
+  }
+
+  hoverCard.style.left = `${left}px`;
+  hoverCard.style.top = `${top}px`;
+}
+
+async function showUsernameHoverCard(anchor, username, hoverCard) {
+  hoverCard.innerHTML = '<p><em>Loading...</em></p>';
+  hoverCard.style.display = 'block';
+  positionHoverCard(anchor, hoverCard);
+
+  try {
+    const response = await fetch(`https://${domain}/v1/user/hover/${encodeURIComponent(username)}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      hoverCard.innerHTML = '<p><em>Unavailable</em></p>';
+      positionHoverCard(anchor, hoverCard);
+      return;
+    }
+
+    const data = await response.json();
+    if (data.success !== true) {
+      hoverCard.innerHTML = '<p><em>Unavailable</em></p>';
+      positionHoverCard(anchor, hoverCard);
+      return;
+    }
+
+    let actionsHTML = '';
+    if (data.show_follow === true) {
+      actionsHTML += `
+        <form class="user-hover-action-form" action="https://${domain}/v1/follow" method="POST">
+          <input type="hidden" name="target_user" value="${escapeHTML(data.username)}">
+          <input class="user-hover-action user-hover-follow" type="submit" value="Follow">
+        </form>`;
+    }
+
+    if (data.show_unfollow === true) {
+      actionsHTML += `
+        <form class="user-hover-action-form" action="https://${domain}/v1/unfollow" method="POST">
+          <input type="hidden" name="target_user" value="${escapeHTML(data.username)}">
+          <input class="user-hover-action user-hover-unfollow" type="submit" value="Unfollow">
+        </form>`;
+    }
+
+    if (actionsHTML === '' && data.logged_in !== true) {
+      actionsHTML = '<p class="user-hover-muted"><em>Login to follow users.</em></p>';
+    }
+
+    const rankIcon = data.rank_icon ? escapeHTML(data.rank_icon) : '/images/ranks/pvt.svg';
+
+    hoverCard.innerHTML = `
+      <p class="user-hover-title"><img class="user-hover-rank-icon" src="${rankIcon}" alt="Rank" width="14" height="14">@${escapeHTML(data.username)}</p>
+      <p class="user-hover-rank">Rank ${escapeHTML(data.rank_level)}: ${escapeHTML(data.rank_name)}</p>
+      <p class="user-hover-acks">Unique ACKs: ${escapeHTML(data.unique_acknowledgments)}</p>
+      <div class="user-hover-actions">${actionsHTML}</div>`;
+    positionHoverCard(anchor, hoverCard);
+  } catch (error) {
+    hoverCard.innerHTML = '<p><em>Unavailable</em></p>';
+    positionHoverCard(anchor, hoverCard);
+  }
 }
 
 function getCurrentIBUID() {

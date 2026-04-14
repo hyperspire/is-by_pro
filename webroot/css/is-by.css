@@ -985,3 +985,79 @@ input[type=password] {
     position: relative;
     top: 4px;
 }
+
+#user-hover-card {
+    position: absolute;
+    z-index: 9999;
+    min-width: 240px;
+    max-width: 280px;
+    background-color: #121212;
+    border: 1px solid #2f5f3f;
+    border-radius: 8px;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.45);
+    padding: 10px;
+    color: #d6d6d6;
+}
+
+#user-hover-card .user-hover-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #eeaa33;
+    font-weight: bold;
+    font-size: 13px;
+    margin: 0 0 6px 0;
+}
+
+#user-hover-card .user-hover-rank-icon {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+}
+
+#user-hover-card .user-hover-rank,
+#user-hover-card .user-hover-acks {
+    color: #bbbbbb;
+    font-size: 11px;
+    margin: 4px 0;
+}
+
+#user-hover-card .user-hover-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+#user-hover-card .user-hover-action-form {
+    margin: 0;
+}
+
+#user-hover-card .user-hover-action {
+    width: auto;
+    min-width: 88px;
+    height: 28px;
+    border-radius: 4px;
+    border: 1px solid #3F3F3F;
+    padding: 3px 10px;
+    margin: 0;
+    font-size: 11px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+#user-hover-card .user-hover-follow {
+    color: #0f1f0f;
+    background-color: #00ee33;
+}
+
+#user-hover-card .user-hover-unfollow {
+    color: #000000;
+    background-color: #ff3300;
+}
+
+#user-hover-card .user-hover-muted {
+    color: #888888;
+    font-size: 11px;
+    margin: 4px 0 0 0;
+}
