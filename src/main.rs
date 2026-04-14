@@ -57,7 +57,7 @@ use actix_multipart::Multipart;
 use actix_web::{cookie::Cookie, dev::Service, get, http::Method, post, web, App, Either, HttpRequest, HttpResponse, HttpServer, Responder};
 use futures_util::StreamExt;
 use image::GenericImageView;
-use rand::{distributions::Alphanumeric, seq::SliceRandom, Rng};
+use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use rustls::{ServerConfig, pki_types::CertificateDer};
@@ -298,6 +298,14 @@ struct WarRoomRequest {
 }
 
 #[derive(Deserialize)]
+struct WarRoomPostsPageQuery {
+  ib_uid: i64,
+  ib_user: String,
+  offset: Option<i64>,
+  limit: Option<i64>,
+}
+
+#[derive(Deserialize)]
 struct InboxRequest {
   ib_uid: i64,
   ib_user: String,
@@ -386,6 +394,20 @@ struct PostsPageQuery {
 struct PostsPageResponse {
   posts_html: String,
   has_more: bool,
+}
+
+#[derive(Serialize)]
+struct WarRoomPostsPageResponse {
+  posts_html: String,
+  has_more: bool,
+  next_offset: usize,
+}
+
+struct WarRoomPostsChunk {
+  posts_html: String,
+  has_more: bool,
+  next_offset: usize,
+  total_followers: usize,
 }
 
 #[derive(sqlx::FromRow)]
@@ -2640,14 +2662,14 @@ async fn render_projects_html(
   Ok(html)
 }
 
-async fn render_war_room_html(
+async fn render_war_room_posts_chunk(
   state: &AppState,
   ib_uid: i64,
   ib_user: &str,
   session_uid: Option<i64>,
-) -> Result<String, String> {
-  let advert_html = render_advert_html(state).await;
-
+  offset: usize,
+  limit: usize,
+) -> Result<WarRoomPostsChunk, String> {
   let followers_row = sqlx::query_as::<_, FollowLookupRow>(
       "SELECT username, COALESCE(followers, '') AS followers FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1"
     )
@@ -2669,79 +2691,111 @@ async fn render_war_room_html(
     })
     .unwrap_or_default();
 
-  let mut shuffled_followers = follower_usernames;
-  shuffled_followers.shuffle(&mut rand::thread_rng());
-  let selected_followers: Vec<String> = shuffled_followers.into_iter().take(200).collect();
+  let total_followers = follower_usernames.len();
+  let start = offset.min(total_followers);
+  let end = start.saturating_add(limit).min(total_followers);
+  let selected_followers = &follower_usernames[start..end];
 
-  let war_room_content = if selected_followers.is_empty() {
-    "<div class=\"notice\"><p><em>:[[ :war-room-no-followers: ]]:</em></p></div>".to_string()
-  } else {
-    let mut selected_posts: Vec<(String, PostRow)> = Vec::new();
+  if selected_followers.is_empty() {
+    return Ok(WarRoomPostsChunk {
+      posts_html: String::new(),
+      has_more: false,
+      next_offset: end,
+      total_followers,
+    });
+  }
 
-    for selected_follower in &selected_followers {
-        let post_row = sqlx::query_as::<_, PostRow>(
-          "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) = LOWER(?) AND (post.parentid = '' OR post.parentid IS NULL) ORDER BY post.timestamp DESC LIMIT 1"
-        )
-        .bind(selected_follower)
-        .fetch_optional(&state.db_pool)
-        .await
-        .map_err(|e| format!("War room post lookup failed: {}", e))?;
+  let mut selected_posts: Vec<(String, PostRow)> = Vec::new();
 
-      if let Some(post_row) = post_row {
-        selected_posts.push((selected_follower.clone(), post_row));
-      }
-    }
-
-    if selected_posts.is_empty() {
-      "<div class=\"notice\"><p><em>:[[ :war-room-no-follower-posts: ]]:</em></p></div>".to_string()
-    } else {
-      let mut rendered_posts = String::new();
-      let selected_post_ids: Vec<String> = selected_posts
-        .iter()
-        .map(|(_, post_row)| post_row.postid.clone())
-        .collect();
-      let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &selected_post_ids).await;
-
-      for (selected_follower, post_row) in selected_posts {
-        rendered_posts += &format!(
-          r#"<div class="notice"><p><em>:[[ :war-room-selected-follower: {selected_follower}: ]]:</em></p></div>
-          <div class="post" data-postid="{post_id}" data-timestamp="{post_timestamp}">
-            {post_meta}
-            <p>{post_body}</p>
-            <div class="post-actions">
-              {ack_controls}
-              <form class="show-post-form" action="https://{domain}/v1/showpost" method="GET">
-                <input type="hidden" name="ib_uid" value="{post_owner_uid}">
-                <input type="hidden" name="ib_user" value="{post_owner_user}">
-                <input type="hidden" name="pid" value="{post_id}">
-              </form>
-              <a href="javascript:void(0);" class="show-post">:[[ :show-post: ]]:</a>
-            </div>
-            <p class="acknowledged-count">Acknowleged {acknowledged_count} times.</p>
-          </div>"#,
-          selected_follower = escape_html(&selected_follower),
-          post_id = escape_html(&post_row.postid),
-          post_timestamp = escape_html(&post_row.timestamp),
-          post_meta = render_post_meta(&post_row.ib_uid, &post_row.username, &post_row.timestamp, post_row.user_total_acks),
-          post_body = render_post_with_hashtags(&post_row.post, ib_uid, ib_user),
-          ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&post_row.postid) {
-            render_ack_disabled()
-          } else {
-            render_ack_controls(ib_uid, ib_user, &post_row.postid)
-          },
-          acknowledged_count = post_row.acknowledged_count,
-          domain = DOMAIN,
-          post_owner_uid = escape_html(&post_row.ib_uid),
-          post_owner_user = escape_html(&post_row.username)
-        );
-      }
-
-      format!(
-        r#"<div class="notice"><p><em>:[[ :war-room-followers-selected: {selected_count}: ]]:</em></p></div>{rendered_posts}"#,
-        selected_count = selected_followers.len(),
-        rendered_posts = rendered_posts
+  for selected_follower in selected_followers {
+    let post_row = sqlx::query_as::<_, PostRow>(
+        "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) = LOWER(?) AND (post.parentid = '' OR post.parentid IS NULL) ORDER BY post.timestamp DESC LIMIT 1"
       )
+      .bind(selected_follower)
+      .fetch_optional(&state.db_pool)
+      .await
+      .map_err(|e| format!("War room post lookup failed: {}", e))?;
+
+    if let Some(post_row) = post_row {
+      selected_posts.push((selected_follower.clone(), post_row));
     }
+  }
+
+  let selected_post_ids: Vec<String> = selected_posts
+    .iter()
+    .map(|(_, post_row)| post_row.postid.clone())
+    .collect();
+  let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &selected_post_ids).await;
+
+  let mut rendered_posts = String::new();
+  for (selected_follower, post_row) in selected_posts {
+    rendered_posts += &format!(
+      r#"<div class="notice"><p><em>:[[ :war-room-selected-follower: {selected_follower}: ]]:</em></p></div>
+      <div class="post" data-postid="{post_id}" data-timestamp="{post_timestamp}">
+        {post_meta}
+        <p>{post_body}</p>
+        <div class="post-actions">
+          {ack_controls}
+          <form class="show-post-form" action="https://{domain}/v1/showpost" method="GET">
+            <input type="hidden" name="ib_uid" value="{post_owner_uid}">
+            <input type="hidden" name="ib_user" value="{post_owner_user}">
+            <input type="hidden" name="pid" value="{post_id}">
+          </form>
+          <a href="javascript:void(0);" class="show-post">:[[ :show-post: ]]:</a>
+        </div>
+        <p class="acknowledged-count">Acknowleged {acknowledged_count} times.</p>
+      </div>"#,
+      selected_follower = escape_html(&selected_follower),
+      post_id = escape_html(&post_row.postid),
+      post_timestamp = escape_html(&post_row.timestamp),
+      post_meta = render_post_meta(&post_row.ib_uid, &post_row.username, &post_row.timestamp, post_row.user_total_acks),
+      post_body = render_post_with_hashtags(&post_row.post, ib_uid, ib_user),
+      ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&post_row.postid) {
+        render_ack_disabled()
+      } else {
+        render_ack_controls(ib_uid, ib_user, &post_row.postid)
+      },
+      acknowledged_count = post_row.acknowledged_count,
+      domain = DOMAIN,
+      post_owner_uid = escape_html(&post_row.ib_uid),
+      post_owner_user = escape_html(&post_row.username)
+    );
+  }
+
+  Ok(WarRoomPostsChunk {
+    posts_html: rendered_posts,
+    has_more: end < total_followers,
+    next_offset: end,
+    total_followers,
+  })
+}
+
+async fn render_war_room_html(
+  state: &AppState,
+  ib_uid: i64,
+  ib_user: &str,
+  session_uid: Option<i64>,
+) -> Result<String, String> {
+  let advert_html = render_advert_html(state).await;
+
+  let war_room_chunk = render_war_room_posts_chunk(state, ib_uid, ib_user, session_uid, 0, 20).await?;
+
+  let war_room_content = if war_room_chunk.total_followers == 0 {
+    "<div class=\"notice\"><p><em>:[[ :war-room-no-followers: ]]:</em></p></div>".to_string()
+  } else if war_room_chunk.posts_html.trim().is_empty() && !war_room_chunk.has_more {
+    "<div class=\"notice\"><p><em>:[[ :war-room-no-follower-posts: ]]:</em></p></div>".to_string()
+  } else {
+    format!(
+      r#"<div class="notice"><p><em>:[[ :war-room-followers-selected: {selected_count}: ]]:</em></p></div>{rendered_posts}"#,
+      selected_count = war_room_chunk.total_followers,
+      rendered_posts = war_room_chunk.posts_html
+    )
+  };
+
+  let sentinel_html = if war_room_chunk.has_more {
+    r#"<div id="posts-load-sentinel"></div>"#
+  } else {
+    ""
   };
 
   let navigation_links = if session_uid.is_some() {
@@ -2803,9 +2857,10 @@ async fn render_war_room_html(
           <input class="post-submit" type="submit" value="Post">
         </form>
       </div>
-      <div id="selected-user-posts-section" class="post-section">
+      <div id="selected-user-posts-section" class="post-section" data-feed-type="warroom" data-ib-uid="{ib_uid}" data-ib-user="{ib_user}" data-war-room-offset="{war_room_offset}">
         <div class="notice"><p><em>:[[ :war-room: ]]:</em></p></div>
         {war_room_content}
+        {sentinel_html}
       </div>
     </div>"#,
     domain = DOMAIN,
@@ -2813,7 +2868,9 @@ async fn render_war_room_html(
     ib_user = escape_html(ib_user),
     advert_html = advert_html,
     navigation_links = navigation_links,
-    war_room_content = war_room_content
+    war_room_content = war_room_content,
+    war_room_offset = war_room_chunk.next_offset,
+    sentinel_html = sentinel_html
   );
 
   let ib_pro_result = sqlx::query_as::<_, ProRow>(
@@ -4516,6 +4573,37 @@ async fn get_posts_page(
   HttpResponse::Ok().json(PostsPageResponse { posts_html, has_more })
 }
 
+#[get("/api/v1/warroom/posts")]
+async fn get_war_room_posts_page(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  query: web::Query<WarRoomPostsPageQuery>,
+) -> impl Responder {
+  let session_uid = get_session_uid(&req);
+  let offset = query.offset.unwrap_or(0).max(0) as usize;
+  let limit = query.limit.unwrap_or(20).clamp(1, 50) as usize;
+
+  match render_war_room_posts_chunk(
+    &state,
+    query.ib_uid,
+    &query.ib_user,
+    session_uid,
+    offset,
+    limit,
+  )
+  .await
+  {
+    Ok(chunk) => HttpResponse::Ok().json(WarRoomPostsPageResponse {
+      posts_html: chunk.posts_html,
+      has_more: chunk.has_more,
+      next_offset: chunk.next_offset,
+    }),
+    Err(e) => HttpResponse::InternalServerError().json(json!({
+      "error": e
+    })),
+  }
+}
+
 #[get("/v1/profile/{ib_user}")]
 async fn view_profile(
   req: HttpRequest,
@@ -6013,6 +6101,7 @@ async fn main() -> std::io::Result<()> {
       .service(get_commander_badge)
       .service(follow_user)
       .service(unfollow_user)
+      .service(get_war_room_posts_page)
       .service(search_users)
       .service(search_posts)
       .service(projects_page)

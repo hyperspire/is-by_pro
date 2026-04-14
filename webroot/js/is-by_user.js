@@ -768,23 +768,41 @@ function attachPostsInfiniteScrollEventListener() {
   const ibUser = section.dataset.ibUser;
   if (!ibUID || !ibUser) return;
 
+  const feedType = section.dataset.feedType || 'profile';
+
   let loading = false;
 
   const observer = new IntersectionObserver(async (entries) => {
     if (!entries[0].isIntersecting || loading) return;
     loading = true;
 
-    const allPosts = Array.from(section.querySelectorAll('.post[data-timestamp]'));
-    const lastPost = allPosts[allPosts.length - 1];
-    const beforeTimestamp = lastPost ? lastPost.dataset.timestamp : '';
-
-    const params = new URLSearchParams({ ib_uid: ibUID, ib_user: ibUser });
-    if (beforeTimestamp) params.set('before_timestamp', beforeTimestamp);
-
     try {
-      const resp = await fetch(`https://${domain}/api/v1/posts?${params}`);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
+      let data;
+
+      if (feedType === 'warroom') {
+        const params = new URLSearchParams({
+          ib_uid: ibUID,
+          ib_user: ibUser,
+          offset: section.dataset.warRoomOffset || '0',
+          limit: '20'
+        });
+        const resp = await fetch(`https://${domain}/api/v1/warroom/posts?${params}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        data = await resp.json();
+        if (typeof data.next_offset === 'number') {
+          section.dataset.warRoomOffset = String(data.next_offset);
+        }
+      } else {
+        const allPosts = Array.from(section.querySelectorAll('.post[data-timestamp]'));
+        const lastPost = allPosts[allPosts.length - 1];
+        const beforeTimestamp = lastPost ? lastPost.dataset.timestamp : '';
+        const params = new URLSearchParams({ ib_uid: ibUID, ib_user: ibUser });
+        if (beforeTimestamp) params.set('before_timestamp', beforeTimestamp);
+        const resp = await fetch(`https://${domain}/api/v1/posts?${params}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        data = await resp.json();
+      }
+
       if (data.posts_html) {
         sentinel.insertAdjacentHTML('beforebegin', data.posts_html);
         attachAcknowledgePostEventListener();
@@ -794,7 +812,10 @@ function attachPostsInfiniteScrollEventListener() {
         attachUsernameHoverCardEventListener();
         attachCopyLinkEventListener();
       }
-      if (!data.has_more) observer.disconnect();
+      if (!data.has_more) {
+        observer.disconnect();
+        sentinel.remove();
+      }
     } catch (e) {
       console.error('posts-scroll-error:', e);
     }
