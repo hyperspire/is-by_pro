@@ -921,6 +921,7 @@ struct RankInfo {
 }
 
 const RANK_TABLE: &[RankInfo] = &[
+  RankInfo { level: 11, name: "General", asset: "gen.svg", threshold: 10001 },
   RankInfo { level: 10, name: "Commander", asset: "cdr.svg", threshold: 9001 },
   RankInfo { level: 9, name: "Lieutenant", asset: "lt.svg", threshold: 8001 },
   RankInfo { level: 8, name: "Sergeant Major", asset: "sgm.svg", threshold: 7001 },
@@ -3750,9 +3751,9 @@ async fn get_commander_badge(
     Err(_) => return Either::Left(HttpResponse::InternalServerError().body("Database error")),
   };
 
-  // Check if user is Rank 10 Commander (total_acknowledgments >= 9001)
+  // Check if user is Rank 10+ (threshold >= 9001)
   let (rank_level, _) = rank_from_unique_acknowledgments(user_row.total_acknowledgments);
-  if rank_level != 10 {
+  if rank_level < 10 {
     // Return a transparent 1x1 pixel instead of an error to prevent broken image icons on GitHub.
     let transparent_pixel: &[u8] = &[
       0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
