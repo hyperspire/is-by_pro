@@ -3717,6 +3717,120 @@ async fn user_hover_card_data(
   }))
 }
 
+#[get("/api/badge/{username}.svg")]
+async fn get_commander_badge(
+  path: web::Path<String>,
+  state: web::Data<AppState>,
+) -> impl Responder {
+  let username = path.into_inner();
+  let target_user = username.trim();
+  if target_user.is_empty() {
+    return HttpResponse::BadRequest().body("Username is required");
+  }
+
+  // Query user to check rank
+  let user_row = match sqlx::query_as::<_, UserHoverLookupRow>(
+    "SELECT CONVERT(ib_uid USING utf8mb4) AS ib_uid, username, COALESCE(followers, '') AS followers, COALESCE(total_acknowledgments, 0) AS total_acknowledgments FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1",
+  )
+  .bind(target_user)
+  .fetch_optional(&state.db_pool)
+  .await
+  {
+    Ok(Some(row)) => row,
+    Ok(None) => return HttpResponse::NotFound().body("User not found"),
+    Err(_) => return HttpResponse::InternalServerError().body("Database error"),
+  };
+
+  // Check if user is Rank 10 Commander (total_acknowledgments >= 9001)
+  let (rank_level, _) = rank_from_unique_acknowledgments(user_row.total_acknowledgments);
+  if rank_level != 10 {
+    return HttpResponse::NotFound().json(json!({
+      "error": "User must be Rank 10 Commander to display this badge",
+      "rank": rank_level
+    }));
+  }
+
+  // Return SVG badge
+  let username_escaped = user_row.username.replace("\"", "&quot;");
+  
+  // Build SVG dynamically to avoid Rust string literal issues with hex colors
+  let mut svg = String::new();
+  svg.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+  svg.push_str("<svg viewBox=\"0 0 400 450\" xmlns=\"http://www.w3.org/2000/svg\">");
+  svg.push_str("<defs>");
+  svg.push_str("<linearGradient id=\"silverGrad\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">");
+  svg.push_str("<stop offset=\"0%\" style=\"stop-color:#e8e8e8;stop-opacity:1\" />");
+  svg.push_str("<stop offset=\"50%\" style=\"stop-color:#c0c0c0;stop-opacity:1\" />");
+  svg.push_str("<stop offset=\"100%\" style=\"stop-color:#808080;stop-opacity:1\" />");
+  svg.push_str("</linearGradient>");
+  svg.push_str("<linearGradient id=\"goldGrad\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">");
+  svg.push_str("<stop offset=\"0%\" style=\"stop-color:#ffd700;stop-opacity:1\" />");
+  svg.push_str("<stop offset=\"50%\" style=\"stop-color:#daa520;stop-opacity:1\" />");
+  svg.push_str("<stop offset=\"100%\" style=\"stop-color:#b8860b;stop-opacity:1\" />");
+  svg.push_str("</linearGradient>");
+  svg.push_str("<radialGradient id=\"bgGrad\">");
+  svg.push_str("<stop offset=\"0%\" style=\"stop-color:#2a3a4a;stop-opacity:1\" />");
+  svg.push_str("<stop offset=\"100%\" style=\"stop-color:#1a2a3a;stop-opacity:1\" />");
+  svg.push_str("</radialGradient>");
+  svg.push_str("<filter id=\"shadow\" x=\"-50%\" y=\"-50%\" width=\"200%\" height=\"200%\">");
+  svg.push_str("<feDropShadow dx=\"2\" dy=\"2\" stdDeviation=\"3\" flood-opacity=\"0.5\" />");
+  svg.push_str("</filter>");
+  svg.push_str("</defs>");
+  
+  svg.push_str("<rect width=\"400\" height=\"450\" fill=\"url(#bgGrad)\" />");
+  svg.push_str("<path d=\"M 80 80 L 320 80 L 320 240 Q 200 350 200 350 Q 80 240 80 240 Z\" fill=\"url(#silverGrad)\" stroke=\"#505050\" stroke-width=\"2\" filter=\"url(#shadow)\" />");
+  svg.push_str("<path d=\"M 85 85 L 315 85 L 315 240 Q 200 345 200 345 Q 85 240 85 240 Z\" fill=\"none\" stroke=\"url(#goldGrad)\" stroke-width=\"3\" />");
+  svg.push_str("<path d=\"M 100 105 L 300 105 L 300 230 Q 200 330 200 330 Q 100 230 100 230 Z\" fill=\"#3a3a3a\" stroke=\"none\" />");
+  
+  svg.push_str("<g opacity=\"0.3\" stroke=\"#00ccff\" stroke-width=\"1.5\">");
+  svg.push_str("<polyline points=\"110,120 110,150 130,150\" fill=\"none\" />");
+  svg.push_str("<circle cx=\"130\" cy=\"150\" r=\"2\" fill=\"#00ccff\" />");
+  svg.push_str("<polyline points=\"130,150 130,180 110,180\" fill=\"none\" />");
+  svg.push_str("<polyline points=\"110,120 140,120\" fill=\"none\" />");
+  svg.push_str("<circle cx=\"140\" cy=\"120\" r=\"2\" fill=\"#00ccff\" />");
+  svg.push_str("<polyline points=\"140,120 140,200 120,200\" fill=\"none\" />");
+  svg.push_str("<polyline points=\"290,125 290,160 270,160\" fill=\"none\" />");
+  svg.push_str("<circle cx=\"270\" cy=\"160\" r=\"2\" fill=\"#00ccff\" />");
+  svg.push_str("<polyline points=\"270,160 270,190 290,190\" fill=\"none\" />");
+  svg.push_str("<polyline points=\"290,240 260,240 260,220\" fill=\"none\" />");
+  svg.push_str("<circle cx=\"260\" cy=\"220\" r=\"2\" fill=\"#00ccff\" />");
+  svg.push_str("</g>");
+  
+  svg.push_str("<g fill=\"none\" stroke=\"url(#goldGrad)\" stroke-width=\"2\">");
+  svg.push_str("<path d=\"M 170 130 Q 160 125 155 135 Q 150 145 160 150\" />");
+  svg.push_str("<ellipse cx=\"158\" cy=\"133\" rx=\"2\" ry=\"5\" fill=\"url(#goldGrad)\" />");
+  svg.push_str("<ellipse cx=\"162\" cy=\"140\" rx=\"2\" ry=\"5\" fill=\"url(#goldGrad)\" />");
+  svg.push_str("<ellipse cx=\"168\" cy=\"145\" rx=\"2\" ry=\"5\" fill=\"url(#goldGrad)\" />");
+  svg.push_str("<path d=\"M 230 130 Q 240 125 245 135 Q 250 145 240 150\" />");
+  svg.push_str("<ellipse cx=\"242\" cy=\"133\" rx=\"2\" ry=\"5\" fill=\"url(#goldGrad)\" />");
+  svg.push_str("<ellipse cx=\"238\" cy=\"140\" rx=\"2\" ry=\"5\" fill=\"url(#goldGrad)\" />");
+  svg.push_str("<ellipse cx=\"232\" cy=\"145\" rx=\"2\" ry=\"5\" fill=\"url(#goldGrad)\" />");
+  svg.push_str("</g>");
+  
+  svg.push_str("<g fill=\"url(#goldGrad)\" stroke=\"#b8860b\" stroke-width=\"1.5\">");
+  svg.push_str("<rect x=\"188\" y=\"120\" width=\"8\" height=\"18\" rx=\"2\" />");
+  svg.push_str("<rect x=\"182\" y=\"135\" width=\"16\" height=\"12\" rx=\"2\" />");
+  svg.push_str("<rect x=\"182\" y=\"125\" width=\"3\" height=\"22\" rx=\"1.5\" />");
+  svg.push_str("<rect x=\"186\" y=\"122\" width=\"3\" height=\"25\" rx=\"1.5\" />");
+  svg.push_str("<rect x=\"195\" y=\"123\" width=\"3\" height=\"24\" rx=\"1.5\" />");
+  svg.push_str("<rect x=\"199\" y=\"126\" width=\"3\" height=\"21\" rx=\"1.5\" />");
+  svg.push_str("</g>");
+  
+  svg.push_str("<text x=\"200\" y=\"185\" font-family=\"Arial, sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"url(#goldGrad)\" text-anchor=\"middle\" stroke=\"#b8860b\" stroke-width=\"0.5\">HALL OF</text>");
+  svg.push_str("<text x=\"200\" y=\"215\" font-family=\"Arial, sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"url(#goldGrad)\" text-anchor=\"middle\" stroke=\"#b8860b\" stroke-width=\"0.5\">HEROES</text>");
+  svg.push_str("<text x=\"200\" y=\"265\" font-family=\"Arial, sans-serif\" font-size=\"12\" fill=\"url(#goldGrad)\" text-anchor=\"middle\" letter-spacing=\"2\">REPUTATION COMMANDER</text>");
+  svg.push_str(&format!("<text x=\"200\" y=\"300\" font-family=\"Arial, sans-serif\" font-size=\"10\" fill=\"#cccccc\" text-anchor=\"middle\" opacity=\"0.8\">@{}</text>", username_escaped));
+  svg.push_str("<text x=\"200\" y=\"320\" font-family=\"Arial, sans-serif\" font-size=\"9\" fill=\"#00ccff\" text-anchor=\"middle\" opacity=\"0.7\">Rank 10 • Commander</text>");
+  svg.push_str("<text x=\"50\" y=\"410\" font-family=\"Arial, sans-serif\" font-size=\"10\" fill=\"#666666\" letter-spacing=\"1\">IS-BY_PRO</text>");
+  
+  svg.push_str("<ellipse cx=\"150\" cy=\"120\" rx=\"40\" ry=\"30\" fill=\"white\" opacity=\"0.15\" />");
+  svg.push_str("</svg>");
+
+  HttpResponse::Ok()
+    .content_type("image/svg+xml")
+    .body(svg)
+}
+
 #[post("/v1/unfollow")]
 async fn unfollow_user(
   req: HttpRequest,
@@ -5729,6 +5843,7 @@ async fn main() -> std::io::Result<()> {
       .service(acknowledge_post)
       .service(view_profile)
       .service(user_hover_card_data)
+      .service(get_commander_badge)
       .service(follow_user)
       .service(unfollow_user)
       .service(search_users)
