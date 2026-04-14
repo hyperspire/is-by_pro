@@ -1405,6 +1405,19 @@ async fn ensure_database_schema(pool: &MySqlPool) -> Result<(), sqlx::Error> {
   .execute(pool)
   .await?;
 
+  // Add reinforcements columns if they don't exist
+  let _ = sqlx::query(
+    "ALTER TABLE project_profile ADD COLUMN reinforcements VARCHAR(9999) DEFAULT NULL",
+  )
+  .execute(pool)
+  .await;
+
+  let _ = sqlx::query(
+    "ALTER TABLE project_profile ADD COLUMN reinforcements_request BOOLEAN DEFAULT FALSE",
+  )
+  .execute(pool)
+  .await;
+
   sqlx::query(
     "CREATE TABLE IF NOT EXISTS advert_image (imageid BIGINT PRIMARY KEY AUTO_INCREMENT, imagepath VARCHAR(1024) NOT NULL, url VARCHAR(2048) NOT NULL, owner_uid BIGINT NOT NULL DEFAULT 0, owner_username VARCHAR(255) NOT NULL DEFAULT '', paypal_order_id VARCHAR(128) NULL, payment_status VARCHAR(32) NOT NULL DEFAULT 'pending', clicks BIGINT NOT NULL DEFAULT 0, views BIGINT NOT NULL DEFAULT 0, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)",
   )
