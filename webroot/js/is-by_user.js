@@ -20,6 +20,7 @@ function attachEventListeners() {
     attachShowEditProEventListener,
     attachEditProEventListener,
     attachDirectMessageEventListeners,
+    attachPostsInfiniteScrollEventListener,
   ];
 
   listeners.forEach((setup) => {
@@ -756,4 +757,49 @@ function generateIBFormSuccess(content) {
     document.documentElement.innerHTML = content;
   }
   attachEventListeners();
+}
+
+function attachPostsInfiniteScrollEventListener() {
+  const section = document.getElementById('selected-user-posts-section');
+  const sentinel = document.getElementById('posts-load-sentinel');
+  if (!section || !sentinel) return;
+
+  const ibUID = section.dataset.ibUid;
+  const ibUser = section.dataset.ibUser;
+  if (!ibUID || !ibUser) return;
+
+  let loading = false;
+
+  const observer = new IntersectionObserver(async (entries) => {
+    if (!entries[0].isIntersecting || loading) return;
+    loading = true;
+
+    const allPosts = Array.from(section.querySelectorAll('.post[data-timestamp]'));
+    const lastPost = allPosts[allPosts.length - 1];
+    const beforeTimestamp = lastPost ? lastPost.dataset.timestamp : '';
+
+    const params = new URLSearchParams({ ib_uid: ibUID, ib_user: ibUser });
+    if (beforeTimestamp) params.set('before_timestamp', beforeTimestamp);
+
+    try {
+      const resp = await fetch(`https://${domain}/api/v1/posts?${params}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      if (data.posts_html) {
+        sentinel.insertAdjacentHTML('beforebegin', data.posts_html);
+        attachAcknowledgePostEventListener();
+        attachDeletePostEventListener();
+        attachEditPostEventListener();
+        attachSelectPostEventListener();
+        attachUsernameHoverCardEventListener();
+        attachCopyLinkEventListener();
+      }
+      if (!data.has_more) observer.disconnect();
+    } catch (e) {
+      console.error('posts-scroll-error:', e);
+    }
+    loading = false;
+  }, { rootMargin: '300px' });
+
+  observer.observe(sentinel);
 }

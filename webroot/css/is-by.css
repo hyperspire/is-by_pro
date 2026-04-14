@@ -1066,3 +1066,9 @@ input[type=password] {
     font-size: 11px;
     margin: 4px 0 0 0;
 }
+#posts-load-sentinel {
+    text-align: center;
+    color: #3F3F3F;
+    padding: 16px;
+    font-size: 12px;
+}

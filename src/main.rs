@@ -375,6 +375,19 @@ struct AckPostRequest {
   pid: String,
 }
 
+#[derive(Deserialize)]
+struct PostsPageQuery {
+  ib_uid: i64,
+  ib_user: String,
+  before_timestamp: Option<String>,
+}
+
+#[derive(Serialize)]
+struct PostsPageResponse {
+  posts_html: String,
+  has_more: bool,
+}
+
 #[derive(sqlx::FromRow)]
 struct EditProfileRow {
   ib_ibp: String,
@@ -1718,30 +1731,37 @@ async fn render_profile_html(
     domain = DOMAIN
   );
 
-  let ib_post_results_maximum: usize = 200;
+  let ib_post_results_length: i64 = sqlx::query_scalar(
+      "SELECT COUNT(*) FROM post WHERE post.ib_uid = ? AND (post.parentid = '' OR post.parentid IS NULL)"
+    )
+    .bind(ib_uid)
+    .fetch_one(&state.db_pool)
+    .await
+    .unwrap_or(0);
+
   let ib_post_results = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = '' OR post.parentid IS NULL)"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = '' OR post.parentid IS NULL) ORDER BY post.timestamp DESC LIMIT 21"
     )
     .bind(ib_uid)
     .fetch_all(&state.db_pool)
     .await
     .map_err(|e| format!("Post query failed: {}", e))?;
 
-  let ib_post_results_length = ib_post_results.len();
+  let profile_has_more = ib_post_results.len() > 20;
+  let display_rows = &ib_post_results[..ib_post_results.len().min(20)];
+
   let mut selected_user_posts_response_content = format!(
-    r#"<div class="notice"><p><em>:[[ :for-the: [[ posts: is-by: {ib_post_results_length}: is-with: showing-latest-results: truncated: is-by: {ib_post_results_maximum} ]]: ]]:</em></p></div>"#,
+    r#"<div class="notice"><p><em>:[[ :for-the: [[ posts: is-by: {ib_post_results_length}: is-with: showing-latest-results: ]]:</em></p></div>"#,
     ib_post_results_length = ib_post_results_length,
-    ib_post_results_maximum = ib_post_results_maximum
   );
 
-  let start_index = ib_post_results_length.saturating_sub(ib_post_results_maximum);
-  let displayed_post_ids: Vec<String> = ib_post_results[start_index..]
+  let displayed_post_ids: Vec<String> = display_rows
     .iter()
     .map(|row| row.postid.clone())
     .collect();
   let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &displayed_post_ids).await;
 
-  for row in ib_post_results[start_index..].iter().rev() {
+  for row in display_rows.iter() {
     let row_owner_uid = row.ib_uid.parse::<i64>().ok();
     let can_manage_post = session_uid.is_some() && session_uid == row_owner_uid;
     let manage_actions = if can_manage_post {
@@ -1800,9 +1820,18 @@ async fn render_profile_html(
     );
   }
 
+  let sentinel_html = if profile_has_more {
+    r#"<div id="posts-load-sentinel"></div>"#
+  } else {
+    ""
+  };
+
   html += &format!(
-    r#"<div id="selected-user-posts-section">{selected_user_posts_response_content}</div>"#,
-    selected_user_posts_response_content = selected_user_posts_response_content
+    r#"<div id="selected-user-posts-section" data-ib-uid="{ib_uid}" data-ib-user="{ib_user_escaped}">{selected_user_posts_response_content}{sentinel_html}</div>"#,
+    selected_user_posts_response_content = selected_user_posts_response_content,
+    ib_uid = ib_uid,
+    ib_user_escaped = escape_html(ib_user),
+    sentinel_html = sentinel_html,
   );
 
   let ib_pro_result = sqlx::query_as::<_, ProRow>(
@@ -4382,6 +4411,111 @@ async fn acknowledge_post(
     .finish()
 }
 
+#[get("/api/v1/posts")]
+async fn get_posts_page(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  query: web::Query<PostsPageQuery>,
+) -> impl Responder {
+  let session_uid = get_session_uid(&req);
+  let ib_uid = query.ib_uid;
+  let ib_user = &query.ib_user.clone();
+
+  let ib_post_results = if let Some(before_ts) = &query.before_timestamp {
+    sqlx::query_as::<_, PostRow>(
+        "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = '' OR post.parentid IS NULL) AND post.timestamp < ? ORDER BY post.timestamp DESC LIMIT 21"
+      )
+      .bind(ib_uid)
+      .bind(before_ts)
+      .fetch_all(&state.db_pool)
+      .await
+  } else {
+    sqlx::query_as::<_, PostRow>(
+        "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = '' OR post.parentid IS NULL) ORDER BY post.timestamp DESC LIMIT 21"
+      )
+      .bind(ib_uid)
+      .fetch_all(&state.db_pool)
+      .await
+  };
+
+  let ib_post_results = match ib_post_results {
+    Ok(rows) => rows,
+    Err(e) => {
+      return HttpResponse::InternalServerError().json(json!({
+        "error": format!("Post query failed: {}", e)
+      }));
+    }
+  };
+
+  let has_more = ib_post_results.len() > 20;
+  let display_rows = &ib_post_results[..ib_post_results.len().min(20)];
+
+  let displayed_post_ids: Vec<String> = display_rows.iter().map(|row| row.postid.clone()).collect();
+  let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &displayed_post_ids).await;
+
+  let mut posts_html = String::new();
+  for row in display_rows.iter() {
+    let row_owner_uid = row.ib_uid.parse::<i64>().ok();
+    let can_manage_post = session_uid.is_some() && session_uid == row_owner_uid;
+    let manage_actions = if can_manage_post {
+      format!(
+        r#"<form class="delete-post-form" action="https://{domain}/v1/deletepost" method="POST">
+            <input type="hidden" name="ib_uid" value="{ib_uid}">
+            <input type="hidden" name="ib_user" value="{ib_user}">
+            <input type="hidden" name="pid" value="{ib_post_id}">
+          </form>
+          <form class="edit-post-form" action="https://{domain}/v1/editpost" method="GET">
+            <input type="hidden" name="ib_uid" value="{ib_uid}">
+            <input type="hidden" name="ib_user" value="{ib_user}">
+            <input type="hidden" name="pid" value="{ib_post_id}">
+          </form>
+          <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a><a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>"#,
+        domain = DOMAIN,
+        ib_uid = ib_uid,
+        ib_user = escape_html(ib_user),
+        ib_post_id = escape_html(&row.postid),
+      )
+    } else {
+      String::new()
+    };
+
+    posts_html += &format!(
+      r#"
+      <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
+        {post_meta}
+        <p>{post_body}</p>
+        <div class="post-actions">
+          {ack_controls}
+          {manage_actions}
+          <form class="show-post-form" action="https://{domain}/v1/showpost" method="GET">
+            <input type="hidden" name="ib_uid" value="{ib_uid}">
+            <input type="hidden" name="ib_user" value="{ib_user}">
+            <input type="hidden" name="pid" value="{ib_post_id}">
+          </form>
+          <a href="javascript:void(0);" class="show-post">:[[ :show-post: ]]:</a>
+        </div>
+        <p class="acknowledged-count">Acknowleged {acknowledged_count} times.</p>
+      </div>"#,
+      ib_post_id = escape_html(&row.postid),
+      ib_post_timestamp = escape_html(&row.timestamp),
+      post_meta = render_post_meta(&row.ib_uid, &row.username, &row.timestamp, row.user_total_acks),
+      manage_actions = manage_actions,
+      ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&row.postid) {
+        render_ack_disabled()
+      } else {
+        render_ack_controls(ib_uid, ib_user, &row.postid)
+      },
+      acknowledged_count = row.acknowledged_count,
+      post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user),
+      ib_uid = ib_uid,
+      ib_user = escape_html(ib_user),
+      domain = DOMAIN
+    );
+  }
+
+  HttpResponse::Ok().json(PostsPageResponse { posts_html, has_more })
+}
+
 #[get("/v1/profile/{ib_user}")]
 async fn view_profile(
   req: HttpRequest,
@@ -5874,6 +6008,7 @@ async fn main() -> std::io::Result<()> {
       .service(update_post)
       .service(acknowledge_post)
       .service(view_profile)
+      .service(get_posts_page)
       .service(user_hover_card_data)
       .service(get_commander_badge)
       .service(follow_user)
