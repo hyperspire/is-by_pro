@@ -267,6 +267,13 @@ struct SearchPostsRequest {
 }
 
 #[derive(Deserialize)]
+struct SearchProjectsRequest {
+  ib_uid: i64,
+  ib_user: String,
+  query: String,
+}
+
+#[derive(Deserialize)]
 struct ProjectsRequest {
   ib_uid: i64,
   ib_user: String,
@@ -279,6 +286,8 @@ struct CreateProjectRequest {
   project: String,
   description: String,
   languages: String,
+  reinforcements: Option<String>,
+  reinforcements_request: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -289,6 +298,16 @@ struct EditProjectRequest {
   project: String,
   description: String,
   languages: String,
+  reinforcements: Option<String>,
+  reinforcements_request: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct QuickResponseForceRequest {
+  ib_uid: i64,
+  ib_user: String,
+  project_id: i64,
+  quick_response_force: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -478,6 +497,15 @@ struct ProjectProfileRow {
   description: String,
   languages: String,
   updated_at: String,
+  reinforcements: Option<String>,
+  reinforcements_request: Option<bool>,
+}
+
+#[derive(sqlx::FromRow)]
+struct ProjectReinforcementsRow {
+  ib_uid: i64,
+  reinforcements: String,
+  reinforcements_request: bool,
 }
 
 #[derive(Serialize)]
@@ -1372,7 +1400,7 @@ async fn ensure_database_schema(pool: &MySqlPool) -> Result<(), sqlx::Error> {
   .await?;
 
   sqlx::query(
-    "CREATE TABLE IF NOT EXISTS project_profile (id BIGINT PRIMARY KEY AUTO_INCREMENT, ib_uid BIGINT NOT NULL, project VARCHAR(255) NOT NULL, description TEXT NOT NULL, languages VARCHAR(255) NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, INDEX idx_project_profile_uid_time (ib_uid, updated_at))",
+    "CREATE TABLE IF NOT EXISTS project_profile (id BIGINT PRIMARY KEY AUTO_INCREMENT, ib_uid BIGINT NOT NULL, project VARCHAR(255) NOT NULL, description TEXT NOT NULL, languages VARCHAR(255) NOT NULL, reinforcements VARCHAR(9999), reinforcements_request BOOLEAN DEFAULT FALSE, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, INDEX idx_project_profile_uid_time (ib_uid, updated_at))",
   )
   .execute(pool)
   .await?;
@@ -1924,11 +1952,19 @@ async fn render_profile_html(
       </div>
     </div><br>
     <div id="user-search-section">
+      <p><strong>User Search:</strong></p>
       <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
+      </form>
+      <p><strong>Project Language Search:</strong></p>
+      <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Project Languages" required>
+        <input type="submit" value="Search Projects">
       </form>
     </div><br>
     <div id="sidebar-footer">
@@ -2142,11 +2178,19 @@ async fn render_search_users_html(
       </div>
     </div><br>
     <div id="user-search-section">
+      <p><strong>User Search:</strong></p>
       <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
+      </form>
+      <p><strong>Project Language Search:</strong></p>
+      <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Project Languages" required>
+        <input type="submit" value="Search Projects">
       </form>
     </div><br>
     <div id="sidebar-footer">
@@ -2366,11 +2410,19 @@ async fn render_search_posts_html(
       </div>
     </div><br>
     <div id="user-search-section">
+      <p><strong>User Search:</strong></p>
       <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
+      </form>
+      <p><strong>Project Language Search:</strong></p>
+      <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Project Languages" required>
+        <input type="submit" value="Search Projects">
       </form>
     </div><br>
     <div id="sidebar-footer">
@@ -2414,7 +2466,7 @@ async fn render_projects_html(
   let advert_html = render_advert_html(state).await;
 
   let rows = sqlx::query_as::<_, ProjectProfileRow>(
-      "SELECT project.id, project.ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, project.project, project.description, project.languages, CAST(project.updated_at AS CHAR CHARACTER SET utf8mb4) AS updated_at FROM project_profile AS project LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE project.ib_uid = ? ORDER BY project.updated_at DESC LIMIT 500"
+      "SELECT project.id, project.ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, project.project, project.description, project.languages, CAST(project.updated_at AS CHAR CHARACTER SET utf8mb4) AS updated_at, COALESCE(project.reinforcements, '') AS reinforcements, COALESCE(project.reinforcements_request, FALSE) AS reinforcements_request FROM project_profile AS project LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE project.ib_uid = ? ORDER BY project.updated_at DESC LIMIT 500"
     )
     .bind(ib_uid)
     .fetch_all(&state.db_pool)
@@ -2443,6 +2495,10 @@ async fn render_projects_html(
                 <input class="post" type="text" name="description" value="{description}" maxlength="1024" required>
                 <p><strong>Languages:</strong></p>
                 <input class="post" type="text" name="languages" value="{languages}" maxlength="255" required>
+                <p><strong>Reinforcements:</strong></p>
+                <input class="post" type="text" name="reinforcements" value="{reinforcements}" maxlength="9999">
+                <p><strong>Requesting Reinforcements:</strong></p>
+                <input type="checkbox" name="reinforcements_request" value="yes" {reinforcements_request_checked}>
                 <input class="post-submit" type="submit" value="Save Project">
               </form>
             </div>"#,
@@ -2454,22 +2510,60 @@ async fn render_projects_html(
             project_id = row.id,
             project = escape_html(&row.project),
             description = escape_html(&row.description),
-            languages = escape_html(&row.languages)
+            languages = escape_html(&row.languages),
+            reinforcements = escape_html(row.reinforcements.as_deref().unwrap_or("")),
+            reinforcements_request_checked = if row.reinforcements_request == Some(true) { "checked" } else { "" }
           )
         } else {
+          let reinforcements_badge = if row.reinforcements_request == Some(true) {
+            "<p><em>:[[ :requesting-reinforcements: ]]:</em></p>".to_string()
+          } else {
+            String::new()
+          };
+          let quick_response_form = if row.reinforcements_request == Some(true) && session_uid.is_some() && session_uid != Some(row.ib_uid) {
+            format!(
+              r#"<form class="quick-response-force-form" action="https://{domain}/v1/projects/reinforce" method="POST">
+                <input type="hidden" name="ib_uid" value="{ib_uid}">
+                <input type="hidden" name="ib_user" value="{ib_user}">
+                <input type="hidden" name="project_id" value="{project_id}">
+                <input type="hidden" name="quick_response_force" value="1">
+                <input class="post-submit" type="submit" value="Respond to Reinforcements Request">
+              </form>"#,
+              domain = DOMAIN,
+              ib_uid = ib_uid,
+              ib_user = escape_html(ib_user),
+              project_id = row.id
+            )
+          } else {
+            String::new()
+          };
           format!(
             r#"<div class="post">
               <div class="post-meta"><a class="post-author" href="https://{domain}/v1/profile/{owner_username}">{owner_username}</a><span class="post-timestamp">{updated_at}</span></div>
               <p><strong>Project:</strong> {project}</p>
               <p><strong>Description:</strong> {description}</p>
               <p><strong>Languages:</strong> {languages}</p>
+              {reinforcements_section}
+              {reinforcements_badge}
+              {quick_response_form}
             </div>"#,
             domain = DOMAIN,
             owner_username = escape_html(&row.username),
             updated_at = escape_html(&row.updated_at),
             project = escape_html(&row.project),
             description = render_post_with_hashtags(&row.description, ib_uid, ib_user),
-            languages = escape_html(&row.languages)
+            languages = escape_html(&row.languages),
+            reinforcements_section = if let Some(ref r) = row.reinforcements {
+              if !r.trim().is_empty() {
+                format!("<p><strong>Reinforcements:</strong> {}</p>", escape_html(r))
+              } else {
+                String::new()
+              }
+            } else {
+              String::new()
+            },
+            reinforcements_badge = reinforcements_badge,
+            quick_response_form = quick_response_form
           )
         }
       })
@@ -2623,11 +2717,274 @@ async fn render_projects_html(
       </div>
     </div><br>
     <div id="user-search-section">
+      <p><strong>User Search:</strong></p>
       <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
+      </form>
+      <p><strong>Project Language Search:</strong></p>
+      <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Project Languages" required>
+        <input type="submit" value="Search Projects">
+      </form>
+    </div><br>
+    <div id="sidebar-footer">
+      <p><a target="_blank" rel="noopener" href="https://{DOMAIN}/advertise.html">Advertise</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/privacy.html">Privacy</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/tos.html">ToS</a> | @ {COPYRIGHT} HyperSpire Foundation</p>
+    </div>
+  </div>
+</div>
+</body>
+
+</html>"#,
+      ib_uid = ib_uid,
+      ib_github = escape_html(&ib_pro.github),
+      ib_user = escape_html(ib_user),
+      ib_ibp = escape_html(&ib_pro.ibp),
+      ib_pro = escape_html(&ib_pro.pro),
+      ib_services = escape_html(&ib_pro.services),
+      ib_location = escape_html(&ib_pro.location),
+      ib_website = escape_html(&ib_pro.website),
+      sidebar_login_html = sidebar_login_html,
+      related_userlist_html = related_userlist_html,
+      trending_tags_html = trending_tags_html
+    );
+  } else {
+    html += &format!(r#"
+  </div>
+</div>
+</body>
+
+</html>"#);
+  }
+
+  Ok(html)
+}
+
+async fn render_search_projects_html(
+  state: &AppState,
+  ib_uid: i64,
+  ib_user: &str,
+  raw_query: &str,
+  session_uid: Option<i64>,
+) -> Result<String, String> {
+  let advert_html = render_advert_html(state).await;
+
+  let search_terms: Vec<String> = raw_query
+    .split_whitespace()
+    .map(|term| term.trim().to_lowercase())
+    .filter(|term| !term.is_empty())
+    .collect();
+
+  let search_results_html = if search_terms.is_empty() {
+    "<p><em>:[[ :search-projects-empty-query: ]]:</em></p>".to_string()
+  } else {
+    let regex_terms: Vec<String> = search_terms
+      .iter()
+      .map(|term| escape_mysql_regex_token(term))
+      .collect();
+    let pattern = format!(
+      "(^|[[:space:],])({})([[:space:],]|$)",
+      regex_terms.join("|")
+    );
+
+    let rows = sqlx::query_as::<_, ProjectProfileRow>(
+        "SELECT project.id, project.ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, project.project, project.description, project.languages, CAST(project.updated_at AS CHAR CHARACTER SET utf8mb4) AS updated_at, COALESCE(project.reinforcements, '') AS reinforcements, COALESCE(project.reinforcements_request, FALSE) AS reinforcements_request FROM project_profile AS project LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(project.languages, '')) REGEXP ? ORDER BY project.updated_at DESC LIMIT 500"
+      )
+      .bind(&pattern)
+      .fetch_all(&state.db_pool)
+      .await
+      .map_err(|e| format!("Search projects query failed: {}", e))?;
+
+    if rows.is_empty() {
+      "<p><em>:[[ :search-projects-no-results: ]]:</em></p>".to_string()
+    } else {
+      rows
+        .iter()
+        .map(|row| {
+          let reinforcements_badge = if row.reinforcements_request == Some(true) {
+            "<p><em>:[[ :requesting-reinforcements: ]]:</em></p>".to_string()
+          } else {
+            String::new()
+          };
+          let quick_response_form = if row.reinforcements_request == Some(true) && session_uid.is_some() && session_uid != Some(row.ib_uid) {
+            format!(
+              r#"<form class="quick-response-force-form" action="https://{domain}/v1/projects/reinforce" method="POST">
+                <input type="hidden" name="ib_uid" value="{ib_uid}">
+                <input type="hidden" name="ib_user" value="{ib_user}">
+                <input type="hidden" name="project_id" value="{project_id}">
+                <input type="hidden" name="quick_response_force" value="1">
+                <input class="post-submit" type="submit" value="Respond to Reinforcements Request">
+              </form>"#,
+              domain = DOMAIN,
+              ib_uid = ib_uid,
+              ib_user = escape_html(ib_user),
+              project_id = row.id
+            )
+          } else {
+            String::new()
+          };
+          format!(
+            r#"<div class="post">
+              <div class="post-meta"><a class="post-author" href="https://{domain}/v1/profile/{owner_username}">{owner_username}</a><span class="post-timestamp">{updated_at}</span></div>
+              <p><strong>Project:</strong> {project}</p>
+              <p><strong>Description:</strong> {description}</p>
+              <p><strong>Languages:</strong> {languages}</p>
+              {reinforcements_section}
+              {reinforcements_badge}
+              {quick_response_form}
+            </div>"#,
+            domain = DOMAIN,
+            owner_username = escape_html(&row.username),
+            updated_at = escape_html(&row.updated_at),
+            project = escape_html(&row.project),
+            description = render_post_with_hashtags(&row.description, ib_uid, ib_user),
+            languages = highlight_terms(&row.languages, &search_terms),
+            reinforcements_section = if let Some(ref r) = row.reinforcements {
+              if !r.trim().is_empty() {
+                format!("<p><strong>Reinforcements:</strong> {}</p>", escape_html(r))
+              } else {
+                String::new()
+              }
+            } else {
+              String::new()
+            },
+            reinforcements_badge = reinforcements_badge,
+            quick_response_form = quick_response_form
+          )
+        })
+        .collect::<Vec<String>>()
+        .join("")
+    }
+  };
+
+  let navigation_links = if session_uid.is_some() {
+    format!(
+      r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
+        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
+        <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
+        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
+      domain = DOMAIN,
+      ib_uid = ib_uid,
+      ib_user = escape_html(ib_user)
+    )
+  } else {
+    String::new()
+  };
+
+  let mut html = format!(
+    r#"<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
+  <script src="/js/is-by_user.js" type="text/javascript"></script>
+  <title>:[[ :search-projects: {ib_user}: ]]:</title>
+</head>
+
+<body>
+  <form id="select-user-form" action="/" method="GET">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <form id="select-post-form" action="https://{domain}/v1/showpost" method="POST">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <form id="edit-profile-form" action="https://{domain}/v1/editprofile" method="GET">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <div id="main-section">
+    <div id="media-section">
+      <div>
+        {advert_html}
+      </div>
+      <div id="navigation-section">
+        {navigation_links}
+      </div>
+      <div id="selected-user-posts-section" class="post-section">
+        <div class="notice"><p><em>:[[ :search-project-languages-for: {raw_query}: ]]:</em></p></div>
+        {search_results_html}
+      </div>
+    </div>"#,
+    domain = DOMAIN,
+    ib_uid = ib_uid,
+    ib_user = escape_html(ib_user),
+    advert_html = advert_html,
+    navigation_links = navigation_links,
+    raw_query = escape_html(raw_query),
+    search_results_html = search_results_html,
+  );
+
+  let ib_pro_result = sqlx::query_as::<_, ProRow>(
+      "SELECT ibp, pro, location, services, website, github FROM pro WHERE ib_uid = ?"
+    )
+    .bind(ib_uid)
+    .fetch_one(&state.db_pool)
+    .await;
+
+  if let Ok(ib_pro) = ib_pro_result {
+    let source_uid = session_uid.unwrap_or(ib_uid);
+    let source_ibp = if let Some(uid) = session_uid {
+      lookup_ibp_by_uid(state, uid).await.unwrap_or_else(|| ib_pro.ibp.clone())
+    } else {
+      ib_pro.ibp.clone()
+    };
+    let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
+    let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
+    let sidebar_login_html = if session_uid.is_none() {
+      r#"<div id="actions-section">
+      <div class="login-section">
+        <p><a href="/auth/github">Login with GitHub</a></p>
+      </div>
+    </div>"#
+        .to_string()
+    } else {
+      String::new()
+    };
+
+    html += &format!(r#"
+  <div id="profile-section">
+    {sidebar_login_html}
+    <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p class="paragraph"><em>{ib_ibp}</em></p>
+    <p class="description">{ib_pro}</p>
+    <p class="description">{ib_services}</p>
+    <p class="description">{ib_location}</p>
+    <p><a target="_blank" rel="noopener" href="{ib_website}">{ib_website}</a></p>
+    <div id="userlist-section">
+      <p><strong>:[[ :userlist: ]]:</strong></p><br>
+      <div id="userlist-container">
+        {related_userlist_html}
+      </div>
+    </div><br>
+    <div id="trending-tags-section">
+      <p><strong>:[[ :trending-tags-24h: ]]:</strong></p>
+      <div id="trending-tags-container">
+        {trending_tags_html}
+      </div>
+    </div><br>
+    <div id="user-search-section">
+      <p><strong>User Search:</strong></p>
+      <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Users" required>
+        <input type="submit" value="Search">
+      </form>
+      <p><strong>Project Language Search:</strong></p>
+      <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Project Languages" required>
+        <input type="submit" value="Search Projects">
       </form>
     </div><br>
     <div id="sidebar-footer">
@@ -2922,11 +3279,19 @@ async fn render_war_room_html(
       </div>
     </div><br>
     <div id="user-search-section">
+      <p><strong>User Search:</strong></p>
       <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
+      </form>
+      <p><strong>Project Language Search:</strong></p>
+      <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Project Languages" required>
+        <input type="submit" value="Search Projects">
       </form>
     </div><br>
     <div id="sidebar-footer">
@@ -3168,11 +3533,19 @@ async fn render_inbox_html(
       </div>
     </div><br>
     <div id="user-search-section">
+      <p><strong>User Search:</strong></p>
       <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
+      </form>
+      <p><strong>Project Language Search:</strong></p>
+      <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Project Languages" required>
+        <input type="submit" value="Search Projects">
       </form>
     </div><br>
     <div id="sidebar-footer">
@@ -3456,11 +3829,19 @@ async fn render_single_post_html(
       </div>
     </div><br>
     <div id="user-search-section">
+      <p><strong>User Search:</strong></p>
       <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
+      </form>
+      <p><strong>Project Language Search:</strong></p>
+      <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Project Languages" required>
+        <input type="submit" value="Search Projects">
       </form>
     </div><br>
     <div id="sidebar-footer">
@@ -4728,6 +5109,26 @@ async fn search_posts(
   }
 }
 
+#[get("/v1/searchprojects")]
+async fn search_projects(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  query: web::Query<SearchProjectsRequest>,
+) -> impl Responder {
+  match render_search_projects_html(
+    &state,
+    query.ib_uid,
+    &query.ib_user,
+    &query.query,
+    get_session_uid(&req),
+  ).await {
+    Ok(html) => HttpResponse::Ok()
+      .content_type("text/html; charset=utf-8")
+      .body(html),
+    Err(err) => HttpResponse::InternalServerError().body(err),
+  }
+}
+
 #[get("/v1/projects")]
 async fn projects_page(
   req: HttpRequest,
@@ -4762,12 +5163,14 @@ async fn create_project_profile(
   }
 
   let insert_result = sqlx::query(
-    "INSERT INTO project_profile (ib_uid, project, description, languages) VALUES (?, ?, ?, ?)",
+    "INSERT INTO project_profile (ib_uid, project, description, languages, reinforcements, reinforcements_request) VALUES (?, ?, ?, ?, ?, ?)",
   )
   .bind(payload.ib_uid)
   .bind(payload.project.trim())
   .bind(payload.description.trim())
   .bind(payload.languages.trim())
+  .bind(payload.reinforcements.as_ref().and_then(|s| if s.trim().is_empty() { None } else { Some(s.trim()) }))
+  .bind(payload.reinforcements_request.as_ref().map(|s| !s.is_empty()).unwrap_or(false))
   .execute(&state.db_pool)
   .await;
 
@@ -4799,11 +5202,13 @@ async fn update_project_profile(
   }
 
   let update_result = sqlx::query(
-    "UPDATE project_profile SET project = ?, description = ?, languages = ? WHERE id = ? AND ib_uid = ?",
+    "UPDATE project_profile SET project = ?, description = ?, languages = ?, reinforcements = ?, reinforcements_request = ? WHERE id = ? AND ib_uid = ?",
   )
   .bind(payload.project.trim())
   .bind(payload.description.trim())
   .bind(payload.languages.trim())
+  .bind(payload.reinforcements.as_ref().and_then(|s| if s.trim().is_empty() { None } else { Some(s.trim()) }))
+  .bind(payload.reinforcements_request.as_ref().map(|s| !s.is_empty()).unwrap_or(false))
   .bind(payload.project_id)
   .bind(session_uid)
   .execute(&state.db_pool)
@@ -4815,6 +5220,87 @@ async fn update_project_profile(
       .finish(),
     Err(err) => HttpResponse::InternalServerError().body(format!("Failed to update project: {}", err)),
   }
+}
+
+#[post("/v1/projects/reinforce")]
+async fn quick_response_force_project(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  payload: web::Form<QuickResponseForceRequest>,
+) -> impl Responder {
+  let Some((session_uid, session_username)) = get_session_identity(&req, &state).await else {
+    return HttpResponse::Unauthorized().body("Login required");
+  };
+
+  if payload.quick_response_force.as_deref().unwrap_or_default().trim().is_empty() {
+    return HttpResponse::BadRequest().body("Missing quick response action");
+  }
+
+  let project_row = match sqlx::query_as::<_, ProjectReinforcementsRow>(
+    "SELECT ib_uid, COALESCE(reinforcements, '') AS reinforcements, COALESCE(reinforcements_request, FALSE) AS reinforcements_request FROM project_profile WHERE id = ? LIMIT 1",
+  )
+  .bind(payload.project_id)
+  .fetch_optional(&state.db_pool)
+  .await
+  {
+    Ok(Some(row)) => row,
+    Ok(None) => return HttpResponse::NotFound().body("Project not found"),
+    Err(err) => return HttpResponse::InternalServerError().body(format!("Project lookup failed: {}", err)),
+  };
+
+  if !project_row.reinforcements_request {
+    return HttpResponse::BadRequest().body("This project is not requesting reinforcements");
+  }
+
+  if project_row.ib_uid == session_uid {
+    return HttpResponse::Forbidden().body("Project owner cannot quick-respond to own request");
+  }
+
+  let mut reinforcement_usernames: Vec<String> = project_row
+    .reinforcements
+    .split(',')
+    .map(|item| item.trim())
+    .filter(|item| !item.is_empty())
+    .map(|item| item.to_string())
+    .collect();
+
+  let already_added = reinforcement_usernames
+    .iter()
+    .any(|name| name.eq_ignore_ascii_case(&session_username));
+
+  if !already_added {
+    reinforcement_usernames.push(session_username.clone());
+    let updated_reinforcements = reinforcement_usernames.join(", ");
+
+    if let Err(err) = sqlx::query(
+      "UPDATE project_profile SET reinforcements = ? WHERE id = ? LIMIT 1",
+    )
+    .bind(updated_reinforcements)
+    .bind(payload.project_id)
+    .execute(&state.db_pool)
+    .await
+    {
+      return HttpResponse::InternalServerError().body(format!("Failed to update reinforcements: {}", err));
+    }
+  }
+
+  let fallback_location = format!(
+    "/v1/projects?ib_uid={}&ib_user={}",
+    payload.ib_uid,
+    payload.ib_user
+  );
+
+  let location = req
+    .headers()
+    .get("referer")
+    .and_then(|value| value.to_str().ok())
+    .filter(|value| !value.trim().is_empty())
+    .unwrap_or(&fallback_location)
+    .to_string();
+
+  HttpResponse::SeeOther()
+    .insert_header(("Location", location))
+    .finish()
 }
 
 #[get("/v1/admin/ads")]
@@ -6104,9 +6590,11 @@ async fn main() -> std::io::Result<()> {
       .service(get_war_room_posts_page)
       .service(search_users)
       .service(search_posts)
+      .service(search_projects)
       .service(projects_page)
       .service(create_project_profile)
       .service(update_project_profile)
+      .service(quick_response_force_project)
       .service(ads_admin_page)
       .service(ads_admin_create)
       .service(ads_admin_update)
