@@ -1814,6 +1814,16 @@ async fn render_profile_html(
     } else {
       ib_pro.ibp.clone()
     };
+    let sidebar_login_html = if session_uid.is_none() {
+      r#"<div id="actions-section">
+      <div class="login-section">
+        <p><a href="/auth/github">Login with GitHub</a></p>
+      </div>
+    </div>"#
+        .to_string()
+    } else {
+      String::new()
+    };
     let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
 
@@ -1821,6 +1831,7 @@ async fn render_profile_html(
   </div>
   <div id="profile-section">
     <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_github}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    {sidebar_login_html}
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -1882,6 +1893,7 @@ async fn render_profile_html(
       follow_controls_html = follow_controls_html,
       followers_count = followers_count,
       followers_html = followers_html,
+      sidebar_login_html = sidebar_login_html,
       related_userlist_html = related_userlist_html,
       trending_tags_html = trending_tags_html
     );
