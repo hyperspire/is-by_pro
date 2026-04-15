@@ -922,6 +922,19 @@ async fn render_related_userlist_html(
   source_uid: i64,
   source_ibp: &str,
 ) -> String {
+  let userlist_debug = std::env::var("ISBY_USERLIST_DEBUG")
+    .ok()
+    .map(|value| value != "0")
+    .unwrap_or(true);
+
+  if userlist_debug {
+    eprintln!(
+      "[userlist] start source_uid={} source_ibp='{}'",
+      source_uid,
+      source_ibp
+    );
+  }
+
   let mut seen = HashSet::new();
   let raw_terms: Vec<String> = source_ibp
     .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '+' || ch == '#'))
@@ -937,13 +950,24 @@ async fn render_related_userlist_html(
       .cloned()
       .collect();
     if filtered.is_empty() {
-      raw_terms
+      raw_terms.clone()
     } else {
       filtered
     }
   };
 
+  if userlist_debug {
+    eprintln!(
+      "[userlist] parsed raw_terms={:?} interests={:?}",
+      raw_terms,
+      interests
+    );
+  }
+
   if interests.is_empty() {
+    if userlist_debug {
+      eprintln!("[userlist] no interests after parsing");
+    }
     return "<br><p><em>:[[ :no-related-users: ]]:</em></p>".to_string();
   }
 
@@ -953,6 +977,10 @@ async fn render_related_userlist_html(
     .collect();
   let pattern = format!("({})", regex_terms.join("|"));
   let source_uid_text = source_uid.to_string();
+
+  if userlist_debug {
+    eprintln!("[userlist] regex pattern='{}'", pattern);
+  }
 
   let related_rows = sqlx::query_as::<_, RelatedUsernameRankRow>(
       "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments FROM pro AS candidate JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci <> ? COLLATE utf8mb4_unicode_ci AND LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) <> '' AND (LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) REGEXP ? OR LOWER(COALESCE(candidate.github, '')) REGEXP ? OR LOWER(COALESCE(candidate.ibp, '')) REGEXP ? OR LOWER(COALESCE(candidate.pro, '')) REGEXP ? OR LOWER(COALESCE(candidate.services, '')) REGEXP ? OR LOWER(COALESCE(candidate.location, '')) REGEXP ? OR LOWER(COALESCE(candidate.website, '')) REGEXP ?) ORDER BY RAND() LIMIT 5"
@@ -969,11 +997,24 @@ async fn render_related_userlist_html(
     .await;
 
   let mut related_rows = match related_rows {
-    Ok(rows) => rows,
-    Err(_) => return "<p><em>:[[ :related-user-lookup: failed: ]]:</em></p>".to_string(),
+    Ok(rows) => {
+      if userlist_debug {
+        eprintln!("[userlist] regex rows={}", rows.len());
+      }
+      rows
+    }
+    Err(err) => {
+      if userlist_debug {
+        eprintln!("[userlist] regex query error: {}", err);
+      }
+      return "<p><em>:[[ :related-user-lookup: failed: ]]:</em></p>".to_string();
+    }
   };
 
   if related_rows.is_empty() {
+    if userlist_debug {
+      eprintln!("[userlist] regex returned 0 rows; trying LIKE fallback");
+    }
     let mut sql = String::from(
       "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments FROM pro AS candidate JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci <> ? COLLATE utf8mb4_unicode_ci AND LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) <> '' AND ("
     );
@@ -1001,12 +1042,25 @@ async fn render_related_userlist_html(
     }
 
     related_rows = match query.fetch_all(&state.db_pool).await {
-      Ok(rows) => rows,
-      Err(_) => return "<p><em>:[[ :related-user-lookup: failed: ]]:</em></p>".to_string(),
+      Ok(rows) => {
+        if userlist_debug {
+          eprintln!("[userlist] LIKE rows={}", rows.len());
+        }
+        rows
+      }
+      Err(err) => {
+        if userlist_debug {
+          eprintln!("[userlist] LIKE query error: {}", err);
+        }
+        return "<p><em>:[[ :related-user-lookup: failed: ]]:</em></p>".to_string();
+      }
     };
   }
 
   if related_rows.is_empty() {
+    if userlist_debug {
+      eprintln!("[userlist] LIKE returned 0 rows; trying in-memory fallback");
+    }
     let candidates = match sqlx::query_as::<_, RelatedCandidateRow>(
       "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments, COALESCE(candidate.github, '') AS github, COALESCE(candidate.ibp, '') AS ibp, COALESCE(candidate.pro, '') AS pro, COALESCE(candidate.services, '') AS services, COALESCE(candidate.location, '') AS location, COALESCE(candidate.website, '') AS website FROM pro AS candidate JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci <> ? COLLATE utf8mb4_unicode_ci ORDER BY RAND() LIMIT 250"
     )
@@ -1014,8 +1068,18 @@ async fn render_related_userlist_html(
     .fetch_all(&state.db_pool)
     .await
     {
-      Ok(rows) => rows,
-      Err(_) => return "<p><em>:[[ :related-user-lookup: failed: ]]:</em></p>".to_string(),
+      Ok(rows) => {
+        if userlist_debug {
+          eprintln!("[userlist] in-memory candidate pool size={}", rows.len());
+        }
+        rows
+      }
+      Err(err) => {
+        if userlist_debug {
+          eprintln!("[userlist] in-memory candidate query error: {}", err);
+        }
+        return "<p><em>:[[ :related-user-lookup: failed: ]]:</em></p>".to_string();
+      }
     };
 
     for candidate in candidates {
@@ -1046,6 +1110,10 @@ async fn render_related_userlist_html(
         }
       }
     }
+
+    if userlist_debug {
+      eprintln!("[userlist] in-memory matched rows={}", related_rows.len());
+    }
   }
 
   let mut related_html = String::new();
@@ -1059,6 +1127,10 @@ async fn render_related_userlist_html(
       "<br><p>{}</p>",
       render_project_profile_link(&username_row.username, username_row.total_acknowledgments)
     );
+  }
+
+  if userlist_debug {
+    eprintln!("[userlist] rendered_html_empty={}", related_html.is_empty());
   }
 
   if related_html.is_empty() {
