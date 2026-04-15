@@ -63,7 +63,7 @@ use serde_json::{Value, json};
 use rustls::{ServerConfig, pki_types::CertificateDer};
 use sqlx::{mysql::MySqlPoolOptions, MySqlPool};
 use rustls_pemfile::{certs, private_key};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::BufReader;
 use uuid::Uuid;
@@ -492,6 +492,7 @@ struct ProjectProfileRow {
   id: i64,
   ib_uid: i64,
   username: String,
+  total_acknowledgments: i64,
   project: String,
   description: String,
   languages: String,
@@ -1040,6 +1041,46 @@ fn render_post_meta(ib_uid: &str, username: &str, timestamp: &str, user_total_ac
     rank_icon = rank_icon,
     glow_style = glow_style
   )
+}
+
+fn render_project_profile_link(username: &str, user_total_acks: i64) -> String {
+  let rank_info = get_rank_info(user_total_acks);
+  let glow_style = if rank_info.level >= 11 {
+    "filter: drop-shadow(0 0 3px #fff) drop-shadow(0 0 5px #fff); "
+  } else {
+    ""
+  };
+
+  format!(
+    r#"<a class="post-author" href="https://{domain}/v1/profile/{owner_username}"><img class="post-author-avatar" src="https://github.com/{owner_username}.png?size=32" alt="{owner_username}" width="32" height="32" style="margin-right:6px;vertical-align:middle;"><img class="rank-insignia" src="/images/ranks/{rank_icon}" alt="Rank" width="16" height="16" style="{glow_style}vertical-align: middle; margin-left: 4px; margin-right: 4px;">{owner_username}</a>"#,
+    domain = DOMAIN,
+    owner_username = escape_html(username),
+    rank_icon = rank_info.asset,
+    glow_style = glow_style,
+  )
+}
+
+async fn load_project_profile_ack_map(state: &AppState, usernames: &HashSet<String>) -> HashMap<String, i64> {
+  let mut ack_map = HashMap::new();
+
+  for username in usernames {
+    let normalized = username.trim().to_ascii_lowercase();
+    if normalized.is_empty() || ack_map.contains_key(&normalized) {
+      continue;
+    }
+
+    if let Ok(Some(row)) = sqlx::query_as::<_, UserHoverLookupRow>(
+      "SELECT CONVERT(ib_uid USING utf8mb4) AS ib_uid, username, COALESCE(followers, '') AS followers, COALESCE(total_acknowledgments, 0) AS total_acknowledgments FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1",
+    )
+    .bind(username)
+    .fetch_optional(&state.db_pool)
+    .await
+    {
+      ack_map.insert(normalized, row.total_acknowledgments);
+    }
+  }
+
+  ack_map
 }
 
 async fn render_advert_html(state: &AppState) -> String {
@@ -2535,7 +2576,7 @@ async fn render_projects_html(
   };
 
   let rows = sqlx::query_as::<_, ProjectProfileRow>(
-      "SELECT project.id, project.ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, project.project, project.description, project.languages, CAST(project.updated_at AS CHAR CHARACTER SET utf8mb4) AS updated_at, COALESCE(project.reinforcements, '') AS reinforcements, COALESCE(project.reinforcements_request, FALSE) AS reinforcements_request FROM project_profile AS project LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE project.ib_uid = ? ORDER BY project.updated_at DESC LIMIT 500"
+      "SELECT project.id, project.ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments, project.project, project.description, project.languages, CAST(project.updated_at AS CHAR CHARACTER SET utf8mb4) AS updated_at, COALESCE(project.reinforcements, '') AS reinforcements, COALESCE(project.reinforcements_request, FALSE) AS reinforcements_request FROM project_profile AS project LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE project.ib_uid = ? ORDER BY project.updated_at DESC LIMIT 500"
     )
     .bind(ib_uid)
     .fetch_all(&state.db_pool)
@@ -2545,15 +2586,32 @@ async fn render_projects_html(
   let projects_html = if rows.is_empty() {
     "<p><em>:[[ :no-projects-yet: ]]:</em></p>".to_string()
   } else {
+    let reinforcement_names: HashSet<String> = rows
+      .iter()
+      .flat_map(|row| {
+        row
+          .reinforcements
+          .as_deref()
+          .unwrap_or("")
+          .split(',')
+          .map(|item| item.trim())
+          .filter(|item| !item.is_empty())
+          .map(|item| item.to_string())
+          .collect::<Vec<String>>()
+      })
+      .collect();
+    let reinforcement_ack_map = load_project_profile_ack_map(state, &reinforcement_names).await;
+
     rows
       .iter()
       .map(|row| {
         let can_edit = session_uid == Some(row.ib_uid);
+        let owner_link = render_project_profile_link(&row.username, row.total_acknowledgments);
 
         if can_edit {
           format!(
             r#"<div class="post">
-              <div class="post-meta"><a class="post-author" href="https://{domain}/v1/profile/{owner_username}"><img class="post-author-avatar" src="https://github.com/{owner_username}.png?size=32" alt="{owner_username}" width="32" height="32" style="margin-right:6px;vertical-align:middle;">{owner_username}</a><span class="post-timestamp">{updated_at}</span></div>
+              <div class="post-meta">{owner_link}<span class="post-timestamp">{updated_at}</span></div>
               <form class="edit-project-form" action="https://{domain}/v1/projects/edit" method="POST">
                 <input type="hidden" name="ib_uid" value="{ib_uid}">
                 <input type="hidden" name="ib_user" value="{ib_user}">
@@ -2572,7 +2630,7 @@ async fn render_projects_html(
               </form>
             </div>"#,
             domain = DOMAIN,
-            owner_username = escape_html(&row.username),
+            owner_link = owner_link,
             updated_at = escape_html(&row.updated_at),
             ib_uid = ib_uid,
             ib_user = escape_html(ib_user),
@@ -2648,7 +2706,7 @@ async fn render_projects_html(
           };
           format!(
             r#"<div class="post">
-              <div class="post-meta"><a class="post-author" href="https://{domain}/v1/profile/{owner_username}"><img class="post-author-avatar" src="https://github.com/{owner_username}.png?size=32" alt="{owner_username}" width="32" height="32" style="margin-right:6px;vertical-align:middle;">{owner_username}</a><span class="post-timestamp">{updated_at}</span></div>
+              <div class="post-meta">{owner_link}<span class="post-timestamp">{updated_at}</span></div>
               <p><strong>Project:</strong> {project}</p>
               <p><strong>Description:</strong> {description}</p>
               <p><strong>Languages:</strong> {languages}</p>
@@ -2656,8 +2714,7 @@ async fn render_projects_html(
               {reinforcements_badge}
               {quick_response_form}
             </div>"#,
-            domain = DOMAIN,
-            owner_username = escape_html(&row.username),
+            owner_link = owner_link,
             updated_at = escape_html(&row.updated_at),
             project = escape_html(&row.project),
             description = render_post_with_hashtags(&row.description, ib_uid, ib_user),
@@ -2665,9 +2722,11 @@ async fn render_projects_html(
             reinforcements_section = if let Some(ref r) = row.reinforcements {
               if !r.trim().is_empty() {
                 let links: String = r.split(',').map(|name| name.trim()).filter(|name| !name.is_empty()).map(|name| {
-                  let safe = escape_html(name);
-                  let encoded = url_encode_component(name);
-                  format!(r#"<a class="post-author" href="https://{domain}/v1/profile/{encoded}"><img class="post-author-avatar" src="https://github.com/{encoded}.png?size=32" alt="{safe}" width="32" height="32" style="margin-right:6px;vertical-align:middle;">{safe}</a>"#, domain = DOMAIN, encoded = encoded, safe = safe)
+                  let total_acks = reinforcement_ack_map
+                    .get(&name.to_ascii_lowercase())
+                    .copied()
+                    .unwrap_or(0);
+                  render_project_profile_link(name, total_acks)
                 }).collect::<Vec<_>>().join(" ");
                 format!("<p><strong>Reinforcements:</strong> {}</p>", links)
               } else {
@@ -2926,7 +2985,7 @@ async fn render_search_projects_html(
     );
 
     let rows = sqlx::query_as::<_, ProjectProfileRow>(
-        "SELECT project.id, project.ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, project.project, project.description, project.languages, CAST(project.updated_at AS CHAR CHARACTER SET utf8mb4) AS updated_at, COALESCE(project.reinforcements, '') AS reinforcements, COALESCE(project.reinforcements_request, FALSE) AS reinforcements_request FROM project_profile AS project LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(project.languages, '')) REGEXP ? ORDER BY project.updated_at DESC LIMIT 500"
+        "SELECT project.id, project.ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments, project.project, project.description, project.languages, CAST(project.updated_at AS CHAR CHARACTER SET utf8mb4) AS updated_at, COALESCE(project.reinforcements, '') AS reinforcements, COALESCE(project.reinforcements_request, FALSE) AS reinforcements_request FROM project_profile AS project LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(project.languages, '')) REGEXP ? ORDER BY project.updated_at DESC LIMIT 500"
       )
       .bind(&pattern)
       .fetch_all(&state.db_pool)
@@ -2936,9 +2995,26 @@ async fn render_search_projects_html(
     if rows.is_empty() {
       "<p><em>:[[ :search-projects-no-results: ]]:</em></p>".to_string()
     } else {
+      let reinforcement_names: HashSet<String> = rows
+        .iter()
+        .flat_map(|row| {
+          row
+            .reinforcements
+            .as_deref()
+            .unwrap_or("")
+            .split(',')
+            .map(|item| item.trim())
+            .filter(|item| !item.is_empty())
+            .map(|item| item.to_string())
+            .collect::<Vec<String>>()
+        })
+        .collect();
+      let reinforcement_ack_map = load_project_profile_ack_map(state, &reinforcement_names).await;
+
       rows
         .iter()
         .map(|row| {
+          let owner_link = render_project_profile_link(&row.username, row.total_acknowledgments);
           let reinforcements_badge = if row.reinforcements_request == Some(true) {
             "<p><em>:[[ :requesting-reinforcements: ]]:</em></p>".to_string()
           } else {
@@ -3003,7 +3079,7 @@ async fn render_search_projects_html(
           };
           format!(
             r#"<div class="post">
-              <div class="post-meta"><a class="post-author" href="https://{domain}/v1/profile/{owner_username}"><img class="post-author-avatar" src="https://github.com/{owner_username}.png?size=32" alt="{owner_username}" width="32" height="32" style="margin-right:6px;vertical-align:middle;">{owner_username}</a><span class="post-timestamp">{updated_at}</span></div>
+              <div class="post-meta">{owner_link}<span class="post-timestamp">{updated_at}</span></div>
               <p><strong>Project:</strong> {project}</p>
               <p><strong>Description:</strong> {description}</p>
               <p><strong>Languages:</strong> {languages}</p>
@@ -3011,8 +3087,7 @@ async fn render_search_projects_html(
               {reinforcements_badge}
               {quick_response_form}
             </div>"#,
-            domain = DOMAIN,
-            owner_username = escape_html(&row.username),
+            owner_link = owner_link,
             updated_at = escape_html(&row.updated_at),
             project = escape_html(&row.project),
             description = render_post_with_hashtags(&row.description, ib_uid, ib_user),
@@ -3020,9 +3095,11 @@ async fn render_search_projects_html(
             reinforcements_section = if let Some(ref r) = row.reinforcements {
               if !r.trim().is_empty() {
                 let links: String = r.split(',').map(|name| name.trim()).filter(|name| !name.is_empty()).map(|name| {
-                  let safe = escape_html(name);
-                  let encoded = url_encode_component(name);
-                  format!(r#"<a class="post-author" href="https://{domain}/v1/profile/{encoded}"><img class="post-author-avatar" src="https://github.com/{encoded}.png?size=32" alt="{safe}" width="32" height="32" style="margin-right:6px;vertical-align:middle;">{safe}</a>"#, domain = DOMAIN, encoded = encoded, safe = safe)
+                  let total_acks = reinforcement_ack_map
+                    .get(&name.to_ascii_lowercase())
+                    .copied()
+                    .unwrap_or(0);
+                  render_project_profile_link(name, total_acks)
                 }).collect::<Vec<_>>().join(" ");
                 format!("<p><strong>Reinforcements:</strong> {}</p>", links)
               } else {
