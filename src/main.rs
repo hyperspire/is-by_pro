@@ -93,7 +93,7 @@ struct ProRow {
   location: String,
   services: String,
   website: String,
-  github: String,
+  // github: String,
 }
 
 #[derive(sqlx::FromRow)]
@@ -1998,7 +1998,7 @@ async fn render_profile_html(
 </body>
 
 </html>"#,
-      ib_github = escape_html(&ib_pro.github),
+      // ib_github = escape_html(&ib_pro.github),
       ib_user = escape_html(ib_user),
       ib_ibp = escape_html(&ib_pro.ibp),
       ib_pro = escape_html(&ib_pro.pro),
@@ -2225,7 +2225,7 @@ async fn render_search_users_html(
 
 </html>"#,
       ib_uid = ib_uid,
-      ib_github = escape_html(&ib_pro.github),
+      // ib_github = escape_html(&ib_pro.github),
       ib_user = escape_html(ib_user),
       ib_ibp = escape_html(&ib_pro.ibp),
       ib_pro = escape_html(&ib_pro.pro),
@@ -2457,7 +2457,7 @@ async fn render_search_posts_html(
 
 </html>"#,
       ib_uid = ib_uid,
-      ib_github = escape_html(&ib_pro.github),
+      // ib_github = escape_html(&ib_pro.github),
       ib_user = escape_html(ib_user),
       ib_ibp = escape_html(&ib_pro.ibp),
       ib_pro = escape_html(&ib_pro.pro),
@@ -2764,7 +2764,7 @@ async fn render_projects_html(
 
 </html>"#,
       ib_uid = ib_uid,
-      ib_github = escape_html(&ib_pro.github),
+      // ib_github = escape_html(&ib_pro.github),
       ib_user = escape_html(ib_user),
       ib_ibp = escape_html(&ib_pro.ibp),
       ib_pro = escape_html(&ib_pro.pro),
@@ -3019,7 +3019,7 @@ async fn render_search_projects_html(
 
 </html>"#,
       ib_uid = ib_uid,
-      ib_github = escape_html(&ib_pro.github),
+      // ib_github = escape_html(&ib_pro.github),
       ib_user = escape_html(ib_user),
       ib_ibp = escape_html(&ib_pro.ibp),
       ib_pro = escape_html(&ib_pro.pro),
@@ -3326,7 +3326,7 @@ async fn render_war_room_html(
 
 </html>"#,
       ib_uid = ib_uid,
-      ib_github = escape_html(&ib_pro.github),
+      // ib_github = escape_html(&ib_pro.github),
       ib_user = escape_html(ib_user),
       ib_ibp = escape_html(&ib_pro.ibp),
       ib_pro = escape_html(&ib_pro.pro),
@@ -3580,7 +3580,7 @@ async fn render_inbox_html(
 
 </html>"#,
       ib_uid = ib_uid,
-      ib_github = escape_html(&ib_pro.github),
+      // ib_github = escape_html(&ib_pro.github),
       ib_user = escape_html(ib_user),
       ib_ibp = escape_html(&ib_pro.ibp),
       ib_pro = escape_html(&ib_pro.pro),
@@ -3875,7 +3875,7 @@ async fn render_single_post_html(
 </body>
 
 </html>"#,
-      ib_github = escape_html(&ib_pro.github),
+      // ib_github = escape_html(&ib_pro.github),
       ib_user = escape_html(ib_user),
       ib_ibp = escape_html(&ib_pro.ibp),
       ib_pro = escape_html(&ib_pro.pro),
