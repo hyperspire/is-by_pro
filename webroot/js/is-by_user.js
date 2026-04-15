@@ -393,7 +393,7 @@ async function loadDMThread(targetUser) {
       return `
         <div class="${senderClass}">
           <p class="dm-message-meta"><strong>${escapeHTML(message.sender_user)}</strong> <span>${escapeHTML(message.timestamp)}</span></p>
-          <p class="dm-message-body">${escapeHTML(message.message)}</p>
+          <p class="dm-message-body">${message.message}</p>
         </div>`;
     }).join('');
 
