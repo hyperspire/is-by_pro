@@ -2550,7 +2550,7 @@ async fn render_projects_html(
                 <input type="hidden" name="ib_user" value="{ib_user}">
                 <input type="hidden" name="project_id" value="{project_id}">
                 <input type="hidden" name="quick_response_force" value="1">
-                <input class="post-submit" type="submit" value="Respond to Reinforcements Request">
+                <input class="post-submit quick-response-submit" type="submit" value="Respond to Reinforcements Request">
               </form>"#,
               domain = DOMAIN,
               ib_uid = ib_uid,
@@ -2840,7 +2840,7 @@ async fn render_search_projects_html(
                 <input type="hidden" name="ib_user" value="{ib_user}">
                 <input type="hidden" name="project_id" value="{project_id}">
                 <input type="hidden" name="quick_response_force" value="1">
-                <input class="post-submit" type="submit" value="Respond to Reinforcements Request">
+                <input class="post-submit quick-response-submit" type="submit" value="Respond to Reinforcements Request">
               </form>"#,
               domain = DOMAIN,
               ib_uid = ib_uid,
@@ -6434,7 +6434,7 @@ async fn github_auth_callback_impl(
 
   match render_profile_html(&state, user.id as i64, &user.login, Some(user.id as i64)).await {
     Ok(_) => HttpResponse::SeeOther()
-      .insert_header(("Location", format!("/v1/profile/{}", user.id)))
+      .insert_header(("Location", format!("/v1/profile/{}", user.login)))
       .cookie(
         Cookie::build("ib_uid", user.id.to_string())
           .path("/")
