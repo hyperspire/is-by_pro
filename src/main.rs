@@ -4114,7 +4114,7 @@ async fn create_post(
           }
 
           let dm_message = format!(
-            "You were mentioned by @{} in a post:\n\n{}\n\nhttps://{}/v1/showpost?ib_uid={}&ib_user={}&pid={}",
+            "You were mentioned by @{} in a post:\n\n{}\n\n<a href=\"https://{}/v1/showpost?ib_uid={}&ib_user={}&pid={}\">View Post</a>",
             payload.ib_user,
             payload.post,
             DOMAIN,
