@@ -920,7 +920,7 @@ fn highlight_terms(raw_text: &str, terms: &[String]) -> String {
 async fn render_related_userlist_html(
   state: &AppState,
   source_uid: i64,
-  source_ibp: &str,
+  source_profile_text: &str,
 ) -> String {
   let userlist_debug = std::env::var("ISBY_USERLIST_DEBUG")
     .ok()
@@ -929,14 +929,14 @@ async fn render_related_userlist_html(
 
   if userlist_debug {
     eprintln!(
-      "[userlist] start source_uid={} source_ibp='{}'",
+      "[userlist] start source_uid={} source_profile_text='{}'",
       source_uid,
-      source_ibp
+      source_profile_text
     );
   }
 
   let mut seen = HashSet::new();
-  let raw_terms: Vec<String> = source_ibp
+  let raw_terms: Vec<String> = source_profile_text
     .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '+' || ch == '#'))
     .map(|term| term.trim().to_lowercase())
     .filter(|term| !term.is_empty())
@@ -1116,6 +1116,33 @@ async fn render_related_userlist_html(
     }
   }
 
+  if related_rows.is_empty() {
+    if userlist_debug {
+      eprintln!("[userlist] in-memory returned 0 rows; trying random-user fallback");
+    }
+
+    related_rows = match sqlx::query_as::<_, RelatedUsernameRankRow>(
+      "SELECT CAST(COALESCE(CONVERT(username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(total_acknowledgments, 0) AS total_acknowledgments FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci <> ? COLLATE utf8mb4_unicode_ci AND LOWER(COALESCE(CONVERT(username USING utf8mb4), '')) <> '' ORDER BY RAND() LIMIT 5"
+    )
+    .bind(&source_uid_text)
+    .fetch_all(&state.db_pool)
+    .await
+    {
+      Ok(rows) => {
+        if userlist_debug {
+          eprintln!("[userlist] random-user fallback rows={}", rows.len());
+        }
+        rows
+      }
+      Err(err) => {
+        if userlist_debug {
+          eprintln!("[userlist] random-user fallback query error: {}", err);
+        }
+        return "<p><em>:[[ :related-user-lookup: failed: ]]:</em></p>".to_string();
+      }
+    };
+  }
+
   let mut related_html = String::new();
 
   for username_row in related_rows {
@@ -1140,7 +1167,7 @@ async fn render_related_userlist_html(
   }
 }
 
-async fn lookup_ibp_by_uid(state: &AppState, uid: i64) -> Option<String> {
+async fn lookup_profile_terms_by_uid(state: &AppState, uid: i64) -> Option<String> {
   let row = sqlx::query_as::<_, ProRow>(
       "SELECT ibp, pro, location, services, website, github FROM pro WHERE ib_uid = ? LIMIT 1"
     )
@@ -1150,7 +1177,8 @@ async fn lookup_ibp_by_uid(state: &AppState, uid: i64) -> Option<String> {
     .ok()
     .flatten()?;
 
-  Some(row.ibp)
+  let combined = format!("{} {}", row.pro, row.ibp);
+  Some(combined.trim().to_string())
 }
 
 struct RankInfo {
@@ -2169,10 +2197,12 @@ async fn render_profile_html(
 
   if let Ok(ib_pro) = ib_pro_result {
     let source_uid = session_uid.unwrap_or(ib_uid);
-    let source_ibp = if let Some(uid) = session_uid {
-      lookup_ibp_by_uid(state, uid).await.unwrap_or_else(|| ib_pro.ibp.clone())
+    let source_profile_terms = if let Some(uid) = session_uid {
+      lookup_profile_terms_by_uid(state, uid)
+        .await
+        .unwrap_or_else(|| format!("{} {}", ib_pro.pro, ib_pro.ibp))
     } else {
-      ib_pro.ibp.clone()
+      format!("{} {}", ib_pro.pro, ib_pro.ibp)
     };
     let sidebar_login_html = if session_uid.is_none() {
       r#"<div id="actions-section">
@@ -2184,7 +2214,8 @@ async fn render_profile_html(
     } else {
       String::new()
     };
-    let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
+    let related_userlist_html =
+      render_related_userlist_html(state, source_uid, &source_profile_terms).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
     let github_identity_html = render_github_identity_html(state, ib_user).await;
 
@@ -2434,12 +2465,15 @@ async fn render_search_users_html(
 
   if let Ok(ib_pro) = ib_pro_result {
     let source_uid = session_uid.unwrap_or(ib_uid);
-    let source_ibp = if let Some(uid) = session_uid {
-      lookup_ibp_by_uid(state, uid).await.unwrap_or_else(|| ib_pro.ibp.clone())
+    let source_profile_terms = if let Some(uid) = session_uid {
+      lookup_profile_terms_by_uid(state, uid)
+        .await
+        .unwrap_or_else(|| format!("{} {}", ib_pro.pro, ib_pro.ibp))
     } else {
-      ib_pro.ibp.clone()
+      format!("{} {}", ib_pro.pro, ib_pro.ibp)
     };
-    let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
+    let related_userlist_html =
+      render_related_userlist_html(state, source_uid, &source_profile_terms).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
     let github_identity_html = render_github_identity_html(state, ib_user).await;
     let sidebar_login_html = if session_uid.is_none() {
@@ -2667,12 +2701,15 @@ async fn render_search_posts_html(
 
   if let Ok(ib_pro) = ib_pro_result {
     let source_uid = session_uid.unwrap_or(ib_uid);
-    let source_ibp = if let Some(uid) = session_uid {
-      lookup_ibp_by_uid(state, uid).await.unwrap_or_else(|| ib_pro.ibp.clone())
+    let source_profile_terms = if let Some(uid) = session_uid {
+      lookup_profile_terms_by_uid(state, uid)
+        .await
+        .unwrap_or_else(|| format!("{} {}", ib_pro.pro, ib_pro.ibp))
     } else {
-      ib_pro.ibp.clone()
+      format!("{} {}", ib_pro.pro, ib_pro.ibp)
     };
-    let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
+    let related_userlist_html =
+      render_related_userlist_html(state, source_uid, &source_profile_terms).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
     let github_identity_html = render_github_identity_html(state, ib_user).await;
     let sidebar_login_html = if session_uid.is_none() {
@@ -3058,12 +3095,15 @@ async fn render_projects_html(
 
   if let Ok(ib_pro) = ib_pro_result {
     let source_uid = session_uid.unwrap_or(ib_uid);
-    let source_ibp = if let Some(uid) = session_uid {
-      lookup_ibp_by_uid(state, uid).await.unwrap_or_else(|| ib_pro.ibp.clone())
+    let source_profile_terms = if let Some(uid) = session_uid {
+      lookup_profile_terms_by_uid(state, uid)
+        .await
+        .unwrap_or_else(|| format!("{} {}", ib_pro.pro, ib_pro.ibp))
     } else {
-      ib_pro.ibp.clone()
+      format!("{} {}", ib_pro.pro, ib_pro.ibp)
     };
-    let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
+    let related_userlist_html =
+      render_related_userlist_html(state, source_uid, &source_profile_terms).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
     let github_identity_html = render_github_identity_html(state, ib_user).await;
     let sidebar_login_html = if session_uid.is_none() {
@@ -3392,12 +3432,15 @@ async fn render_search_projects_html(
 
   if let Ok(ib_pro) = ib_pro_result {
     let source_uid = session_uid.unwrap_or(ib_uid);
-    let source_ibp = if let Some(uid) = session_uid {
-      lookup_ibp_by_uid(state, uid).await.unwrap_or_else(|| ib_pro.ibp.clone())
+    let source_profile_terms = if let Some(uid) = session_uid {
+      lookup_profile_terms_by_uid(state, uid)
+        .await
+        .unwrap_or_else(|| format!("{} {}", ib_pro.pro, ib_pro.ibp))
     } else {
-      ib_pro.ibp.clone()
+      format!("{} {}", ib_pro.pro, ib_pro.ibp)
     };
-    let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
+    let related_userlist_html =
+      render_related_userlist_html(state, source_uid, &source_profile_terms).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
     let github_identity_html = render_github_identity_html(state, ib_user).await;
     let sidebar_login_html = if session_uid.is_none() {
@@ -3700,12 +3743,15 @@ async fn render_war_room_html(
 
   if let Ok(ib_pro) = ib_pro_result {
     let source_uid = session_uid.unwrap_or(ib_uid);
-    let source_ibp = if let Some(uid) = session_uid {
-      lookup_ibp_by_uid(state, uid).await.unwrap_or_else(|| ib_pro.ibp.clone())
+    let source_profile_terms = if let Some(uid) = session_uid {
+      lookup_profile_terms_by_uid(state, uid)
+        .await
+        .unwrap_or_else(|| format!("{} {}", ib_pro.pro, ib_pro.ibp))
     } else {
-      ib_pro.ibp.clone()
+      format!("{} {}", ib_pro.pro, ib_pro.ibp)
     };
-    let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
+    let related_userlist_html =
+      render_related_userlist_html(state, source_uid, &source_profile_terms).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
     let github_identity_html = render_github_identity_html(state, ib_user).await;
     let sidebar_login_html = if session_uid.is_none() {
@@ -3955,12 +4001,15 @@ async fn render_inbox_html(
 
   if let Ok(ib_pro) = ib_pro_result {
     let source_uid = session_uid.unwrap_or(ib_uid);
-    let source_ibp = if let Some(uid) = session_uid {
-      lookup_ibp_by_uid(state, uid).await.unwrap_or_else(|| ib_pro.ibp.clone())
+    let source_profile_terms = if let Some(uid) = session_uid {
+      lookup_profile_terms_by_uid(state, uid)
+        .await
+        .unwrap_or_else(|| format!("{} {}", ib_pro.pro, ib_pro.ibp))
     } else {
-      ib_pro.ibp.clone()
+      format!("{} {}", ib_pro.pro, ib_pro.ibp)
     };
-    let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
+    let related_userlist_html =
+      render_related_userlist_html(state, source_uid, &source_profile_terms).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
     let github_identity_html = render_github_identity_html(state, ib_user).await;
     let sidebar_login_html = if session_uid.is_none() {
@@ -4251,12 +4300,15 @@ async fn render_single_post_html(
 
   if let Ok(ib_pro) = ib_pro_result {
     let source_uid = session_uid.unwrap_or(ib_uid);
-    let source_ibp = if let Some(uid) = session_uid {
-      lookup_ibp_by_uid(state, uid).await.unwrap_or_else(|| ib_pro.ibp.clone())
+    let source_profile_terms = if let Some(uid) = session_uid {
+      lookup_profile_terms_by_uid(state, uid)
+        .await
+        .unwrap_or_else(|| format!("{} {}", ib_pro.pro, ib_pro.ibp))
     } else {
-      ib_pro.ibp.clone()
+      format!("{} {}", ib_pro.pro, ib_pro.ibp)
     };
-    let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
+    let related_userlist_html =
+      render_related_userlist_html(state, source_uid, &source_profile_terms).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
     let github_identity_html = render_github_identity_html(state, ib_user).await;
     let sidebar_login_html = if session_uid.is_none() {
