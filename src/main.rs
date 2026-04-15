@@ -107,11 +107,6 @@ struct UsernameLookupRow {
 }
 
 #[derive(sqlx::FromRow)]
-struct RelatedUserRow {
-  ib_uid: String,
-}
-
-#[derive(sqlx::FromRow)]
 struct RelatedUsernameRow {
   username: String,
 }
@@ -945,11 +940,12 @@ async fn render_related_userlist_html(
     .map(|term| escape_mysql_regex_token(term))
     .collect();
   let pattern = format!("({})", regex_terms.join("|"));
+  let source_uid_text = source_uid.to_string();
 
-  let related_rows = sqlx::query_as::<_, RelatedUserRow>(
-      "SELECT CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid FROM pro AS candidate LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE candidate.ib_uid <> ? AND (LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) REGEXP ? OR LOWER(COALESCE(candidate.github, '')) REGEXP ? OR LOWER(COALESCE(candidate.ibp, '')) REGEXP ? OR LOWER(COALESCE(candidate.pro, '')) REGEXP ? OR LOWER(COALESCE(candidate.services, '')) REGEXP ? OR LOWER(COALESCE(candidate.location, '')) REGEXP ? OR LOWER(COALESCE(candidate.website, '')) REGEXP ?) ORDER BY RAND() LIMIT 5"
+  let related_rows = sqlx::query_as::<_, RelatedUsernameRankRow>(
+      "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments FROM pro AS candidate JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci <> ? COLLATE utf8mb4_unicode_ci AND LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) <> '' AND (LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) REGEXP ? OR LOWER(COALESCE(candidate.github, '')) REGEXP ? OR LOWER(COALESCE(candidate.ibp, '')) REGEXP ? OR LOWER(COALESCE(candidate.pro, '')) REGEXP ? OR LOWER(COALESCE(candidate.services, '')) REGEXP ? OR LOWER(COALESCE(candidate.location, '')) REGEXP ? OR LOWER(COALESCE(candidate.website, '')) REGEXP ?) ORDER BY RAND() LIMIT 5"
     )
-    .bind(source_uid)
+    .bind(&source_uid_text)
     .bind(&pattern)
     .bind(&pattern)
     .bind(&pattern)
@@ -962,12 +958,12 @@ async fn render_related_userlist_html(
 
   let mut related_rows = match related_rows {
     Ok(rows) => rows,
-    Err(_) => return "<p><em>:[[ :related-user-lookup-failed: ]]:</em></p>".to_string(),
+    Err(_) => return "<p><em>:[[ :related-user-lookup: failed: ]]:</em></p>".to_string(),
   };
 
   if related_rows.is_empty() {
     let mut sql = String::from(
-      "SELECT CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid FROM pro AS candidate LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE candidate.ib_uid <> ? AND ("
+      "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments FROM pro AS candidate JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci <> ? COLLATE utf8mb4_unicode_ci AND LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) <> '' AND ("
     );
 
     for index in 0..interests.len() {
@@ -979,7 +975,7 @@ async fn render_related_userlist_html(
 
     sql.push_str(") ORDER BY RAND() LIMIT 5");
 
-    let mut query = sqlx::query_as::<_, RelatedUserRow>(&sql).bind(source_uid);
+    let mut query = sqlx::query_as::<_, RelatedUsernameRankRow>(&sql).bind(&source_uid_text);
     for term in &interests {
       let token = format!("%{}%", escape_mysql_like_token(term));
       query = query
@@ -1000,18 +996,10 @@ async fn render_related_userlist_html(
 
   let mut related_html = String::new();
 
-  for row in related_rows {
-    let username_row = sqlx::query_as::<_, RelatedUsernameRankRow>(
-        "SELECT username, COALESCE(total_acknowledgments, 0) AS total_acknowledgments FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1"
-      )
-      .bind(&row.ib_uid)
-      .fetch_optional(&state.db_pool)
-      .await;
-
-    let username_row = match username_row {
-      Ok(Some(row)) if !row.username.trim().is_empty() => row,
-      _ => continue,
-    };
+  for username_row in related_rows {
+    if username_row.username.trim().is_empty() {
+      continue;
+    }
 
     related_html += &format!(
       "<br><p>{}</p>",
