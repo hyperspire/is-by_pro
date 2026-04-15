@@ -919,9 +919,15 @@ fn highlight_terms(raw_text: &str, terms: &[String]) -> String {
 
 async fn render_related_userlist_html(
   state: &AppState,
+  session_uid: Option<i64>,
   source_uid: i64,
   source_profile_text: &str,
 ) -> String {
+  let followed_usernames = lookup_following_usernames(state, session_uid).await;
+  let follower_usernames = lookup_follower_usernames(state, session_uid).await;
+  let mut excluded_usernames = followed_usernames;
+  excluded_usernames.extend(follower_usernames);
+
   let mut seen = HashSet::new();
   let raw_terms: Vec<String> = source_profile_text
     .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '+' || ch == '#'))
@@ -968,8 +974,11 @@ async fn render_related_userlist_html(
     .fetch_all(&state.db_pool)
     .await;
 
-  let mut related_rows = match related_rows {
-    Ok(rows) => rows,
+  let mut related_rows: Vec<RelatedUsernameRankRow> = match related_rows {
+    Ok(rows) => rows
+      .into_iter()
+      .filter(|row| !excluded_usernames.contains(&row.username.to_lowercase()))
+      .collect(),
     Err(_) => return "<p><em>:[[ :related-user-lookup: failed: ]]:</em></p>".to_string(),
   };
 
@@ -1001,7 +1010,10 @@ async fn render_related_userlist_html(
     }
 
     related_rows = match query.fetch_all(&state.db_pool).await {
-      Ok(rows) => rows,
+      Ok(rows) => rows
+        .into_iter()
+        .filter(|row| !excluded_usernames.contains(&row.username.to_lowercase()))
+        .collect(),
       Err(_) => return "<p><em>:[[ :related-user-lookup: failed: ]]:</em></p>".to_string(),
     };
   }
@@ -1036,6 +1048,10 @@ async fn render_related_userlist_html(
       .to_lowercase();
 
       if interests.iter().any(|term| haystack.contains(term)) {
+        if excluded_usernames.contains(&candidate.username.to_lowercase()) {
+          continue;
+        }
+
         related_rows.push(RelatedUsernameRankRow {
           username: candidate.username,
           total_acknowledgments: candidate.total_acknowledgments,
@@ -1056,7 +1072,10 @@ async fn render_related_userlist_html(
     .fetch_all(&state.db_pool)
     .await
     {
-      Ok(rows) => rows,
+      Ok(rows) => rows
+        .into_iter()
+        .filter(|row| !excluded_usernames.contains(&row.username.to_lowercase()))
+        .collect(),
       Err(_) => return "<p><em>:[[ :related-user-lookup: failed: ]]:</em></p>".to_string(),
     };
   }
@@ -1093,6 +1112,76 @@ async fn lookup_profile_terms_by_uid(state: &AppState, uid: i64) -> Option<Strin
 
   let combined = format!("{} {}", row.pro, row.ibp);
   Some(combined.trim().to_string())
+}
+
+async fn lookup_following_usernames(state: &AppState, session_uid: Option<i64>) -> HashSet<String> {
+  let Some(uid) = session_uid else {
+    return HashSet::new();
+  };
+
+  let session_username = match sqlx::query_as::<_, SessionUserRow>(
+    "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
+  )
+  .bind(uid.to_string())
+  .fetch_optional(&state.db_pool)
+  .await
+  {
+    Ok(Some(row)) if !row.username.trim().is_empty() => row.username,
+    _ => return HashSet::new(),
+  };
+
+  let token = format!("%{}%", escape_mysql_like_token(&session_username.to_lowercase()));
+  let candidate_rows = match sqlx::query_as::<_, FollowLookupRow>(
+    "SELECT username, COALESCE(followers, '') AS followers FROM user WHERE LOWER(COALESCE(followers, '')) LIKE ? ESCAPE '\\\\'",
+  )
+  .bind(token)
+  .fetch_all(&state.db_pool)
+  .await
+  {
+    Ok(rows) => rows,
+    Err(_) => return HashSet::new(),
+  };
+
+  let mut followed = HashSet::new();
+  for row in candidate_rows {
+    let is_followed = row
+      .followers
+      .split(',')
+      .map(|value| value.trim())
+      .filter(|value| !value.is_empty())
+      .any(|value| value.eq_ignore_ascii_case(&session_username));
+
+    if is_followed {
+      followed.insert(row.username.to_lowercase());
+    }
+  }
+
+  followed
+}
+
+async fn lookup_follower_usernames(state: &AppState, session_uid: Option<i64>) -> HashSet<String> {
+  let Some(uid) = session_uid else {
+    return HashSet::new();
+  };
+
+  let session_row = match sqlx::query_as::<_, FollowLookupRow>(
+    "SELECT username, COALESCE(followers, '') AS followers FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
+  )
+  .bind(uid.to_string())
+  .fetch_optional(&state.db_pool)
+  .await
+  {
+    Ok(Some(row)) => row,
+    _ => return HashSet::new(),
+  };
+
+  session_row
+    .followers
+    .split(',')
+    .map(|value| value.trim())
+    .filter(|value| !value.is_empty())
+    .map(|value| value.to_lowercase())
+    .collect()
 }
 
 struct RankInfo {
@@ -2129,7 +2218,7 @@ async fn render_profile_html(
       String::new()
     };
     let related_userlist_html =
-      render_related_userlist_html(state, source_uid, &source_profile_terms).await;
+      render_related_userlist_html(state, session_uid, source_uid, &source_profile_terms).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
     let github_identity_html = render_github_identity_html(state, ib_user).await;
 
@@ -2387,7 +2476,7 @@ async fn render_search_users_html(
       format!("{} {}", ib_pro.pro, ib_pro.ibp)
     };
     let related_userlist_html =
-      render_related_userlist_html(state, source_uid, &source_profile_terms).await;
+      render_related_userlist_html(state, session_uid, source_uid, &source_profile_terms).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
     let github_identity_html = render_github_identity_html(state, ib_user).await;
     let sidebar_login_html = if session_uid.is_none() {
@@ -2623,7 +2712,7 @@ async fn render_search_posts_html(
       format!("{} {}", ib_pro.pro, ib_pro.ibp)
     };
     let related_userlist_html =
-      render_related_userlist_html(state, source_uid, &source_profile_terms).await;
+      render_related_userlist_html(state, session_uid, source_uid, &source_profile_terms).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
     let github_identity_html = render_github_identity_html(state, ib_user).await;
     let sidebar_login_html = if session_uid.is_none() {
@@ -3017,7 +3106,7 @@ async fn render_projects_html(
       format!("{} {}", ib_pro.pro, ib_pro.ibp)
     };
     let related_userlist_html =
-      render_related_userlist_html(state, source_uid, &source_profile_terms).await;
+      render_related_userlist_html(state, session_uid, source_uid, &source_profile_terms).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
     let github_identity_html = render_github_identity_html(state, ib_user).await;
     let sidebar_login_html = if session_uid.is_none() {
@@ -3354,7 +3443,7 @@ async fn render_search_projects_html(
       format!("{} {}", ib_pro.pro, ib_pro.ibp)
     };
     let related_userlist_html =
-      render_related_userlist_html(state, source_uid, &source_profile_terms).await;
+      render_related_userlist_html(state, session_uid, source_uid, &source_profile_terms).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
     let github_identity_html = render_github_identity_html(state, ib_user).await;
     let sidebar_login_html = if session_uid.is_none() {
@@ -3665,7 +3754,7 @@ async fn render_war_room_html(
       format!("{} {}", ib_pro.pro, ib_pro.ibp)
     };
     let related_userlist_html =
-      render_related_userlist_html(state, source_uid, &source_profile_terms).await;
+      render_related_userlist_html(state, session_uid, source_uid, &source_profile_terms).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
     let github_identity_html = render_github_identity_html(state, ib_user).await;
     let sidebar_login_html = if session_uid.is_none() {
@@ -3923,7 +4012,7 @@ async fn render_inbox_html(
       format!("{} {}", ib_pro.pro, ib_pro.ibp)
     };
     let related_userlist_html =
-      render_related_userlist_html(state, source_uid, &source_profile_terms).await;
+      render_related_userlist_html(state, session_uid, source_uid, &source_profile_terms).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
     let github_identity_html = render_github_identity_html(state, ib_user).await;
     let sidebar_login_html = if session_uid.is_none() {
@@ -4222,7 +4311,7 @@ async fn render_single_post_html(
       format!("{} {}", ib_pro.pro, ib_pro.ibp)
     };
     let related_userlist_html =
-      render_related_userlist_html(state, source_uid, &source_profile_terms).await;
+      render_related_userlist_html(state, session_uid, source_uid, &source_profile_terms).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
     let github_identity_html = render_github_identity_html(state, ib_user).await;
     let sidebar_login_html = if session_uid.is_none() {
