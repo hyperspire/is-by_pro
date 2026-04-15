@@ -117,6 +117,12 @@ struct RelatedUsernameRow {
 }
 
 #[derive(sqlx::FromRow)]
+struct RelatedUsernameRankRow {
+  username: String,
+  total_acknowledgments: i64,
+}
+
+#[derive(sqlx::FromRow)]
 struct SearchUserRow {
   ib_uid: String,
   ibp: String,
@@ -909,10 +915,12 @@ async fn render_related_userlist_html(
   source_uid: i64,
   source_ibp: &str,
 ) -> String {
+  let mut seen = HashSet::new();
   let interests: Vec<String> = source_ibp
-    .split(',')
+    .split(|ch: char| ch == ',' || ch.is_whitespace())
     .map(|term| term.trim().to_lowercase())
-    .filter(|term| !term.is_empty())
+    .filter(|term| term.len() >= 3)
+    .filter(|term| seen.insert(term.clone()))
     .collect();
 
   if interests.is_empty() {
@@ -923,43 +931,45 @@ async fn render_related_userlist_html(
     .iter()
     .map(|term| escape_mysql_regex_token(term))
     .collect();
-  let pattern = format!(
-    "(^|[[:space:],])({})([[:space:],]|$)",
-    regex_terms.join("|")
-  );
+  let pattern = format!("({})", regex_terms.join("|"));
 
   let related_rows = sqlx::query_as::<_, RelatedUserRow>(
-      "SELECT CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid FROM pro AS candidate WHERE candidate.ib_uid <> ? AND LOWER(COALESCE(candidate.ibp, '')) REGEXP ? ORDER BY RAND() LIMIT 5"
+      "SELECT CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid FROM pro AS candidate LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE candidate.ib_uid <> ? AND (LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) REGEXP ? OR LOWER(COALESCE(candidate.github, '')) REGEXP ? OR LOWER(COALESCE(candidate.ibp, '')) REGEXP ? OR LOWER(COALESCE(candidate.pro, '')) REGEXP ? OR LOWER(COALESCE(candidate.services, '')) REGEXP ? OR LOWER(COALESCE(candidate.location, '')) REGEXP ? OR LOWER(COALESCE(candidate.website, '')) REGEXP ?) ORDER BY RAND() LIMIT 5"
     )
     .bind(source_uid)
+    .bind(&pattern)
+    .bind(&pattern)
+    .bind(&pattern)
+    .bind(&pattern)
+    .bind(&pattern)
+    .bind(&pattern)
     .bind(&pattern)
     .fetch_all(&state.db_pool)
     .await;
 
   let related_rows = match related_rows {
     Ok(rows) => rows,
-    Err(_) => return "<p><em>:[[ :related-user-lookup-failed: ]]:</em></p>".to_string(),
+    Err(_) => return "<p><em>:[[ :related-user-lookup: failed: ]]:</em></p>".to_string(),
   };
 
   let mut related_html = String::new();
 
   for row in related_rows {
-    let username_row = sqlx::query_as::<_, RelatedUsernameRow>(
-        "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1"
+    let username_row = sqlx::query_as::<_, RelatedUsernameRankRow>(
+        "SELECT username, COALESCE(total_acknowledgments, 0) AS total_acknowledgments FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1"
       )
       .bind(&row.ib_uid)
       .fetch_optional(&state.db_pool)
       .await;
 
-    let username = match username_row {
-      Ok(Some(row)) if !row.username.trim().is_empty() => row.username,
+    let username_row = match username_row {
+      Ok(Some(row)) if !row.username.trim().is_empty() => row,
       _ => continue,
     };
 
     related_html += &format!(
-      r#"<br><p><a href="https://{domain}/v1/profile/{username}">{username}</a></p>"#,
-      domain = DOMAIN,
-      username = escape_html(&username)
+      "<br><p>{}</p>",
+      render_project_profile_link(&username_row.username, username_row.total_acknowledgments)
     );
   }
 
@@ -2053,7 +2063,7 @@ async fn render_profile_html(
       </div>
     </div><br>
     <div id="trending-tags-section">
-      <p><strong>:[[ :trending-tags-24h: ]]:</strong></p>
+      <p><strong>:[[ :trending-tags: 24h: ]]:</strong></p>
       <div id="trending-tags-container">
         {trending_tags_html}
       </div>
