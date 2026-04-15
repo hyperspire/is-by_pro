@@ -390,10 +390,24 @@ async function loadDMThread(targetUser) {
 
     dmThread.innerHTML = data.messages.map((message) => {
       const senderClass = message.is_mine ? 'dm-message dm-message-mine' : 'dm-message dm-message-theirs';
+      // Convert |||LINK|||url|||text||| markers to actual links
+      const processedMessage = message.message.replace(/\|\|\|LINK\|\|\|([^\|]*)\|\|\|([^\|]*)\|\|\|/g, 
+        (match, url, text) => `<a href="${escapeHTML(url)}" target="_blank">${escapeHTML(text)}</a>`
+      );
+      // Escape the rest of the message text but leave the links intact
+      const parts = processedMessage.split(/<a[^>]*>.*?<\/a>/);
+      const links = processedMessage.match(/<a[^>]*>.*?<\/a>/g) || [];
+      let result = '';
+      for (let i = 0; i < parts.length; i++) {
+        result += escapeHTML(parts[i]);
+        if (i < links.length) {
+          result += links[i];
+        }
+      }
       return `
         <div class="${senderClass}">
           <p class="dm-message-meta"><strong>${escapeHTML(message.sender_user)}</strong> <span>${escapeHTML(message.timestamp)}</span></p>
-          <p class="dm-message-body">${message.message}</p>
+          <p class="dm-message-body">${result}</p>
         </div>`;
     }).join('');
 

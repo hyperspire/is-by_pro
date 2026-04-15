@@ -4113,12 +4113,10 @@ async fn create_post(
             continue;
           }
 
-          let escaped_user = escape_html(&payload.ib_user);
-          let escaped_post = escape_html(&payload.post);
           let dm_message = format!(
-            "You were mentioned by @{} in a post:\n\n{}\n\n<a href=\"https://{}/v1/showpost?ib_uid={}&ib_user={}\">View Post</a>",
-            escaped_user,
-            escaped_post,
+            "You were mentioned by @{} in a post:\n\n{}\n\n|||LINK|||https://{}/v1/showpost?ib_uid={}&ib_user={}|||View Post|||",
+            payload.ib_user,
+            payload.post,
             DOMAIN,
             payload.ib_uid,
             url_encode_component(&payload.ib_user)
