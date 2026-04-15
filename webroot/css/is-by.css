@@ -317,6 +317,17 @@ input[type=password] {
     right: 0;
 }
 
+#userlist-container {
+    width: 100%;
+    text-align: left;
+}
+
+#userlist-container p {
+    width: 100%;
+    text-align: left;
+    margin: 4px 0;
+}
+
 #user-search-section {
     display: flex;
     width: 250px;
