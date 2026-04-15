@@ -107,11 +107,6 @@ struct UsernameLookupRow {
 }
 
 #[derive(sqlx::FromRow)]
-struct RelatedUsernameRow {
-  username: String,
-}
-
-#[derive(sqlx::FromRow)]
 struct RelatedUsernameRankRow {
   username: String,
   total_acknowledgments: i64,
@@ -131,7 +126,8 @@ struct RelatedCandidateRow {
 
 #[derive(sqlx::FromRow)]
 struct SearchUserRow {
-  ib_uid: String,
+  username: String,
+  total_acknowledgments: i64,
   ibp: String,
 }
 
@@ -2337,7 +2333,7 @@ async fn render_search_users_html(
     "<p><em>:[[ :search-users-empty-query: ]]:</em></p>".to_string()
   } else {
     let mut sql = String::from(
-      "SELECT CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, COALESCE(candidate.ibp, '') AS ibp FROM pro AS candidate LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE "
+      "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments, COALESCE(candidate.ibp, '') AS ibp FROM pro AS candidate LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE "
     );
 
     for index in 0..search_terms.len() {
@@ -2371,27 +2367,15 @@ async fn render_search_users_html(
     let mut html = String::new();
 
     for row in rows {
-      let username_row = sqlx::query_as::<_, RelatedUsernameRow>(
-          "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1"
-        )
-        .bind(&row.ib_uid)
-        .fetch_optional(&state.db_pool)
-        .await
-        .map_err(|e| format!("Search username lookup failed: {}", e))?;
+      if row.username.trim().is_empty() {
+        continue;
+      }
 
-      let username = match username_row {
-        Some(username_row) if !username_row.username.trim().is_empty() => username_row.username,
-        _ => continue,
-      };
-
-      let profile_target = url_encode_component(&username);
-      let safe_username = escape_html(&username);
+      let profile_link = render_project_profile_link(&row.username, row.total_acknowledgments);
 
       html += &format!(
-        r#"<p><a class="post-author" href="https://{domain}/v1/profile/{profile_target}"><img class="post-author-avatar" src="https://github.com/{profile_target}.png?size=32" alt="{username}" width="32" height="32" style="margin-right: 10px;">{username}</a><br><small>{ibp}</small></p>"#,
-        domain = DOMAIN,
-        profile_target = profile_target,
-        username = safe_username,
+        r#"<p>{profile_link}<br><small>{ibp}</small></p>"#,
+        profile_link = profile_link,
         ibp = highlight_terms(&row.ibp, &search_terms)
       );
     }
