@@ -1946,15 +1946,21 @@ async fn render_profile_html(
     .map(|username| username.eq_ignore_ascii_case(&viewed_username))
     .unwrap_or(false);
 
+  let follower_username_set: HashSet<String> = follower_list.iter().cloned().collect();
+  let follower_ack_map = load_project_profile_ack_map(state, &follower_username_set).await;
+
   let followers_html = if follower_list.is_empty() {
     "<p><em>:[[ :no-followers: ]]:</em></p>".to_string()
   } else {
     follower_list
       .iter()
       .map(|username| {
+        let normalized = username.trim().to_ascii_lowercase();
+        let total_acks = *follower_ack_map.get(&normalized).unwrap_or(&0);
+        let profile_link = render_project_profile_link(username, total_acks);
         format!(
-          r#"<p><a href="https://{domain}/v1/profile/{username}">{username}</a><button type="button" class="open-dm" data-target-user="{username}">DM</button></p>"#,
-          domain = DOMAIN,
+          r#"<p>{profile_link}<button type="button" class="open-dm" data-target-user="{username}">DM</button></p>"#,
+          profile_link = profile_link,
           username = escape_html(username)
         )
       })
