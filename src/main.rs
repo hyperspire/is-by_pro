@@ -4114,12 +4114,13 @@ async fn create_post(
           }
 
           let dm_message = format!(
-            "You were mentioned by @{} in a post:\n\n{}\n\n|||LINK|||https://{}/v1/showpost?ib_uid={}&ib_user={}|||View Post|||",
+            "You were mentioned by @{} in a post:\n\n{}\n\n|||LINK|||https://{}/v1/showpost?ib_uid={}&ib_user={}&pid={}|||View Post|||",
             payload.ib_user,
             payload.post,
             DOMAIN,
             payload.ib_uid,
-            url_encode_component(&payload.ib_user)
+            url_encode_component(&payload.ib_user),
+            postid
           );
 
           if let Err(err) = sqlx::query(
