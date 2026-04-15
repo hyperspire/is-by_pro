@@ -194,8 +194,6 @@ struct GithubUser {
 
 #[derive(Deserialize)]
 struct NewPostRequest {
-  ib_uid: i64,
-  ib_user: String,
   post: String,
 }
 
@@ -4386,10 +4384,19 @@ async fn render_single_post_html(
 
 #[post("/v1/post")]
 async fn create_post(
+  req: HttpRequest,
   state: web::Data<AppState>,
   payload: web::Json<NewPostRequest>,
 ) -> impl Responder {
   const MAX_POST_LEN: usize = 1024;
+
+  let Some((session_uid, session_username)) = get_session_identity(&req, &state).await else {
+    return HttpResponse::Unauthorized().json(PostResponse {
+      success: false,
+      message: "Login required".to_string(),
+      postid: None,
+    });
+  };
 
   if payload.post.trim().is_empty() {
     return HttpResponse::BadRequest().json(PostResponse {
@@ -4414,7 +4421,7 @@ async fn create_post(
   let result = sqlx::query(
     "INSERT INTO post (ib_uid, postid, post, `timestamp`) VALUES (?, ?, ?, NOW())",
   )
-  .bind(payload.ib_uid)
+  .bind(session_uid)
   .bind(&postid)
   .bind(&payload.post)
   .execute(&state.db_pool)
@@ -4439,24 +4446,24 @@ async fn create_post(
           };
 
           let target_uid = target.0;
-          if target_uid == payload.ib_uid {
+          if target_uid == session_uid {
             continue;
           }
 
           let dm_message = format!(
             "You were mentioned by @{} in a post:\n\n{}\n\n|||LINK|||https://{}/v1/showpost?ib_uid={}&ib_user={}&pid={}|||View Post|||",
-            payload.ib_user,
+            session_username,
             payload.post,
             DOMAIN,
-            payload.ib_uid,
-            url_encode_component(&payload.ib_user),
+            session_uid,
+            url_encode_component(&session_username),
             postid
           );
 
           if let Err(err) = sqlx::query(
             "INSERT INTO dm (sender_uid, recipient_uid, message) VALUES (?, ?, ?)",
           )
-          .bind(payload.ib_uid)
+          .bind(session_uid)
           .bind(target_uid)
           .bind(dm_message)
           .execute(&state.db_pool)
@@ -4464,7 +4471,7 @@ async fn create_post(
           {
             eprintln!(
               "Mention DM send failed from {} to {} for post {}: {}",
-              payload.ib_uid,
+              session_uid,
               target_uid,
               postid,
               err
@@ -4474,7 +4481,7 @@ async fn create_post(
       }
 
       HttpResponse::Ok()
-        .insert_header(("ib_user", payload.ib_user.clone()))
+        .insert_header(("ib_user", session_username.clone()))
         .json(PostResponse {
           success: true,
           message: "Post created".to_string(),
@@ -4491,10 +4498,15 @@ async fn create_post(
 
 #[post("/v1/reply")]
 async fn create_reply(
+  req: HttpRequest,
   state: web::Data<AppState>,
   payload: web::Form<ReplyRequest>,
 ) -> impl Responder {
   const MAX_POST_LEN: usize = 1024;
+
+  let Some((session_uid, _)) = get_session_identity(&req, &state).await else {
+    return HttpResponse::Unauthorized().body("Login required");
+  };
 
   if payload.post.trim().is_empty() {
     return HttpResponse::BadRequest().body("Reply cannot be empty");
@@ -4510,7 +4522,7 @@ async fn create_reply(
   let result = sqlx::query(
     "INSERT INTO post (ib_uid, postid, parentid, post, `timestamp`) VALUES (?, ?, ?, ?, NOW())",
   )
-  .bind(payload.ib_uid)
+  .bind(session_uid)
   .bind(&replyid)
   .bind(&payload.pid)
   .bind(&payload.post)
