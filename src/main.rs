@@ -118,6 +118,18 @@ struct RelatedUsernameRankRow {
 }
 
 #[derive(sqlx::FromRow)]
+struct RelatedCandidateRow {
+  username: String,
+  total_acknowledgments: i64,
+  github: String,
+  ibp: String,
+  pro: String,
+  services: String,
+  location: String,
+  website: String,
+}
+
+#[derive(sqlx::FromRow)]
 struct SearchUserRow {
   ib_uid: String,
   ibp: String,
@@ -992,6 +1004,48 @@ async fn render_related_userlist_html(
       Ok(rows) => rows,
       Err(_) => return "<p><em>:[[ :related-user-lookup: failed: ]]:</em></p>".to_string(),
     };
+  }
+
+  if related_rows.is_empty() {
+    let candidates = match sqlx::query_as::<_, RelatedCandidateRow>(
+      "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments, COALESCE(candidate.github, '') AS github, COALESCE(candidate.ibp, '') AS ibp, COALESCE(candidate.pro, '') AS pro, COALESCE(candidate.services, '') AS services, COALESCE(candidate.location, '') AS location, COALESCE(candidate.website, '') AS website FROM pro AS candidate JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci <> ? COLLATE utf8mb4_unicode_ci ORDER BY RAND() LIMIT 250"
+    )
+    .bind(&source_uid_text)
+    .fetch_all(&state.db_pool)
+    .await
+    {
+      Ok(rows) => rows,
+      Err(_) => return "<p><em>:[[ :related-user-lookup: failed: ]]:</em></p>".to_string(),
+    };
+
+    for candidate in candidates {
+      if candidate.username.trim().is_empty() {
+        continue;
+      }
+
+      let haystack = format!(
+        "{} {} {} {} {} {} {}",
+        candidate.username,
+        candidate.github,
+        candidate.ibp,
+        candidate.pro,
+        candidate.services,
+        candidate.location,
+        candidate.website
+      )
+      .to_lowercase();
+
+      if interests.iter().any(|term| haystack.contains(term)) {
+        related_rows.push(RelatedUsernameRankRow {
+          username: candidate.username,
+          total_acknowledgments: candidate.total_acknowledgments,
+        });
+
+        if related_rows.len() >= 5 {
+          break;
+        }
+      }
+    }
   }
 
   let mut related_html = String::new();
