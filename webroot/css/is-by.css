@@ -308,16 +308,26 @@ input[type=password] {
     display: flex;
     width: 250px;
     height: auto;
-    flex-direction: row;
+    flex-direction: column;
     align-items: flex-start;
     vertical-align: top;
-    justify-content: center;
+    justify-content: flex-start;
     position: relative;
     top: 0;
     right: 0;
 }
 
+#userlist-section > p {
+    width: 100%;
+    text-align: left;
+    margin: 4px 0;
+}
+
 #userlist-container {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
     width: 100%;
     text-align: left;
 }
@@ -326,6 +336,20 @@ input[type=password] {
     width: 100%;
     text-align: left;
     margin: 4px 0;
+}
+
+#userlist-container .post-author,
+#userlist-container .post-author:visited,
+#userlist-container .post-author:hover,
+#userlist-container .post-author:active {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: left;
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 0;
 }
 
 #user-search-section {
