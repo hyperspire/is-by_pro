@@ -916,12 +916,25 @@ async fn render_related_userlist_html(
   source_ibp: &str,
 ) -> String {
   let mut seen = HashSet::new();
-  let interests: Vec<String> = source_ibp
-    .split(|ch: char| ch == ',' || ch.is_whitespace())
+  let raw_terms: Vec<String> = source_ibp
+    .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '+' || ch == '#'))
     .map(|term| term.trim().to_lowercase())
-    .filter(|term| term.len() >= 3)
+    .filter(|term| !term.is_empty())
     .filter(|term| seen.insert(term.clone()))
     .collect();
+
+  let interests: Vec<String> = {
+    let filtered: Vec<String> = raw_terms
+      .iter()
+      .filter(|term| term.len() >= 3)
+      .cloned()
+      .collect();
+    if filtered.is_empty() {
+      raw_terms
+    } else {
+      filtered
+    }
+  };
 
   if interests.is_empty() {
     return "<br><p><em>:[[ :no-related-users: ]]:</em></p>".to_string();
@@ -947,10 +960,43 @@ async fn render_related_userlist_html(
     .fetch_all(&state.db_pool)
     .await;
 
-  let related_rows = match related_rows {
+  let mut related_rows = match related_rows {
     Ok(rows) => rows,
-    Err(_) => return "<p><em>:[[ :related-user-lookup: failed: ]]:</em></p>".to_string(),
+    Err(_) => return "<p><em>:[[ :related-user-lookup-failed: ]]:</em></p>".to_string(),
   };
+
+  if related_rows.is_empty() {
+    let mut sql = String::from(
+      "SELECT CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid FROM pro AS candidate LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE candidate.ib_uid <> ? AND ("
+    );
+
+    for index in 0..interests.len() {
+      if index > 0 {
+        sql.push_str(" OR ");
+      }
+      sql.push_str("LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) LIKE ? ESCAPE '\\\\' OR LOWER(COALESCE(candidate.github, '')) LIKE ? ESCAPE '\\\\' OR LOWER(COALESCE(candidate.ibp, '')) LIKE ? ESCAPE '\\\\' OR LOWER(COALESCE(candidate.pro, '')) LIKE ? ESCAPE '\\\\' OR LOWER(COALESCE(candidate.services, '')) LIKE ? ESCAPE '\\\\' OR LOWER(COALESCE(candidate.location, '')) LIKE ? ESCAPE '\\\\' OR LOWER(COALESCE(candidate.website, '')) LIKE ? ESCAPE '\\\\'");
+    }
+
+    sql.push_str(") ORDER BY RAND() LIMIT 5");
+
+    let mut query = sqlx::query_as::<_, RelatedUserRow>(&sql).bind(source_uid);
+    for term in &interests {
+      let token = format!("%{}%", escape_mysql_like_token(term));
+      query = query
+        .bind(token.clone())
+        .bind(token.clone())
+        .bind(token.clone())
+        .bind(token.clone())
+        .bind(token.clone())
+        .bind(token.clone())
+        .bind(token);
+    }
+
+    related_rows = match query.fetch_all(&state.db_pool).await {
+      Ok(rows) => rows,
+      Err(_) => return "<p><em>:[[ :related-user-lookup: failed: ]]:</em></p>".to_string(),
+    };
+  }
 
   let mut related_html = String::new();
 
