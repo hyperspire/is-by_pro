@@ -2553,7 +2553,7 @@ async fn render_projects_html(
         if can_edit {
           format!(
             r#"<div class="post">
-              <div class="post-meta"><a class="post-author" href="https://{domain}/v1/profile/{owner_username}">{owner_username}</a><span class="post-timestamp">{updated_at}</span></div>
+              <div class="post-meta"><a class="post-author" href="https://{domain}/v1/profile/{owner_username}"><img class="post-author-avatar" src="https://github.com/{owner_username}.png?size=32" alt="{owner_username}" width="32" height="32" style="margin-right:6px;vertical-align:middle;">{owner_username}</a><span class="post-timestamp">{updated_at}</span></div>
               <form class="edit-project-form" action="https://{domain}/v1/projects/edit" method="POST">
                 <input type="hidden" name="ib_uid" value="{ib_uid}">
                 <input type="hidden" name="ib_user" value="{ib_user}">
@@ -2648,7 +2648,7 @@ async fn render_projects_html(
           };
           format!(
             r#"<div class="post">
-              <div class="post-meta"><a class="post-author" href="https://{domain}/v1/profile/{owner_username}">{owner_username}</a><span class="post-timestamp">{updated_at}</span></div>
+              <div class="post-meta"><a class="post-author" href="https://{domain}/v1/profile/{owner_username}"><img class="post-author-avatar" src="https://github.com/{owner_username}.png?size=32" alt="{owner_username}" width="32" height="32" style="margin-right:6px;vertical-align:middle;">{owner_username}</a><span class="post-timestamp">{updated_at}</span></div>
               <p><strong>Project:</strong> {project}</p>
               <p><strong>Description:</strong> {description}</p>
               <p><strong>Languages:</strong> {languages}</p>
@@ -2664,7 +2664,12 @@ async fn render_projects_html(
             languages = escape_html(&row.languages),
             reinforcements_section = if let Some(ref r) = row.reinforcements {
               if !r.trim().is_empty() {
-                format!("<p><strong>Reinforcements:</strong> {}</p>", escape_html(r))
+                let links: String = r.split(',').map(|name| name.trim()).filter(|name| !name.is_empty()).map(|name| {
+                  let safe = escape_html(name);
+                  let encoded = url_encode_component(name);
+                  format!(r#"<a class="post-author" href="https://{domain}/v1/profile/{encoded}"><img class="post-author-avatar" src="https://github.com/{encoded}.png?size=32" alt="{safe}" width="32" height="32" style="margin-right:6px;vertical-align:middle;">{safe}</a>"#, domain = DOMAIN, encoded = encoded, safe = safe)
+                }).collect::<Vec<_>>().join(" ");
+                format!("<p><strong>Reinforcements:</strong> {}</p>", links)
               } else {
                 String::new()
               }
@@ -2998,7 +3003,7 @@ async fn render_search_projects_html(
           };
           format!(
             r#"<div class="post">
-              <div class="post-meta"><a class="post-author" href="https://{domain}/v1/profile/{owner_username}">{owner_username}</a><span class="post-timestamp">{updated_at}</span></div>
+              <div class="post-meta"><a class="post-author" href="https://{domain}/v1/profile/{owner_username}"><img class="post-author-avatar" src="https://github.com/{owner_username}.png?size=32" alt="{owner_username}" width="32" height="32" style="margin-right:6px;vertical-align:middle;">{owner_username}</a><span class="post-timestamp">{updated_at}</span></div>
               <p><strong>Project:</strong> {project}</p>
               <p><strong>Description:</strong> {description}</p>
               <p><strong>Languages:</strong> {languages}</p>
@@ -3014,7 +3019,12 @@ async fn render_search_projects_html(
             languages = highlight_terms(&row.languages, &search_terms),
             reinforcements_section = if let Some(ref r) = row.reinforcements {
               if !r.trim().is_empty() {
-                format!("<p><strong>Reinforcements:</strong> {}</p>", escape_html(r))
+                let links: String = r.split(',').map(|name| name.trim()).filter(|name| !name.is_empty()).map(|name| {
+                  let safe = escape_html(name);
+                  let encoded = url_encode_component(name);
+                  format!(r#"<a class="post-author" href="https://{domain}/v1/profile/{encoded}"><img class="post-author-avatar" src="https://github.com/{encoded}.png?size=32" alt="{safe}" width="32" height="32" style="margin-right:6px;vertical-align:middle;">{safe}</a>"#, domain = DOMAIN, encoded = encoded, safe = safe)
+                }).collect::<Vec<_>>().join(" ");
+                format!("<p><strong>Reinforcements:</strong> {}</p>", links)
               } else {
                 String::new()
               }
