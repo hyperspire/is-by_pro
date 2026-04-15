@@ -2097,10 +2097,14 @@ async fn render_search_users_html(
         _ => continue,
       };
 
+      let profile_target = url_encode_component(&username);
+      let safe_username = escape_html(&username);
+
       html += &format!(
-        r#"<p><a href="https://{domain}/v1/profile/{username}">{username}</a><br><small>{ibp}</small></p>"#,
+        r#"<p><a class="post-author" href="https://{domain}/v1/profile/{profile_target}"><img class="post-author-avatar" src="https://github.com/{profile_target}.png?size=32" alt="{username}" width="32" height="32">{username}</a><br><small>{ibp}</small></p>"#,
         domain = DOMAIN,
-        username = escape_html(&username),
+        profile_target = profile_target,
+        username = safe_username,
         ibp = highlight_terms(&row.ibp, &search_terms)
       );
     }
