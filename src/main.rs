@@ -2519,6 +2519,21 @@ async fn render_projects_html(
 ) -> Result<String, String> {
   let advert_html = render_advert_html(state).await;
 
+  let session_username = if let Some(uid) = session_uid {
+    match sqlx::query_as::<_, SessionUserRow>(
+      "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
+    )
+    .bind(uid.to_string())
+    .fetch_optional(&state.db_pool)
+    .await
+    {
+      Ok(Some(row)) if !row.username.trim().is_empty() => Some(row.username),
+      _ => None,
+    }
+  } else {
+    None
+  };
+
   let rows = sqlx::query_as::<_, ProjectProfileRow>(
       "SELECT project.id, project.ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, project.project, project.description, project.languages, CAST(project.updated_at AS CHAR CHARACTER SET utf8mb4) AS updated_at, COALESCE(project.reinforcements, '') AS reinforcements, COALESCE(project.reinforcements_request, FALSE) AS reinforcements_request FROM project_profile AS project LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE project.ib_uid = ? ORDER BY project.updated_at DESC LIMIT 500"
     )
@@ -2574,7 +2589,29 @@ async fn render_projects_html(
           } else {
             String::new()
           };
-          let quick_response_form = if row.reinforcements_request == Some(true) && session_uid.is_some() && session_uid != Some(row.ib_uid) {
+          let reinforcement_usernames: Vec<String> = row
+            .reinforcements
+            .as_deref()
+            .unwrap_or("")
+            .split(',')
+            .map(|item| item.trim())
+            .filter(|item| !item.is_empty())
+            .map(|item| item.to_string())
+            .collect();
+          let already_reinforcing = session_username
+            .as_ref()
+            .map(|username| {
+              reinforcement_usernames
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case(username))
+            })
+            .unwrap_or(false);
+
+          let quick_response_form = if row.reinforcements_request == Some(true)
+            && session_uid.is_some()
+            && session_uid != Some(row.ib_uid)
+            && !already_reinforcing
+          {
             format!(
               r#"<form class="quick-response-force-form" action="https://{domain}/v1/projects/reinforce" method="POST">
                 <input type="hidden" name="ib_uid" value="{ib_uid}">
@@ -2582,6 +2619,24 @@ async fn render_projects_html(
                 <input type="hidden" name="project_id" value="{project_id}">
                 <input type="hidden" name="quick_response_force" value="1">
                 <input class="post-submit quick-response-submit" type="submit" value="Respond to Reinforcements Request">
+              </form>"#,
+              domain = DOMAIN,
+              ib_uid = ib_uid,
+              ib_user = escape_html(ib_user),
+              project_id = row.id
+            )
+          } else if row.reinforcements_request == Some(true)
+            && session_uid.is_some()
+            && session_uid != Some(row.ib_uid)
+            && already_reinforcing
+          {
+            format!(
+              r#"<form class="quick-response-force-form" action="https://{domain}/v1/projects/reinforce" method="POST">
+                <input type="hidden" name="ib_uid" value="{ib_uid}">
+                <input type="hidden" name="ib_user" value="{ib_user}">
+                <input type="hidden" name="project_id" value="{project_id}">
+                <input type="hidden" name="quick_response_force" value="retreat">
+                <input class="post-submit quick-response-submit" type="submit" value="Retreat">
               </form>"#,
               domain = DOMAIN,
               ib_uid = ib_uid,
@@ -2626,15 +2681,20 @@ async fn render_projects_html(
   };
 
   let navigation_links = if session_uid.is_some() {
+    let session_nav_uid = session_uid.unwrap_or(ib_uid);
+    let session_nav_user = session_username.as_deref().unwrap_or(ib_user);
+
     format!(
       r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
-        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
-        <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
-        <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
-        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
+        <a class="pro-home-display" href="https://{domain}/v1/profile/{session_ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={session_ib_uid}&ib_user={session_ib_user}">:[[ :war-room: ]]:</a>
+        <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={viewed_ib_uid}&ib_user={viewed_ib_user}">:[[ :projects: ]]:</a>
+        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={session_ib_uid}&ib_user={session_ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
       domain = DOMAIN,
-      ib_uid = ib_uid,
-      ib_user = escape_html(ib_user)
+      session_ib_uid = session_nav_uid,
+      session_ib_user = escape_html(session_nav_user),
+      viewed_ib_uid = ib_uid,
+      viewed_ib_user = escape_html(ib_user)
     )
   } else {
     String::new()
@@ -2827,6 +2887,21 @@ async fn render_search_projects_html(
 ) -> Result<String, String> {
   let advert_html = render_advert_html(state).await;
 
+  let session_username = if let Some(uid) = session_uid {
+    match sqlx::query_as::<_, SessionUserRow>(
+      "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
+    )
+    .bind(uid.to_string())
+    .fetch_optional(&state.db_pool)
+    .await
+    {
+      Ok(Some(row)) if !row.username.trim().is_empty() => Some(row.username),
+      _ => None,
+    }
+  } else {
+    None
+  };
+
   let search_terms: Vec<String> = raw_query
     .split_whitespace()
     .map(|term| term.trim().to_lowercase())
@@ -2864,7 +2939,29 @@ async fn render_search_projects_html(
           } else {
             String::new()
           };
-          let quick_response_form = if row.reinforcements_request == Some(true) && session_uid.is_some() && session_uid != Some(row.ib_uid) {
+          let reinforcement_usernames: Vec<String> = row
+            .reinforcements
+            .as_deref()
+            .unwrap_or("")
+            .split(',')
+            .map(|item| item.trim())
+            .filter(|item| !item.is_empty())
+            .map(|item| item.to_string())
+            .collect();
+          let already_reinforcing = session_username
+            .as_ref()
+            .map(|username| {
+              reinforcement_usernames
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case(username))
+            })
+            .unwrap_or(false);
+
+          let quick_response_form = if row.reinforcements_request == Some(true)
+            && session_uid.is_some()
+            && session_uid != Some(row.ib_uid)
+            && !already_reinforcing
+          {
             format!(
               r#"<form class="quick-response-force-form" action="https://{domain}/v1/projects/reinforce" method="POST">
                 <input type="hidden" name="ib_uid" value="{ib_uid}">
@@ -2872,6 +2969,24 @@ async fn render_search_projects_html(
                 <input type="hidden" name="project_id" value="{project_id}">
                 <input type="hidden" name="quick_response_force" value="1">
                 <input class="post-submit quick-response-submit" type="submit" value="Respond to Reinforcements Request">
+              </form>"#,
+              domain = DOMAIN,
+              ib_uid = ib_uid,
+              ib_user = escape_html(ib_user),
+              project_id = row.id
+            )
+          } else if row.reinforcements_request == Some(true)
+            && session_uid.is_some()
+            && session_uid != Some(row.ib_uid)
+            && already_reinforcing
+          {
+            format!(
+              r#"<form class="quick-response-force-form" action="https://{domain}/v1/projects/reinforce" method="POST">
+                <input type="hidden" name="ib_uid" value="{ib_uid}">
+                <input type="hidden" name="ib_user" value="{ib_user}">
+                <input type="hidden" name="project_id" value="{project_id}">
+                <input type="hidden" name="quick_response_force" value="retreat">
+                <input class="post-submit quick-response-submit" type="submit" value="Retreat">
               </form>"#,
               domain = DOMAIN,
               ib_uid = ib_uid,
@@ -5290,6 +5405,13 @@ async fn quick_response_force_project(
     return HttpResponse::BadRequest().body("Missing quick response action");
   }
 
+  let quick_action = payload
+    .quick_response_force
+    .as_deref()
+    .unwrap_or_default()
+    .trim()
+    .to_ascii_lowercase();
+
   let project_row = match sqlx::query_as::<_, ProjectReinforcementsRow>(
     "SELECT ib_uid, COALESCE(reinforcements, '') AS reinforcements, COALESCE(reinforcements_request, FALSE) AS reinforcements_request FROM project_profile WHERE id = ? LIMIT 1",
   )
@@ -5322,7 +5444,23 @@ async fn quick_response_force_project(
     .iter()
     .any(|name| name.eq_ignore_ascii_case(&session_username));
 
-  if !already_added {
+  if quick_action == "retreat" {
+    if already_added {
+      reinforcement_usernames.retain(|name| !name.eq_ignore_ascii_case(&session_username));
+      let updated_reinforcements = reinforcement_usernames.join(", ");
+
+      if let Err(err) = sqlx::query(
+        "UPDATE project_profile SET reinforcements = ? WHERE id = ? LIMIT 1",
+      )
+      .bind(updated_reinforcements)
+      .bind(payload.project_id)
+      .execute(&state.db_pool)
+      .await
+      {
+        return HttpResponse::InternalServerError().body(format!("Failed to update reinforcements: {}", err));
+      }
+    }
+  } else if !already_added {
     reinforcement_usernames.push(session_username.clone());
     let updated_reinforcements = reinforcement_usernames.join(", ");
 
