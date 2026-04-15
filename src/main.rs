@@ -1730,16 +1730,21 @@ async fn render_profile_html(
   };
 
   let navigation_links = if session_uid.is_some() {
+    let session_nav_uid = session_uid.unwrap_or(ib_uid);
+    let session_nav_user = session_username.as_deref().unwrap_or(ib_user);
+
     format!(
       r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
-        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
-        <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
-        <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
+        <a class="pro-home-display" href="https://{domain}/v1/profile/{session_ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={session_ib_uid}&ib_user={session_ib_user}">:[[ :war-room: ]]:</a>
+        <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={viewed_ib_uid}&ib_user={viewed_ib_user}">:[[ :projects: ]]:</a>
         {dm_link}
         {edit_profile_link}"#,
       domain = DOMAIN,
-      ib_uid = ib_uid,
-      ib_user = escape_html(ib_user),
+      session_ib_uid = session_nav_uid,
+      session_ib_user = escape_html(session_nav_user),
+      viewed_ib_uid = ib_uid,
+      viewed_ib_user = escape_html(&viewed_username),
       edit_profile_link = if show_edit_profile_link {
         r#"<a class="show-edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a>"#.to_string()
       } else {
@@ -1747,10 +1752,10 @@ async fn render_profile_html(
       },
       dm_link = if show_profile_dm_link {
         format!(
-          r#"<a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
+          r#"<a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={session_ib_uid}&ib_user={session_ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
           domain = DOMAIN,
-          ib_uid = ib_uid,
-          ib_user = escape_html(ib_user)
+          session_ib_uid = session_nav_uid,
+          session_ib_user = escape_html(session_nav_user)
         )
       } else {
         String::new()
@@ -2101,7 +2106,7 @@ async fn render_search_users_html(
       let safe_username = escape_html(&username);
 
       html += &format!(
-        r#"<p><a class="post-author" href="https://{domain}/v1/profile/{profile_target}"><img class="post-author-avatar" src="https://github.com/{profile_target}.png?size=32" alt="{username}" width="32" height="32">{username}</a><br><small>{ibp}</small></p>"#,
+        r#"<p><a class="post-author" href="https://{domain}/v1/profile/{profile_target}"><img class="post-author-avatar" src="https://github.com/{profile_target}.png?size=32" alt="{username}" width="32" height="32" style="margin-right: 10px;">{username}</a><br><small>{ibp}</small></p>"#,
         domain = DOMAIN,
         profile_target = profile_target,
         username = safe_username,
