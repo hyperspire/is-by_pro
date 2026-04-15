@@ -580,6 +580,13 @@ fn escape_mysql_regex_token(input: &str) -> String {
   escaped
 }
 
+fn escape_mysql_like_token(input: &str) -> String {
+  input
+    .replace('\\', "\\\\")
+    .replace('%', "\\%")
+    .replace('_', "\\_")
+}
+
 fn url_encode_component(input: &str) -> String {
   let mut encoded = String::with_capacity(input.len());
 
@@ -2042,19 +2049,34 @@ async fn render_search_users_html(
   let search_results_html = if search_terms.is_empty() {
     "<p><em>:[[ :search-users-empty-query: ]]:</em></p>".to_string()
   } else {
-    let regex_terms: Vec<String> = search_terms
-      .iter()
-      .map(|term| escape_mysql_regex_token(term))
-      .collect();
-    let pattern = format!(
-      "(^|[[:space:],])({})([[:space:],]|$)",
-      regex_terms.join("|")
+    let mut sql = String::from(
+      "SELECT CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, COALESCE(candidate.ibp, '') AS ibp FROM pro AS candidate LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE "
     );
 
-    let rows = sqlx::query_as::<_, SearchUserRow>(
-        "SELECT CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, COALESCE(candidate.ibp, '') AS ibp FROM pro AS candidate WHERE LOWER(COALESCE(candidate.ibp, '')) REGEXP ? ORDER BY RAND() LIMIT 200"
-      )
-      .bind(&pattern)
+    for index in 0..search_terms.len() {
+      if index > 0 {
+        sql.push_str(" AND ");
+      }
+
+      sql.push_str("(LOWER(COALESCE(user.username, '')) LIKE ? ESCAPE '\\\\' OR LOWER(COALESCE(candidate.github, '')) LIKE ? ESCAPE '\\\\' OR LOWER(COALESCE(candidate.ibp, '')) LIKE ? ESCAPE '\\\\' OR LOWER(COALESCE(candidate.pro, '')) LIKE ? ESCAPE '\\\\' OR LOWER(COALESCE(candidate.services, '')) LIKE ? ESCAPE '\\\\' OR LOWER(COALESCE(candidate.location, '')) LIKE ? ESCAPE '\\\\' OR LOWER(COALESCE(candidate.website, '')) LIKE ? ESCAPE '\\\\')");
+    }
+
+    sql.push_str(" ORDER BY RAND() LIMIT 200");
+
+    let mut rows_query = sqlx::query_as::<_, SearchUserRow>(&sql);
+    for term in &search_terms {
+      let token = format!("%{}%", escape_mysql_like_token(term));
+      rows_query = rows_query
+        .bind(token.clone())
+        .bind(token.clone())
+        .bind(token.clone())
+        .bind(token.clone())
+        .bind(token.clone())
+        .bind(token.clone())
+        .bind(token);
+    }
+
+    let rows = rows_query
       .fetch_all(&state.db_pool)
       .await
       .map_err(|e| format!("Search users query failed: {}", e))?;
