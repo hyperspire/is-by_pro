@@ -983,7 +983,7 @@ async fn render_related_userlist_html(
   }
 
   let related_rows = sqlx::query_as::<_, RelatedUsernameRankRow>(
-      "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments FROM pro AS candidate JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci <> ? COLLATE utf8mb4_unicode_ci AND LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) <> '' AND (LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) REGEXP ? OR LOWER(COALESCE(candidate.github, '')) REGEXP ? OR LOWER(COALESCE(candidate.ibp, '')) REGEXP ? OR LOWER(COALESCE(candidate.pro, '')) REGEXP ? OR LOWER(COALESCE(candidate.services, '')) REGEXP ? OR LOWER(COALESCE(candidate.location, '')) REGEXP ? OR LOWER(COALESCE(candidate.website, '')) REGEXP ?) ORDER BY RAND() LIMIT 5"
+      "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments FROM user AS user LEFT JOIN pro AS candidate ON CONVERT(candidate.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci WHERE CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci <> ? COLLATE utf8mb4_unicode_ci AND LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) <> '' AND (LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) REGEXP ? OR LOWER(COALESCE(candidate.github, '')) REGEXP ? OR LOWER(COALESCE(candidate.ibp, '')) REGEXP ? OR LOWER(COALESCE(candidate.pro, '')) REGEXP ? OR LOWER(COALESCE(candidate.services, '')) REGEXP ? OR LOWER(COALESCE(candidate.location, '')) REGEXP ? OR LOWER(COALESCE(candidate.website, '')) REGEXP ?) ORDER BY RAND() LIMIT 5"
     )
     .bind(&source_uid_text)
     .bind(&pattern)
@@ -1016,7 +1016,7 @@ async fn render_related_userlist_html(
       eprintln!("[userlist] regex returned 0 rows; trying LIKE fallback");
     }
     let mut sql = String::from(
-      "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments FROM pro AS candidate JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci <> ? COLLATE utf8mb4_unicode_ci AND LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) <> '' AND ("
+      "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments FROM user AS user LEFT JOIN pro AS candidate ON CONVERT(candidate.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci WHERE CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci <> ? COLLATE utf8mb4_unicode_ci AND LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) <> '' AND ("
     );
 
     for index in 0..interests.len() {
@@ -1062,7 +1062,7 @@ async fn render_related_userlist_html(
       eprintln!("[userlist] LIKE returned 0 rows; trying in-memory fallback");
     }
     let candidates = match sqlx::query_as::<_, RelatedCandidateRow>(
-      "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments, COALESCE(candidate.github, '') AS github, COALESCE(candidate.ibp, '') AS ibp, COALESCE(candidate.pro, '') AS pro, COALESCE(candidate.services, '') AS services, COALESCE(candidate.location, '') AS location, COALESCE(candidate.website, '') AS website FROM pro AS candidate JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci <> ? COLLATE utf8mb4_unicode_ci ORDER BY RAND() LIMIT 250"
+      "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments, COALESCE(candidate.github, '') AS github, COALESCE(candidate.ibp, '') AS ibp, COALESCE(candidate.pro, '') AS pro, COALESCE(candidate.services, '') AS services, COALESCE(candidate.location, '') AS location, COALESCE(candidate.website, '') AS website FROM user AS user LEFT JOIN pro AS candidate ON CONVERT(candidate.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci WHERE CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci <> ? COLLATE utf8mb4_unicode_ci ORDER BY RAND() LIMIT 250"
     )
     .bind(&source_uid_text)
     .fetch_all(&state.db_pool)
