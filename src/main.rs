@@ -1060,6 +1060,36 @@ fn render_project_profile_link(username: &str, user_total_acks: i64) -> String {
   )
 }
 
+async fn render_github_identity_html(state: &AppState, ib_user: &str) -> String {
+  let total_acks = match sqlx::query_as::<_, UserHoverLookupRow>(
+    "SELECT CONVERT(ib_uid USING utf8mb4) AS ib_uid, username, COALESCE(followers, '') AS followers, COALESCE(total_acknowledgments, 0) AS total_acknowledgments FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1",
+  )
+  .bind(ib_user)
+  .fetch_optional(&state.db_pool)
+  .await
+  {
+    Ok(Some(row)) => row.total_acknowledgments,
+    _ => 0,
+  };
+
+  let rank_info = get_rank_info(total_acks);
+  let glow_style = if rank_info.level >= 11 {
+    "filter: drop-shadow(0 0 3px #fff) drop-shadow(0 0 5px #fff); "
+  } else {
+    ""
+  };
+  let safe_user = escape_html(ib_user);
+  let encoded_user = url_encode_component(ib_user);
+
+  format!(
+    r#"<a class="post-author" target="_blank" rel="noopener" href="https://github.com/{encoded_user}"><img class="post-author-avatar" src="https://github.com/{encoded_user}.png?size=32" alt="{safe_user}" width="32" height="32" style="margin-right:6px;vertical-align:middle;"><img class="rank-insignia" src="/images/ranks/{rank_icon}" alt="Rank" width="16" height="16" style="{glow_style}vertical-align: middle; margin-left: 4px; margin-right: 4px;">{safe_user}</a>"#,
+    encoded_user = encoded_user,
+    safe_user = safe_user,
+    rank_icon = rank_info.asset,
+    glow_style = glow_style,
+  )
+}
+
 async fn load_project_profile_ack_map(state: &AppState, usernames: &HashSet<String>) -> HashMap<String, i64> {
   let mut ack_map = HashMap::new();
 
@@ -1986,12 +2016,13 @@ async fn render_profile_html(
     };
     let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
+    let github_identity_html = render_github_identity_html(state, ib_user).await;
 
     html += &format!(r#"
   </div>
   <div id="profile-section">
     {sidebar_login_html}
-    <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_user}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p><strong>:[[ :{github_identity_html}: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -2240,6 +2271,7 @@ async fn render_search_users_html(
     };
     let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
+    let github_identity_html = render_github_identity_html(state, ib_user).await;
     let sidebar_login_html = if session_uid.is_none() {
       r#"<div id="actions-section">
       <div class="login-section">
@@ -2254,7 +2286,7 @@ async fn render_search_users_html(
     html += &format!(r#"
   <div id="profile-section">
     {sidebar_login_html}
-    <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_user}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p><strong>:[[ :{github_identity_html}: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -2472,6 +2504,7 @@ async fn render_search_posts_html(
     };
     let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
+    let github_identity_html = render_github_identity_html(state, ib_user).await;
     let sidebar_login_html = if session_uid.is_none() {
       r#"<div id="actions-section">
       <div class="login-section">
@@ -2486,7 +2519,7 @@ async fn render_search_posts_html(
     html += &format!(r#"
   <div id="profile-section">
     {sidebar_login_html}
-    <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_user}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p><strong>:[[ :{github_identity_html}: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -2862,6 +2895,7 @@ async fn render_projects_html(
     };
     let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
+    let github_identity_html = render_github_identity_html(state, ib_user).await;
     let sidebar_login_html = if session_uid.is_none() {
       r#"<div id="actions-section">
       <div class="login-section">
@@ -2876,7 +2910,7 @@ async fn render_projects_html(
     html += &format!(r#"
   <div id="profile-section">
     {sidebar_login_html}
-    <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_user}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p><strong>:[[ :{github_identity_html}: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -3195,6 +3229,7 @@ async fn render_search_projects_html(
     };
     let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
+    let github_identity_html = render_github_identity_html(state, ib_user).await;
     let sidebar_login_html = if session_uid.is_none() {
       r#"<div id="actions-section">
       <div class="login-section">
@@ -3209,7 +3244,7 @@ async fn render_search_projects_html(
     html += &format!(r#"
   <div id="profile-section">
     {sidebar_login_html}
-    <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_user}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p><strong>:[[ :{github_identity_html}: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -3502,6 +3537,7 @@ async fn render_war_room_html(
     };
     let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
+    let github_identity_html = render_github_identity_html(state, ib_user).await;
     let sidebar_login_html = if session_uid.is_none() {
       r#"<div id="actions-section">
       <div class="login-section">
@@ -3516,7 +3552,7 @@ async fn render_war_room_html(
     html += &format!(r#"
   <div id="profile-section">
     {sidebar_login_html}
-    <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_user}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p><strong>:[[ :{github_identity_html}: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -3756,6 +3792,7 @@ async fn render_inbox_html(
     };
     let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
+    let github_identity_html = render_github_identity_html(state, ib_user).await;
     let sidebar_login_html = if session_uid.is_none() {
       r#"<div id="actions-section">
       <div class="login-section">
@@ -3770,7 +3807,7 @@ async fn render_inbox_html(
     html += &format!(r#"
   <div id="profile-section">
     {sidebar_login_html}
-    <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_user}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p><strong>:[[ :{github_identity_html}: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -4051,6 +4088,7 @@ async fn render_single_post_html(
     };
     let related_userlist_html = render_related_userlist_html(state, source_uid, &source_ibp).await;
     let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
+    let github_identity_html = render_github_identity_html(state, ib_user).await;
     let sidebar_login_html = if session_uid.is_none() {
       r#"<div id="actions-section">
       <div class="login-section">
@@ -4066,7 +4104,7 @@ async fn render_single_post_html(
   </div>
   <div id="profile-section">
     {sidebar_login_html}
-    <p><strong>:[[ :<a target="_blank" rel="noopener" href="https://github.com/{ib_user}">{ib_user}</a>: ☑️: ]]:</strong></p>
+    <p><strong>:[[ :{github_identity_html}: ☑️: ]]:</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
