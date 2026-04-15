@@ -73,7 +73,6 @@ struct AppState {
   db_pool: MySqlPool,
   github_client_id: String,
   github_client_secret: String,
-  github_redirect_uri: String,
 }
 
 #[derive(sqlx::FromRow)]
@@ -6285,17 +6284,27 @@ async fn direct_message_unread_count(
   }
 }
 
-async fn github_auth_start_impl(state: web::Data<AppState>) -> HttpResponse {
+fn github_authorize_redirect_uri(req: &HttpRequest) -> String {
+  format!("https://{}{}", req.connection_info().host(), "/v1/auth/github/callback")
+}
+
+fn github_callback_redirect_uri(req: &HttpRequest) -> String {
+  format!("https://{}{}", req.connection_info().host(), req.path())
+}
+
+async fn github_auth_start_impl(req: HttpRequest, state: web::Data<AppState>) -> HttpResponse {
   let oauth_state: String = rand::thread_rng()
     .sample_iter(&Alphanumeric)
     .take(32)
     .map(char::from)
     .collect();
 
+  let redirect_uri = github_authorize_redirect_uri(&req);
+
   let url = format!(
     "https://github.com/login/oauth/authorize?client_id={}&redirect_uri={}&scope=read:user%20user:email&state={}",
     state.github_client_id,
-    state.github_redirect_uri,
+    redirect_uri,
     oauth_state
   );
 
@@ -6312,13 +6321,13 @@ async fn github_auth_start_impl(state: web::Data<AppState>) -> HttpResponse {
 }
 
 #[get("/auth/github")]
-async fn github_auth_start(state: web::Data<AppState>) -> impl Responder {
-  github_auth_start_impl(state).await
+async fn github_auth_start(req: HttpRequest, state: web::Data<AppState>) -> impl Responder {
+  github_auth_start_impl(req, state).await
 }
 
 #[get("/v1/auth/github")]
-async fn github_auth_start_v1(state: web::Data<AppState>) -> impl Responder {
-  github_auth_start_impl(state).await
+async fn github_auth_start_v1(req: HttpRequest, state: web::Data<AppState>) -> impl Responder {
+  github_auth_start_impl(req, state).await
 }
 
 async fn github_auth_callback_impl(
@@ -6326,6 +6335,8 @@ async fn github_auth_callback_impl(
   query: web::Query<GithubCallback>,
   state: web::Data<AppState>,
 ) -> HttpResponse {
+  let redirect_uri = github_callback_redirect_uri(&req);
+
   let cookie_state = match req.cookie("gh_oauth_state") {
     Some(c) => c.value().to_string(),
     None => return HttpResponse::BadRequest().body("Missing oauth state cookie"),
@@ -6343,7 +6354,7 @@ async fn github_auth_callback_impl(
       ("client_id", state.github_client_id.as_str()),
       ("client_secret", state.github_client_secret.as_str()),
       ("code", query.code.as_str()),
-      ("redirect_uri", state.github_redirect_uri.as_str()),
+      ("redirect_uri", redirect_uri.as_str()),
     ])
     .send()
     .await
@@ -6543,8 +6554,6 @@ async fn main() -> std::io::Result<()> {
       .expect("Missing GITHUB_CLIENT_ID in environment file or shell"),
     github_client_secret: std::env::var("GITHUB_CLIENT_SECRET")
       .expect("Missing GITHUB_CLIENT_SECRET in environment file or shell"),
-    github_redirect_uri: std::env::var("GITHUB_REDIRECT_URI")
-      .expect("Missing GITHUB_REDIRECT_URI in environment file or shell"),
   };
 
   let http_server = HttpServer::new(|| {
