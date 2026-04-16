@@ -4,3 +4,4 @@
 /.env
 /github
 /tmp
+/lib/lib.rs
