@@ -2371,7 +2371,7 @@ async fn render_profile_html(
   </div>
   <div id="profile-section">
     {sidebar_login_html}
-    <p><strong>:[[ :{github_identity_html}: ☑️: ]]:</strong></p>
+    <p><strong>{github_identity_html}</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -2629,7 +2629,7 @@ async fn render_search_users_html(
     html += &format!(r#"
   <div id="profile-section">
     {sidebar_login_html}
-    <p><strong>:[[ :{github_identity_html}: ☑️: ]]:</strong></p>
+    <p><strong>{github_identity_html}</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -2865,7 +2865,7 @@ async fn render_search_posts_html(
     html += &format!(r#"
   <div id="profile-section">
     {sidebar_login_html}
-    <p><strong>:[[ :{github_identity_html}: ☑️: ]]:</strong></p>
+    <p><strong>{github_identity_html}</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -3259,7 +3259,7 @@ async fn render_projects_html(
     html += &format!(r#"
   <div id="profile-section">
     {sidebar_login_html}
-    <p><strong>:[[ :{github_identity_html}: ☑️: ]]:</strong></p>
+    <p><strong>{github_identity_html}</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -3596,7 +3596,7 @@ async fn render_search_projects_html(
     html += &format!(r#"
   <div id="profile-section">
     {sidebar_login_html}
-    <p><strong>:[[ :{github_identity_html}: ☑️: ]]:</strong></p>
+    <p><strong>{github_identity_html}</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -4041,7 +4041,7 @@ async fn render_war_room_html(
     html += &format!(r#"
   <div id="profile-section">
     {sidebar_login_html}
-    <p><strong>:[[ :{github_identity_html}: ☑️: ]]:</strong></p>
+    <p><strong>{github_identity_html}</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -4257,7 +4257,7 @@ async fn render_inbox_html(
     html += &format!(r#"
   <div id="profile-section">
     {sidebar_login_html}
-    <p><strong>:[[ :{github_identity_html}: ☑️: ]]:</strong></p>
+    <p><strong>{github_identity_html}</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -4557,7 +4557,7 @@ async fn render_single_post_html(
   </div>
   <div id="profile-section">
     {sidebar_login_html}
-    <p><strong>:[[ :{github_identity_html}: ☑️: ]]:</strong></p>
+    <p><strong>{github_identity_html}</strong></p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
