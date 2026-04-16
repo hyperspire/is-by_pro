@@ -21,6 +21,8 @@ function attachEventListeners() {
     attachEditProEventListener,
     attachDirectMessageEventListeners,
     attachPostsInfiniteScrollEventListener,
+    attachFollowersInfiniteScrollEventListener,
+    attachDMContactsInfiniteScrollEventListener,
   ];
 
   listeners.forEach((setup) => {
@@ -253,6 +255,11 @@ function attachDirectMessageEventListeners() {
   }
 
   dmInboxLinks.forEach((link) => {
+    if (link.dataset.dmInboxBound === '1') {
+      return;
+    }
+    link.dataset.dmInboxBound = '1';
+
     link.addEventListener('click', (event) => {
       const href = link.getAttribute('href') || '';
       if (href === '' || href === 'javascript:void(0);') {
@@ -273,24 +280,12 @@ function attachDirectMessageEventListeners() {
     window.dmThreadInterval = window.setInterval(() => loadDMThread(targetUser), 3000);
   }
 
-  dmButtons.forEach((button) => {
-    button.addEventListener('click', (event) => {
-      event.preventDefault();
-      const targetUser = button.dataset.targetUser;
-      if (!targetUser) {
-        return;
-      }
+  attachDMOpenButtons(dmButtons, dmPanel, dmTargetLabel, dmTargetInput);
 
-      dmPanel.style.display = 'block';
-      dmTargetLabel.textContent = targetUser;
-      dmTargetInput.value = targetUser;
-      loadDMThread(targetUser);
-      if (window.dmThreadInterval) {
-        window.clearInterval(window.dmThreadInterval);
-      }
-      window.dmThreadInterval = window.setInterval(() => loadDMThread(targetUser), 3000);
-    });
-  });
+  if (dmForm.dataset.dmSubmitBound === '1') {
+    return;
+  }
+  dmForm.dataset.dmSubmitBound = '1';
 
   dmForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -329,6 +324,32 @@ function attachDirectMessageEventListeners() {
       setDMStatus(dmStatus, false, String(error));
       console.error('dm-send-error:', error);
     }
+  });
+}
+
+function attachDMOpenButtons(buttons, dmPanel, dmTargetLabel, dmTargetInput) {
+  buttons.forEach((button) => {
+    if (button.dataset.dmButtonBound === '1') {
+      return;
+    }
+    button.dataset.dmButtonBound = '1';
+
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      const targetUser = button.dataset.targetUser;
+      if (!targetUser) {
+        return;
+      }
+
+      dmPanel.style.display = 'block';
+      dmTargetLabel.textContent = targetUser;
+      dmTargetInput.value = targetUser;
+      loadDMThread(targetUser);
+      if (window.dmThreadInterval) {
+        window.clearInterval(window.dmThreadInterval);
+      }
+      window.dmThreadInterval = window.setInterval(() => loadDMThread(targetUser), 3000);
+    });
   });
 }
 
@@ -825,6 +846,119 @@ function attachPostsInfiniteScrollEventListener() {
     } catch (e) {
       console.error('posts-scroll-error:', e);
     }
+    loading = false;
+  }, { rootMargin: '300px' });
+
+  observer.observe(sentinel);
+}
+
+function attachFollowersInfiniteScrollEventListener() {
+  const section = document.getElementById('followers-section');
+  const container = document.getElementById('followers-container');
+  const sentinel = document.getElementById('followers-load-sentinel');
+  if (!section || !container || !sentinel) return;
+
+  const ibUID = section.dataset.ibUid;
+  if (!ibUID) return;
+
+  let loading = false;
+
+  const observer = new IntersectionObserver(async (entries) => {
+    if (!entries[0].isIntersecting || loading) return;
+    loading = true;
+
+    try {
+      const params = new URLSearchParams({
+        ib_uid: ibUID,
+        offset: section.dataset.followersOffset || '0',
+        limit: '20'
+      });
+
+      const resp = await fetch(`https://${domain}/api/v1/followers?${params}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+
+      if (data.followers_html) {
+        sentinel.insertAdjacentHTML('beforebegin', data.followers_html);
+        const dmButtons = container.querySelectorAll('.open-dm');
+        const dmPanel = document.getElementById('dm-panel');
+        const dmTargetLabel = document.getElementById('dm-target-user');
+        const dmTargetInput = document.getElementById('dm-target-user-input');
+        if (dmPanel && dmTargetLabel && dmTargetInput) {
+          attachDMOpenButtons(dmButtons, dmPanel, dmTargetLabel, dmTargetInput);
+        }
+        attachUsernameHoverCardEventListener();
+      }
+
+      if (typeof data.next_offset === 'number') {
+        section.dataset.followersOffset = String(data.next_offset);
+      }
+
+      if (!data.has_more) {
+        observer.disconnect();
+        sentinel.remove();
+      }
+    } catch (e) {
+      console.error('followers-scroll-error:', e);
+    }
+
+    loading = false;
+  }, { rootMargin: '300px' });
+
+  observer.observe(sentinel);
+}
+
+function attachDMContactsInfiniteScrollEventListener() {
+  const contactList = document.getElementById('dm-contact-list');
+  const sentinel = document.getElementById('dm-contacts-load-sentinel');
+  if (!contactList || !sentinel) return;
+
+  const ibUID = contactList.dataset.ibUid;
+  const ibUser = contactList.dataset.ibUser;
+  if (!ibUID || !ibUser) return;
+
+  let loading = false;
+
+  const observer = new IntersectionObserver(async (entries) => {
+    if (!entries[0].isIntersecting || loading) return;
+    loading = true;
+
+    try {
+      const params = new URLSearchParams({
+        ib_uid: ibUID,
+        ib_user: ibUser,
+        offset: contactList.dataset.contactsOffset || '0',
+        limit: '20'
+      });
+
+      const resp = await fetch(`https://${domain}/api/v1/inbox/contacts?${params}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+
+      if (data.contacts_html) {
+        sentinel.insertAdjacentHTML('beforebegin', data.contacts_html);
+
+        const dmButtons = contactList.querySelectorAll('.open-dm');
+        const dmPanel = document.getElementById('dm-panel');
+        const dmTargetLabel = document.getElementById('dm-target-user');
+        const dmTargetInput = document.getElementById('dm-target-user-input');
+        if (dmPanel && dmTargetLabel && dmTargetInput) {
+          attachDMOpenButtons(dmButtons, dmPanel, dmTargetLabel, dmTargetInput);
+        }
+      }
+
+      if (typeof data.next_offset === 'number') {
+        contactList.dataset.contactsOffset = String(data.next_offset);
+      }
+
+      if (!data.has_more) {
+        observer.disconnect();
+        sentinel.remove();
+      }
+    } catch (e) {
+      console.error('dm-contacts-scroll-error:', e);
+    }
+
     loading = false;
   }, { rootMargin: '300px' });
 

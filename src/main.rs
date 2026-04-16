@@ -50,7 +50,9 @@ use is_by_pro::{
   MYSQL_USER,
   AD_ADMIN_UID,
   AD_ADMIN_USER,
+  AES256_KEY,
 };
+use aes_gcm::{aead::{generic_array::GenericArray, Aead, KeyInit}, Aes256Gcm, Nonce};
 use actix_cors::Cors;
 use actix_files::Files;
 use actix_multipart::Multipart;
@@ -331,10 +333,25 @@ struct WarRoomPostsPageQuery {
 }
 
 #[derive(Deserialize)]
+struct FollowersPageQuery {
+  ib_uid: i64,
+  offset: Option<i64>,
+  limit: Option<i64>,
+}
+
+#[derive(Deserialize)]
 struct InboxRequest {
   ib_uid: i64,
   ib_user: String,
   target_user: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct InboxContactsPageQuery {
+  ib_uid: i64,
+  ib_user: String,
+  offset: Option<i64>,
+  limit: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -394,6 +411,7 @@ struct DMMessageRequest {
 #[derive(Deserialize)]
 struct DMMessagesRequest {
   target_user: String,
+  before_id: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -428,8 +446,29 @@ struct WarRoomPostsPageResponse {
   next_offset: usize,
 }
 
+#[derive(Serialize)]
+struct FollowersPageResponse {
+  followers_html: String,
+  has_more: bool,
+  next_offset: usize,
+}
+
+#[derive(Serialize)]
+struct InboxContactsPageResponse {
+  contacts_html: String,
+  has_more: bool,
+  next_offset: usize,
+}
+
 struct WarRoomPostsChunk {
   posts_html: String,
+  has_more: bool,
+  next_offset: usize,
+  total_followers: usize,
+}
+
+struct FollowersChunk {
+  followers_html: String,
   has_more: bool,
   next_offset: usize,
   total_followers: usize,
@@ -480,7 +519,7 @@ struct DMMessageRow {
   sender_uid: i64,
   sender_username: String,
   recipient_username: String,
-  message: String,
+  message: Vec<u8>,
   created_at: String,
 }
 
@@ -542,12 +581,43 @@ struct DMMessageResponseItem {
 struct DMMessagesResponse {
   success: bool,
   messages: Vec<DMMessageResponseItem>,
+  has_more: bool,
 }
 
 #[derive(Serialize)]
 struct DMUnreadCountResponse {
   success: bool,
   unread_count: i64,
+}
+
+fn encrypt_message(plaintext: &str) -> Result<Vec<u8>, String> {
+    let key = GenericArray::from_slice(AES256_KEY);
+    let cipher = Aes256Gcm::new(key);
+    
+    let mut nonce_bytes = [0u8; 12];
+    rand::thread_rng().fill(&mut nonce_bytes);
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    let ciphertext = cipher.encrypt(nonce, plaintext.as_bytes())
+        .map_err(|_| "Encryption failed".to_string())?;
+    
+    let mut result = Vec::with_capacity(12 + ciphertext.len());
+    result.extend_from_slice(&nonce_bytes);
+    result.extend_from_slice(&ciphertext);
+    Ok(result)
+}
+
+fn decrypt_message(encrypted_data: &[u8]) -> Result<String, String> {
+    if encrypted_data.len() < 12 {
+        return Err("Invalid encrypted data: too short".to_string());
+    }
+    let (nonce_bytes, ciphertext) = encrypted_data.split_at(12);
+    let nonce = Nonce::from_slice(nonce_bytes);
+    let key = GenericArray::from_slice(AES256_KEY);
+    let cipher = Aes256Gcm::new(key);
+
+    let decrypted_bytes = cipher.decrypt(nonce, ciphertext).map_err(|_| "Decryption failed".to_string())?;
+    String::from_utf8(decrypted_bytes).map_err(|_| "Failed to convert decrypted bytes to string".to_string())
 }
 
 fn load_rustls_config() -> ServerConfig {
@@ -1666,7 +1736,7 @@ async fn ensure_database_schema(pool: &MySqlPool) -> Result<(), sqlx::Error> {
   .await?;
 
   sqlx::query(
-    "CREATE TABLE IF NOT EXISTS post_ack (id BIGINT PRIMARY KEY AUTO_INCREMENT, postid VARCHAR(64) NOT NULL, ib_uid BIGINT NOT NULL, acknowledged_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY uniq_post_ack_user_post (postid, ib_uid), INDEX idx_post_ack_user (ib_uid), INDEX idx_post_ack_post (postid))",
+    "CREATE TABLE IF NOT EXISTS dm (id BIGINT PRIMARY KEY AUTO_INCREMENT, sender_uid BIGINT NOT NULL, recipient_uid BIGINT NOT NULL, message VARBINARY(1280) NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, read_at TIMESTAMP NULL DEFAULT NULL, INDEX idx_dm_recipient_read (recipient_uid, read_at), INDEX idx_dm_pair_time (sender_uid, recipient_uid, created_at))",
   )
   .execute(pool)
   .await?;
@@ -1940,13 +2010,14 @@ async fn render_profile_html(
     .map(|username| username.eq_ignore_ascii_case(&viewed_username))
     .unwrap_or(false);
 
-  let follower_username_set: HashSet<String> = follower_list.iter().cloned().collect();
+  let initial_follower_list: Vec<String> = follower_list.iter().take(20).cloned().collect();
+  let follower_username_set: HashSet<String> = initial_follower_list.iter().cloned().collect();
   let follower_ack_map = load_project_profile_ack_map(state, &follower_username_set).await;
 
-  let followers_html = if follower_list.is_empty() {
+  let followers_html = if initial_follower_list.is_empty() {
     "<p><em>:[[ :no-followers: ]]:</em></p>".to_string()
   } else {
-    follower_list
+    initial_follower_list
       .iter()
       .map(|username| {
         let normalized = username.trim().to_ascii_lowercase();
@@ -1960,6 +2031,14 @@ async fn render_profile_html(
       })
       .collect::<Vec<String>>()
       .join("")
+  };
+
+  let followers_has_more = follower_list.len() > initial_follower_list.len();
+  let followers_next_offset = initial_follower_list.len();
+  let followers_sentinel_html = if followers_has_more {
+    r#"<div id="followers-load-sentinel"></div>"#
+  } else {
+    ""
   };
 
   let follow_controls_html = if session_uid.is_some() {
@@ -2234,10 +2313,11 @@ async fn render_profile_html(
     <p><a target="_blank" rel="noopener" href="{ib_website}">{ib_website}</a></p>
     <p><a href="https://{DOMAIN}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a></p>
     {follow_controls_html}
-    <div id="followers-section">
+    <div id="followers-section" data-ib-uid="{ib_uid}" data-followers-offset="{followers_next_offset}">
       <p><strong>:[[ :followers: {followers_count}: ]]:</strong></p>
       <div id="followers-container">
         {followers_html}
+        {followers_sentinel_html}
       </div>
     </div>
     <div id="dm-panel" style="display:none;">
@@ -2294,8 +2374,10 @@ async fn render_profile_html(
       ib_location = escape_html(&ib_pro.location),
       ib_website = escape_html(&ib_pro.website),
       follow_controls_html = follow_controls_html,
+      followers_next_offset = followers_next_offset,
       followers_count = followers_count,
       followers_html = followers_html,
+      followers_sentinel_html = followers_sentinel_html,
       sidebar_login_html = sidebar_login_html,
       related_userlist_html = related_userlist_html,
       trending_tags_html = trending_tags_html
@@ -3622,6 +3704,140 @@ async fn render_war_room_posts_chunk(
   })
 }
 
+async fn render_profile_followers_chunk(
+  state: &AppState,
+  ib_uid: i64,
+  offset: usize,
+  limit: usize,
+) -> Result<FollowersChunk, String> {
+  let viewed_user_row = sqlx::query_as::<_, FollowLookupRow>(
+      "SELECT username, COALESCE(followers, '') AS followers FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1"
+    )
+    .bind(ib_uid.to_string())
+    .fetch_optional(&state.db_pool)
+    .await
+    .map_err(|e| format!("Viewed user lookup failed: {}", e))?;
+
+  let follower_list: Vec<String> = viewed_user_row
+    .as_ref()
+    .map(|row| {
+      row
+        .followers
+        .split(',')
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+        .collect()
+    })
+    .unwrap_or_default();
+
+  let total_followers = follower_list.len();
+  let start = offset.min(total_followers);
+  let end = start.saturating_add(limit).min(total_followers);
+  let selected_followers = &follower_list[start..end];
+
+  if selected_followers.is_empty() {
+    return Ok(FollowersChunk {
+      followers_html: String::new(),
+      has_more: false,
+      next_offset: end,
+      total_followers,
+    });
+  }
+
+  let follower_username_set: HashSet<String> = selected_followers.iter().cloned().collect();
+  let follower_ack_map = load_project_profile_ack_map(state, &follower_username_set).await;
+
+  let followers_html = selected_followers
+    .iter()
+    .map(|username| {
+      let normalized = username.trim().to_ascii_lowercase();
+      let total_acks = *follower_ack_map.get(&normalized).unwrap_or(&0);
+      let profile_link = render_project_profile_link(username, total_acks);
+      format!(
+        r#"<p>{profile_link}<button type="button" class="open-dm" data-target-user="{username}">DM</button></p>"#,
+        profile_link = profile_link,
+        username = escape_html(username)
+      )
+    })
+    .collect::<Vec<String>>()
+    .join("");
+
+  Ok(FollowersChunk {
+    followers_html,
+    has_more: end < total_followers,
+    next_offset: end,
+    total_followers,
+  })
+}
+
+async fn load_inbox_contacts(
+  state: &AppState,
+  ib_uid: i64,
+  ib_user: &str,
+) -> Result<Vec<String>, String> {
+  let followers_row = sqlx::query_as::<_, FollowLookupRow>(
+      "SELECT username, COALESCE(followers, '') AS followers FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1"
+    )
+    .bind(ib_user)
+    .fetch_optional(&state.db_pool)
+    .await
+    .map_err(|e| format!("Inbox followers lookup failed: {}", e))?;
+
+  let mut inbox_users: Vec<String> = followers_row
+    .as_ref()
+    .map(|row| {
+      row
+        .followers
+        .split(',')
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+        .collect()
+    })
+    .unwrap_or_default();
+
+  let conversation_rows = sqlx::query_as::<_, ConversationUsernameRow>(
+      "SELECT DISTINCT CAST(COALESCE(CONVERT(counter.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username FROM dm AS dm LEFT JOIN user AS counter ON CONVERT(counter.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(CASE WHEN dm.sender_uid = ? THEN dm.recipient_uid ELSE dm.sender_uid END AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE dm.sender_uid = ? OR dm.recipient_uid = ?"
+    )
+    .bind(ib_uid)
+    .bind(ib_uid)
+    .bind(ib_uid)
+    .fetch_all(&state.db_pool)
+    .await
+    .map_err(|e| format!("Inbox conversation lookup failed: {}", e))?;
+
+  for row in conversation_rows {
+    let username = row.username.trim();
+    if username.is_empty() {
+      continue;
+    }
+
+    if !inbox_users.iter().any(|existing| existing.eq_ignore_ascii_case(username)) {
+      inbox_users.push(username.to_string());
+    }
+  }
+
+  Ok(inbox_users)
+}
+
+fn render_inbox_contacts_html(inbox_users: &[String]) -> String {
+  if inbox_users.is_empty() {
+    return "<p><em>:[[ :no-direct-message-contacts: ]]:</em></p>".to_string();
+  }
+
+  inbox_users
+    .iter()
+    .map(|username| {
+      format!(
+        r#"<p><button type="button" class="open-dm" data-target-user="{username}">{username}</button></p>"#,
+        username = escape_html(username)
+      )
+    })
+    .collect::<Vec<String>>()
+    .join("")
+}
+
 async fn render_war_room_html(
   state: &AppState,
   ib_uid: i64,
@@ -3834,47 +4050,16 @@ async fn render_inbox_html(
 ) -> Result<String, String> {
   let advert_html = render_advert_html(state).await;
 
-  let followers_row = sqlx::query_as::<_, FollowLookupRow>(
-      "SELECT username, COALESCE(followers, '') AS followers FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1"
-    )
-    .bind(ib_user)
-    .fetch_optional(&state.db_pool)
-    .await
-    .map_err(|e| format!("Inbox followers lookup failed: {}", e))?;
+  let inbox_users = load_inbox_contacts(state, ib_uid, ib_user).await?;
 
-  let mut inbox_users: Vec<String> = followers_row
-    .as_ref()
-    .map(|row| {
-      row
-        .followers
-        .split(',')
-        .map(|value| value.trim())
-        .filter(|value| !value.is_empty())
-        .map(|value| value.to_string())
-        .collect()
-    })
-    .unwrap_or_default();
-
-  let conversation_rows = sqlx::query_as::<_, ConversationUsernameRow>(
-      "SELECT DISTINCT CAST(COALESCE(CONVERT(counter.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username FROM dm AS dm LEFT JOIN user AS counter ON CONVERT(counter.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(CASE WHEN dm.sender_uid = ? THEN dm.recipient_uid ELSE dm.sender_uid END AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE dm.sender_uid = ? OR dm.recipient_uid = ?"
-    )
-    .bind(ib_uid)
-    .bind(ib_uid)
-    .bind(ib_uid)
-    .fetch_all(&state.db_pool)
-    .await
-    .map_err(|e| format!("Inbox conversation lookup failed: {}", e))?;
-
-  for row in conversation_rows {
-    let username = row.username.trim();
-    if username.is_empty() {
-      continue;
-    }
-
-    if !inbox_users.iter().any(|existing| existing.eq_ignore_ascii_case(username)) {
-      inbox_users.push(username.to_string());
-    }
-  }
+  let initial_contacts: Vec<String> = inbox_users.iter().take(20).cloned().collect();
+  let contacts_next_offset = initial_contacts.len();
+  let contacts_has_more = inbox_users.len() > initial_contacts.len();
+  let contacts_sentinel_html = if contacts_has_more {
+    r#"<div id="dm-contacts-load-sentinel"></div>"#
+  } else {
+    ""
+  };
 
   let default_target_user = requested_target_user
     .map(|value| value.trim())
@@ -3883,20 +4068,7 @@ async fn render_inbox_html(
     .or_else(|| inbox_users.first().cloned())
     .unwrap_or_default();
 
-  let contact_list_html = if inbox_users.is_empty() {
-    "<p><em>:[[ :no-direct-message-contacts: ]]:</em></p>".to_string()
-  } else {
-    inbox_users
-      .iter()
-      .map(|username| {
-        format!(
-          r#"<p><button type="button" class="open-dm" data-target-user="{username}">{username}</button></p>"#,
-          username = escape_html(username)
-        )
-      })
-      .collect::<Vec<String>>()
-      .join("")
-  };
+  let contact_list_html = render_inbox_contacts_html(&initial_contacts);
 
   let navigation_links = if session_uid.is_some() {
     format!(
@@ -3960,7 +4132,7 @@ async fn render_inbox_html(
       <div id="selected-user-posts-section" class="post-section">
         <div class="notice"><p><em>:[[ :direct-message-inbox: ]]:</em></p></div>
         <div id="dm-inbox-layout">
-          <div id="dm-contact-list">{contact_list_html}</div>
+          <div id="dm-contact-list" data-ib-uid="{ib_uid}" data-ib-user="{ib_user}" data-contacts-offset="{contacts_next_offset}">{contact_list_html}{contacts_sentinel_html}</div>
           <div id="dm-panel" style="display:block;">
             <p><strong>:[[ :direct-messages: ]]: <span id="dm-target-user">{default_target_user}</span></strong></p>
             <div id="dm-message-status"></div>
@@ -3979,7 +4151,9 @@ async fn render_inbox_html(
     ib_user = escape_html(ib_user),
     advert_html = advert_html,
     navigation_links = navigation_links,
+    contacts_next_offset = contacts_next_offset,
     contact_list_html = contact_list_html,
+    contacts_sentinel_html = contacts_sentinel_html,
     default_target_user = escape_html(&default_target_user)
   );
 
@@ -5506,6 +5680,36 @@ async fn get_war_room_posts_page(
   }
 }
 
+#[get("/api/v1/followers")]
+async fn get_followers_page(
+  state: web::Data<AppState>,
+  query: web::Query<FollowersPageQuery>,
+) -> impl Responder {
+  let offset = query.offset.unwrap_or(0).max(0) as usize;
+  let limit = query.limit.unwrap_or(20).clamp(1, 50) as usize;
+
+  match render_profile_followers_chunk(&state, query.ib_uid, offset, limit).await {
+    Ok(chunk) => {
+      if chunk.total_followers == 0 {
+        return HttpResponse::Ok().json(FollowersPageResponse {
+          followers_html: String::new(),
+          has_more: false,
+          next_offset: 0,
+        });
+      }
+
+      HttpResponse::Ok().json(FollowersPageResponse {
+        followers_html: chunk.followers_html,
+        has_more: chunk.has_more,
+        next_offset: chunk.next_offset,
+      })
+    }
+    Err(e) => HttpResponse::InternalServerError().json(json!({
+      "error": e
+    })),
+  }
+}
+
 #[get("/v1/profile/{ib_user}")]
 async fn view_profile(
   req: HttpRequest,
@@ -6539,6 +6743,55 @@ async fn inbox(
   }
 }
 
+#[get("/api/v1/inbox/contacts")]
+async fn get_inbox_contacts_page(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  query: web::Query<InboxContactsPageQuery>,
+) -> impl Responder {
+  let session_uid = match get_session_uid(&req) {
+    Some(uid) => uid,
+    None => {
+      return HttpResponse::Unauthorized().json(json!({
+        "error": "Login required"
+      }));
+    }
+  };
+
+  if session_uid != query.ib_uid {
+    return HttpResponse::Forbidden().json(json!({
+      "error": "Session mismatch"
+    }));
+  }
+
+  let offset = query.offset.unwrap_or(0).max(0) as usize;
+  let limit = query.limit.unwrap_or(20).clamp(1, 50) as usize;
+
+  match load_inbox_contacts(&state, query.ib_uid, &query.ib_user).await {
+    Ok(all_contacts) => {
+      let total_contacts = all_contacts.len();
+      let start = offset.min(total_contacts);
+      let end = start.saturating_add(limit).min(total_contacts);
+      let selected_contacts = &all_contacts[start..end];
+
+      let contacts_html = if selected_contacts.is_empty() {
+        String::new()
+      } else {
+        render_inbox_contacts_html(selected_contacts)
+      };
+
+      HttpResponse::Ok().json(InboxContactsPageResponse {
+        contacts_html,
+        has_more: end < total_contacts,
+        next_offset: end,
+      })
+    }
+    Err(err) => HttpResponse::InternalServerError().json(json!({
+      "error": err
+    })),
+  }
+}
+
 #[post("/v1/dm/send")]
 async fn send_direct_message(
   req: HttpRequest,
@@ -6593,12 +6846,20 @@ async fn send_direct_message(
     });
   }
 
+  let encrypted_message = match encrypt_message(message) {
+    Ok(em) => em,
+    Err(e) => return HttpResponse::InternalServerError().json(DMSendResponse {
+        success: false,
+        message: e,
+    }),
+  };
+
   let insert_result = sqlx::query(
     "INSERT INTO dm (sender_uid, recipient_uid, message) VALUES (?, ?, ?)",
   )
   .bind(session_uid)
   .bind(target_uid)
-  .bind(message)
+  .bind(encrypted_message)
   .execute(&state.db_pool)
   .await;
 
@@ -6698,6 +6959,7 @@ async fn direct_messages(
       return HttpResponse::Unauthorized().json(DMMessagesResponse {
         success: false,
         messages: Vec::new(),
+        has_more: false,
       });
     }
   };
@@ -6707,6 +6969,7 @@ async fn direct_messages(
     return HttpResponse::BadRequest().json(DMMessagesResponse {
       success: false,
       messages: Vec::new(),
+      has_more: false,
     });
   }
 
@@ -6716,58 +6979,91 @@ async fn direct_messages(
       return HttpResponse::NotFound().json(DMMessagesResponse {
         success: false,
         messages: Vec::new(),
+        has_more: false,
       });
     }
     Err(_) => {
       return HttpResponse::InternalServerError().json(DMMessagesResponse {
         success: false,
         messages: Vec::new(),
+        has_more: false,
       });
     }
   };
 
-  let rows = match sqlx::query_as::<_, DMMessageRow>(
-    "SELECT dm.id, dm.sender_uid, CAST(COALESCE(CONVERT(sender.username USING utf8mb4), CAST(dm.sender_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS sender_username, CAST(COALESCE(CONVERT(recipient.username USING utf8mb4), CAST(dm.recipient_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS recipient_username, dm.message, DATE_FORMAT(dm.created_at, '%Y-%m-%d %H:%i:%s') AS created_at FROM dm AS dm LEFT JOIN user AS sender ON CONVERT(sender.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(dm.sender_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LEFT JOIN user AS recipient ON CONVERT(recipient.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(dm.recipient_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE (dm.sender_uid = ? AND dm.recipient_uid = ?) OR (dm.sender_uid = ? AND dm.recipient_uid = ?) ORDER BY dm.id ASC LIMIT 200",
-  )
-  .bind(session_uid)
-  .bind(target_uid)
-  .bind(target_uid)
-  .bind(session_uid)
-  .fetch_all(&state.db_pool)
-  .await
-  {
+  let limit = 21; // Fetch one extra to check for more
+  let rows_result = if let Some(before_id) = query.before_id {
+    sqlx::query_as::<_, DMMessageRow>(
+      "SELECT dm.id, dm.sender_uid, CAST(COALESCE(CONVERT(sender.username USING utf8mb4), CAST(dm.sender_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS sender_username, CAST(COALESCE(CONVERT(recipient.username USING utf8mb4), CAST(dm.recipient_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS recipient_username, dm.message, DATE_FORMAT(dm.created_at, '%Y-%m-%d %H:%i:%s') AS created_at FROM dm AS dm LEFT JOIN user AS sender ON CONVERT(sender.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(dm.sender_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LEFT JOIN user AS recipient ON CONVERT(recipient.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(dm.recipient_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE ((dm.sender_uid = ? AND dm.recipient_uid = ?) OR (dm.sender_uid = ? AND dm.recipient_uid = ?)) AND dm.id < ? ORDER BY dm.id DESC LIMIT ?",
+    )
+    .bind(session_uid)
+    .bind(target_uid)
+    .bind(target_uid)
+    .bind(session_uid)
+    .bind(before_id)
+    .bind(limit)
+    .fetch_all(&state.db_pool)
+    .await
+  } else {
+    sqlx::query_as::<_, DMMessageRow>(
+      "SELECT dm.id, dm.sender_uid, CAST(COALESCE(CONVERT(sender.username USING utf8mb4), CAST(dm.sender_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS sender_username, CAST(COALESCE(CONVERT(recipient.username USING utf8mb4), CAST(dm.recipient_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS recipient_username, dm.message, DATE_FORMAT(dm.created_at, '%Y-%m-%d %H:%i:%s') AS created_at FROM dm AS dm LEFT JOIN user AS sender ON CONVERT(sender.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(dm.sender_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LEFT JOIN user AS recipient ON CONVERT(recipient.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(dm.recipient_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE (dm.sender_uid = ? AND dm.recipient_uid = ?) OR (dm.sender_uid = ? AND dm.recipient_uid = ?) ORDER BY dm.id DESC LIMIT ?",
+    )
+    .bind(session_uid)
+    .bind(target_uid)
+    .bind(target_uid)
+    .bind(session_uid)
+    .bind(limit)
+    .fetch_all(&state.db_pool)
+    .await
+  };
+
+  let mut rows = match rows_result {
     Ok(rows) => rows,
     Err(_) => {
       return HttpResponse::InternalServerError().json(DMMessagesResponse {
         success: false,
         messages: Vec::new(),
+        has_more: false,
       });
     }
   };
 
-  let _ = sqlx::query(
-    "UPDATE dm SET read_at = NOW() WHERE sender_uid = ? AND recipient_uid = ? AND read_at IS NULL",
-  )
-  .bind(target_uid)
-  .bind(session_uid)
-  .execute(&state.db_pool)
-  .await;
+  let has_more = rows.len() == limit as usize;
+  if has_more {
+    rows.truncate(limit as usize - 1);
+  }
 
-  let messages = rows
+  if query.before_id.is_none() {
+    let _ = sqlx::query(
+      "UPDATE dm SET read_at = NOW() WHERE sender_uid = ? AND recipient_uid = ? AND read_at IS NULL",
+    )
+    .bind(target_uid)
+    .bind(session_uid)
+    .execute(&state.db_pool)
+    .await;
+  }
+
+  let mut messages = rows
     .into_iter()
-    .map(|row| DMMessageResponseItem {
-      id: row.id,
-      sender_user: row.sender_username,
-      recipient_user: row.recipient_username,
-      message: row.message,
-      timestamp: row.created_at,
-      is_mine: row.sender_uid == session_uid,
+    .map(|row| {
+      let decrypted_message = decrypt_message(&row.message).unwrap_or_else(|_| "[DECRYPTION FAILED]".to_string());
+      DMMessageResponseItem {
+        id: row.id,
+        sender_user: row.sender_username,
+        recipient_user: row.recipient_username,
+        message: decrypted_message,
+        timestamp: row.created_at,
+        is_mine: row.sender_uid == session_uid,
+      }
     })
     .collect::<Vec<DMMessageResponseItem>>();
+
+  messages.reverse();
 
   HttpResponse::Ok().json(DMMessagesResponse {
     success: true,
     messages,
+    has_more,
   })
 }
 
@@ -7163,6 +7459,7 @@ async fn main() -> std::io::Result<()> {
       .service(acknowledge_post)
       .service(view_profile)
       .service(get_posts_page)
+      .service(get_followers_page)
       .service(user_hover_card_data)
       .service(get_commander_badge)
       .service(follow_user)
@@ -7188,6 +7485,7 @@ async fn main() -> std::io::Result<()> {
       .service(ads_user_delete)
       .service(war_room)
       .service(inbox)
+      .service(get_inbox_contacts_page)
       .service(send_direct_message)
       .service(ad_click)
       .service(direct_messages)
