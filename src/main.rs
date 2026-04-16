@@ -50,7 +50,7 @@ use is_by_pro::{
   MYSQL_USER,
   AD_ADMIN_UID,
   AD_ADMIN_USER,
-  AES256_KEY,
+  AES256_KEY_ENV,
 };
 use aes_gcm::{aead::{generic_array::GenericArray, Aead, KeyInit}, Aes256Gcm, Nonce};
 use actix_cors::Cors;
@@ -69,6 +69,8 @@ use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::BufReader;
 use uuid::Uuid;
+
+static AES256_KEY: std::sync::OnceLock<[u8; 32]> = std::sync::OnceLock::new();
 
 #[derive(Clone)]
 struct AppState {
@@ -591,7 +593,8 @@ struct DMUnreadCountResponse {
 }
 
 fn encrypt_message(plaintext: &str) -> Result<Vec<u8>, String> {
-    let key = GenericArray::from_slice(AES256_KEY);
+    let key_bytes = AES256_KEY.get().expect("AES256_KEY not initialized");
+    let key = GenericArray::from_slice(key_bytes);
     let cipher = Aes256Gcm::new(key);
     
     let mut nonce_bytes = [0u8; 12];
@@ -613,7 +616,8 @@ fn decrypt_message(encrypted_data: &[u8]) -> Result<String, String> {
     }
     let (nonce_bytes, ciphertext) = encrypted_data.split_at(12);
     let nonce = Nonce::from_slice(nonce_bytes);
-    let key = GenericArray::from_slice(AES256_KEY);
+    let key_bytes = AES256_KEY.get().expect("AES256_KEY not initialized");
+    let key = GenericArray::from_slice(key_bytes);
     let cipher = Aes256Gcm::new(key);
 
     let decrypted_bytes = cipher.decrypt(nonce, ciphertext).map_err(|_| "Decryption failed".to_string())?;
@@ -7352,6 +7356,16 @@ async fn main() -> std::io::Result<()> {
   let _ = dotenvy::from_filename(GITHUB_CLIENT_SECRET_ENV);
   let _ = dotenvy::from_filename(MYSQL_ENV);
   let _ = dotenvy::from_filename(PAYPAL_ENV);
+  let _ = dotenvy::from_filename(AES256_KEY_ENV);
+
+  let key_str = std::env::var("AES256_KEY").expect("Missing AES256_KEY in environment file or shell");
+  let mut key_bytes = [0u8; 32];
+  let bytes = key_str.as_bytes();
+  if bytes.len() != 32 {
+      panic!("AES256_KEY must be exactly 32 bytes long. Provided key was {} bytes.", bytes.len());
+  }
+  key_bytes.copy_from_slice(bytes);
+  AES256_KEY.set(key_bytes).expect("Failed to set AES256_KEY");
 
   let db_pool = create_db_pool()
     .await

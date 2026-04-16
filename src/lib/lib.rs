@@ -10,4 +10,4 @@ pub const MYSQL_USER: &str = "hyperuser";
 pub const MYSQL_DATABASE: &str = "isby";
 pub const AD_ADMIN_UID: i64 = 138945726;
 pub const AD_ADMIN_USER: &str = "QWOD";
-pub const AES256_KEY: &[u8; 32] = b"94756038562174856927349587129430";
+pub const AES256_KEY_ENV: &str = ".env/AES256_KEY.env";
