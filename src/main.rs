@@ -2355,7 +2355,7 @@ async fn render_profile_html(
     let sidebar_login_html = if session_uid.is_none() {
       r#"<div id="actions-section">
       <div class="login-section">
-        <p><a href="/auth/github">Login with GitHub</a></p>
+        <p><a href="/v1/auth/github">Login with GitHub</a></p>
       </div>
     </div>"#
         .to_string()
@@ -2618,7 +2618,7 @@ async fn render_search_users_html(
     let sidebar_login_html = if session_uid.is_none() {
       r#"<div id="actions-section">
       <div class="login-section">
-        <p><a href="/auth/github">Login with GitHub</a></p>
+        <p><a href="/v1/auth/github">Login with GitHub</a></p>
       </div>
     </div>"#
         .to_string()
@@ -2854,7 +2854,7 @@ async fn render_search_posts_html(
     let sidebar_login_html = if session_uid.is_none() {
       r#"<div id="actions-section">
       <div class="login-section">
-        <p><a href="/auth/github">Login with GitHub</a></p>
+        <p><a href="/v1/auth/github">Login with GitHub</a></p>
       </div>
     </div>"#
         .to_string()
@@ -3248,7 +3248,7 @@ async fn render_projects_html(
     let sidebar_login_html = if session_uid.is_none() {
       r#"<div id="actions-section">
       <div class="login-section">
-        <p><a href="/auth/github">Login with GitHub</a></p>
+        <p><a href="/v1/auth/github">Login with GitHub</a></p>
       </div>
     </div>"#
         .to_string()
@@ -3585,7 +3585,7 @@ async fn render_search_projects_html(
     let sidebar_login_html = if session_uid.is_none() {
       r#"<div id="actions-section">
       <div class="login-section">
-        <p><a href="/auth/github">Login with GitHub</a></p>
+        <p><a href="/v1/auth/github">Login with GitHub</a></p>
       </div>
     </div>"#
         .to_string()
@@ -4030,7 +4030,7 @@ async fn render_war_room_html(
     let sidebar_login_html = if session_uid.is_none() {
       r#"<div id="actions-section">
       <div class="login-section">
-        <p><a href="/auth/github">Login with GitHub</a></p>
+        <p><a href="/v1/auth/github">Login with GitHub</a></p>
       </div>
     </div>"#
         .to_string()
@@ -4246,7 +4246,7 @@ async fn render_inbox_html(
     let sidebar_login_html = if session_uid.is_none() {
       r#"<div id="actions-section">
       <div class="login-section">
-        <p><a href="/auth/github">Login with GitHub</a></p>
+        <p><a href="/v1/auth/github">Login with GitHub</a></p>
       </div>
     </div>"#
         .to_string()
@@ -4545,7 +4545,7 @@ async fn render_single_post_html(
     let sidebar_login_html = if session_uid.is_none() {
       r#"<div id="actions-section">
       <div class="login-section">
-        <p><a href="/auth/github">Login with GitHub</a></p>
+        <p><a href="/v1/auth/github">Login with GitHub</a></p>
       </div>
     </div>"#
         .to_string()
@@ -7218,11 +7218,6 @@ async fn github_auth_start_impl(req: HttpRequest, state: web::Data<AppState>) ->
     .finish()
 }
 
-#[get("/auth/github")]
-async fn github_auth_start(req: HttpRequest, state: web::Data<AppState>) -> impl Responder {
-  github_auth_start_impl(req, state).await
-}
-
 #[get("/v1/auth/github")]
 async fn github_auth_start_v1(req: HttpRequest, state: web::Data<AppState>) -> impl Responder {
   github_auth_start_impl(req, state).await
@@ -7355,15 +7350,6 @@ async fn github_auth_callback_impl(
   }
 }
 
-#[get("/auth/github/callback")]
-async fn github_auth_callback(
-  req: HttpRequest,
-  query: web::Query<GithubCallback>,
-  state: web::Data<AppState>,
-) -> impl Responder {
-  github_auth_callback_impl(req, query, state).await
-}
-
 #[get("/v1/auth/github/callback")]
 async fn github_auth_callback_v1(
   req: HttpRequest,
@@ -7374,7 +7360,17 @@ async fn github_auth_callback_v1(
 }
 
 #[get("/")]
-async fn hello() -> impl Responder {
+async fn hello(req: HttpRequest) -> impl Responder {
+  if let Some(user_agent) = req.headers().get("user-agent") {
+    if let Ok(ua_str) = user_agent.to_str() {
+      let ua_lower = ua_str.to_lowercase();
+      let is_mobile = ua_lower.contains("mobi") || ua_lower.contains("android") || ua_lower.contains("iphone") || ua_lower.contains("ipad");
+      if is_mobile {
+         return HttpResponse::SeeOther().insert_header(("Location", "/mobile.html")).finish();
+      }
+    }
+  }
+
   let html = format!(r#"<!DOCTYPE html>
 <html lang="en-US">
 
@@ -7413,7 +7409,7 @@ async fn hello() -> impl Responder {
     </div>
     <div id="actions-section">
       <div class="login-section">
-        <p><a href="/auth/github">Login with GitHub</a></p>
+        <p><a href="/v1/auth/github">Login with GitHub</a></p>
     </div>
 
   </div>
@@ -7581,10 +7577,8 @@ async fn main() -> std::io::Result<()> {
       .service(ad_click)
       .service(direct_messages)
       .service(direct_message_unread_count)
-      .service(github_auth_start)
-        .service(github_auth_start_v1)
-      .service(github_auth_callback)
-        .service(github_auth_callback_v1)
+      .service(github_auth_start_v1)
+      .service(github_auth_callback_v1)
       .service(Files::new("/", "./webroot").default_handler(
           actix_web::web::to(|| async {
               actix_web::HttpResponse::NotFound().body("404 Not Found")
