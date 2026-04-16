@@ -7352,11 +7352,11 @@ async fn main() -> std::io::Result<()> {
     .install_default()
     .expect("Failed to install rustls crypto provider");
 
-  let _ = dotenvy::from_filename(IB_ENV);
-  let _ = dotenvy::from_filename(GITHUB_CLIENT_SECRET_ENV);
-  let _ = dotenvy::from_filename(MYSQL_ENV);
-  let _ = dotenvy::from_filename(PAYPAL_ENV);
-  let _ = dotenvy::from_filename(AES256_KEY_ENV);
+  let _ = dotenvy::from_path(IB_ENV);
+  let _ = dotenvy::from_path(GITHUB_CLIENT_SECRET_ENV);
+  let _ = dotenvy::from_path(MYSQL_ENV);
+  let _ = dotenvy::from_path(PAYPAL_ENV);
+  let _ = dotenvy::from_path(AES256_KEY_ENV);
 
   let key_str = std::env::var("AES256_KEY").expect("Missing AES256_KEY in environment file or shell");
   let mut key_bytes = [0u8; 32];
