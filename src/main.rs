@@ -848,16 +848,14 @@ fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> Stri
         let token_value = &raw_text[token_start_byte..token_end_byte];
         let href = if ch == '#' {
           format!(
-            "https://{domain}/v1/searchposts?ib_uid={ib_uid}&ib_user={ib_user}&tag=%23{tag}",
-            domain = DOMAIN,
+            "https://{DOMAIN}/v1/searchposts?ib_uid={ib_uid}&ib_user={ib_user}&tag=%23{tag}",
             ib_uid = ib_uid,
             ib_user = url_encode_component(ib_user),
             tag = url_encode_component(token_value)
           )
         } else {
           format!(
-            "https://{domain}/v1/profile/{username}",
-            domain = DOMAIN,
+            "https://{DOMAIN}/v1/profile/{username}",
             username = url_encode_component(token_value)
           )
         };
@@ -1364,8 +1362,7 @@ fn render_post_meta(ib_uid: &str, username: &str, timestamp: &str, user_total_ac
   };
 
   format!(
-    r#"<div class="post-meta"><a class="post-author" href="https://{domain}/v1/profile/{profile_target}"><img class="post-author-avatar" src="https://github.com/{profile_target}.png?size=32" alt="{username}" width="32" height="32"><img class="rank-insignia" src="/images/ranks/{rank_icon}" alt="Rank" width="16" height="16" style="{glow_style}vertical-align: middle; margin-left: 4px; margin-right: 4px;">{username}</a><span class="post-timestamp">{timestamp}</span></div>"#,
-    domain = DOMAIN,
+    r#"<div class="post-meta"><a class="post-author" href="https://{DOMAIN}/v1/profile/{profile_target}"><img class="post-author-avatar" src="https://github.com/{profile_target}.png?size=32" alt="{username}" width="32" height="32"><img class="rank-insignia" src="/images/ranks/{rank_icon}" alt="Rank" width="16" height="16" style="{glow_style}vertical-align: middle; margin-left: 4px; margin-right: 4px;">{username}</a><span class="post-timestamp">{timestamp}</span></div>"#,
     profile_target = escape_html(profile_target),
     username = escape_html(username),
     timestamp = escape_html(timestamp),
@@ -1383,8 +1380,7 @@ fn render_project_profile_link(username: &str, user_total_acks: i64) -> String {
   };
 
   format!(
-    r#"<a class="post-author" href="https://{domain}/v1/profile/{owner_username}"><img class="post-author-avatar" src="https://github.com/{owner_username}.png?size=32" alt="{owner_username}" width="32" height="32" style="margin-right:6px;vertical-align:middle;"><img class="rank-insignia" src="/images/ranks/{rank_icon}" alt="Rank" width="16" height="16" style="{glow_style}vertical-align: middle; margin-left: 4px; margin-right: 4px;">{owner_username}</a>"#,
-    domain = DOMAIN,
+    r#"<a class="post-author" href="https://{DOMAIN}/v1/profile/{owner_username}"><img class="post-author-avatar" src="https://github.com/{owner_username}.png?size=32" alt="{owner_username}" width="32" height="32" style="margin-right:6px;vertical-align:middle;"><img class="rank-insignia" src="/images/ranks/{rank_icon}" alt="Rank" width="16" height="16" style="{glow_style}vertical-align: middle; margin-left: 4px; margin-right: 4px;">{owner_username}</a>"#,
     owner_username = escape_html(username),
     rank_icon = rank_info.asset,
     glow_style = glow_style,
@@ -1470,8 +1466,7 @@ async fn render_advert_html(state: &AppState) -> String {
   .await;
 
   format!(
-    r#"<a href="https://{domain}/v1/ad/click/{imageid}"><img src="{imagepath}" width="555" height="111" alt="{imageid}"></a>"#,
-    domain = DOMAIN,
+    r#"<a href="https://{DOMAIN}/v1/ad/click/{imageid}"><img src="{imagepath}" width="555" height="111" alt="{imageid}"></a>"#,
     imageid = ad_row.imageid,
     imagepath = escape_html(&ad_row.imagepath),
   )
@@ -1483,13 +1478,12 @@ fn render_ack_controls(page_ib_uid: i64, page_ib_user: &str, post_id: &str) -> S
   }
 
   format!(
-    r#"<form class="ack-post-form" action="https://{domain}/v1/ackpost" method="POST">
+    r#"<form class="ack-post-form" action="https://{DOMAIN}/v1/ackpost" method="POST">
       <input type="hidden" name="ib_uid" value="{ib_uid}">
       <input type="hidden" name="ib_user" value="{ib_user}">
       <input type="hidden" name="pid" value="{post_id}">
     </form>
     <a href="javascript:void(0);" class="ack-post">:[[ACK]]:</a>"#,
-    domain = DOMAIN,
     ib_uid = page_ib_uid,
     ib_user = escape_html(page_ib_user),
     post_id = escape_html(post_id)
@@ -1943,8 +1937,7 @@ async fn render_trending_tags_html(state: &AppState, ib_uid: i64, ib_user: &str)
       .iter()
       .map(|row| {
         let href = format!(
-          "https://{domain}/v1/searchposts?ib_uid={ib_uid}&ib_user={ib_user}&tag=%23{tag}",
-          domain = DOMAIN,
+          "https://{DOMAIN}/v1/searchposts?ib_uid={ib_uid}&ib_user={ib_user}&tag=%23{tag}",
           ib_uid = ib_uid,
           ib_user = url_encode_component(ib_user),
           tag = url_encode_component(&row.tag)
@@ -2110,11 +2103,10 @@ async fn render_profile_html(
   let follow_controls_html = if session_uid.is_some() {
     let follow_form_html = if show_follow {
       format!(
-        r#"<form id="follow-form" action="https://{domain}/v1/follow" method="POST">
+        r#"<form id="follow-form" action="https://{DOMAIN}/v1/follow" method="POST">
         <input type="hidden" name="target_user" value="{target_user}">
         <input type="submit" value="Follow">
       </form>"#,
-        domain = DOMAIN,
         target_user = escape_html(&viewed_username)
       )
     } else {
@@ -2123,11 +2115,10 @@ async fn render_profile_html(
 
     let unfollow_form_html = if show_unfollow {
       format!(
-        r#"<form id="unfollow-form" action="https://{domain}/v1/unfollow" method="POST">
+        r#"<form id="unfollow-form" action="https://{DOMAIN}/v1/unfollow" method="POST">
         <input type="hidden" name="target_user" value="{target_user}">
         <input type="submit" value="Unfollow">
       </form>"#,
-        domain = DOMAIN,
         target_user = escape_html(&viewed_username)
       )
     } else {
@@ -2152,12 +2143,11 @@ async fn render_profile_html(
 
     format!(
       r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
-        <a class="pro-home-display" href="https://{domain}/v1/profile/{session_ib_user}">:[[ :profile-home: ]]:</a>
-        <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={session_ib_uid}&ib_user={session_ib_user}">:[[ :war-room: ]]:</a>
-        <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={viewed_ib_uid}&ib_user={viewed_ib_user}">:[[ :projects: ]]:</a>
+        <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{session_ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="war-room-display" href="https://{DOMAIN}/v1/warroom?ib_uid={session_ib_uid}&ib_user={session_ib_user}">:[[ :war-room: ]]:</a>
+        <a class="projects-display" href="https://{DOMAIN}/v1/projects?ib_uid={viewed_ib_uid}&ib_user={viewed_ib_user}">:[[ :projects: ]]:</a>
         {dm_link}
         {edit_profile_link}"#,
-      domain = DOMAIN,
       session_ib_uid = session_nav_uid,
       session_ib_user = escape_html(session_nav_user),
       viewed_ib_uid = ib_uid,
@@ -2169,8 +2159,7 @@ async fn render_profile_html(
       },
       dm_link = if show_profile_dm_link {
         format!(
-          r#"<a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={session_ib_uid}&ib_user={session_ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
-          domain = DOMAIN,
+          r#"<a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={session_ib_uid}&ib_user={session_ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
           session_ib_uid = session_nav_uid,
           session_ib_user = escape_html(session_nav_user)
         )
@@ -2199,11 +2188,11 @@ async fn render_profile_html(
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
-  <form id="select-post-form" action="https://{domain}/v1/showpost" method="POST">
+  <form id="select-post-form" action="https://{DOMAIN}/v1/showpost" method="POST">
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
-  <form id="edit-profile-form" action="https://{domain}/v1/editprofile" method="GET">
+  <form id="edit-profile-form" action="https://{DOMAIN}/v1/editprofile" method="GET">
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
@@ -2216,7 +2205,7 @@ async fn render_profile_html(
         {navigation_links}
       </div>
       <div id="post-form-section">
-        <form id="post-form" action="https://{domain}/v1/post" method="POST">
+        <form id="post-form" action="https://{DOMAIN}/v1/post" method="POST">
           <div id="post-message"></div>
           <div id="post-character-count"></div>
           <input type="hidden" name="ib_uid" value="{ib_uid}">
@@ -2230,7 +2219,6 @@ async fn render_profile_html(
     ib_uid = ib_uid,
     advert_html = advert_html,
     navigation_links = navigation_links,
-    domain = DOMAIN
   );
 
   let ib_post_results_length: i64 = sqlx::query_scalar(
@@ -2268,18 +2256,17 @@ async fn render_profile_html(
     let can_manage_post = session_uid.is_some() && session_uid == row_owner_uid;
     let manage_actions = if can_manage_post {
       format!(
-        r#"<form class="delete-post-form" action="https://{domain}/v1/deletepost" method="POST">
+        r#"<form class="delete-post-form" action="https://{DOMAIN}/v1/deletepost" method="POST">
             <input type="hidden" name="ib_uid" value="{ib_uid}">
             <input type="hidden" name="ib_user" value="{ib_user}">
             <input type="hidden" name="pid" value="{ib_post_id}">
           </form>
-          <form class="edit-post-form" action="https://{domain}/v1/editpost" method="GET">
+          <form class="edit-post-form" action="https://{DOMAIN}/v1/editpost" method="GET">
             <input type="hidden" name="ib_uid" value="{ib_uid}">
             <input type="hidden" name="ib_user" value="{ib_user}">
             <input type="hidden" name="pid" value="{ib_post_id}">
           </form>
           <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a><a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>"#,
-        domain = DOMAIN,
         ib_uid = ib_uid,
         ib_user = escape_html(ib_user),
         ib_post_id = escape_html(&row.postid),
@@ -2296,7 +2283,7 @@ async fn render_profile_html(
         <div class="post-actions">
           {ack_controls}
           {manage_actions}
-          <form class="show-post-form" action="https://{domain}/v1/showpost" method="GET">
+          <form class="show-post-form" action="https://{DOMAIN}/v1/showpost" method="GET">
             <input type="hidden" name="ib_uid" value="{ib_uid}">
             <input type="hidden" name="ib_user" value="{ib_user}">
             <input type="hidden" name="pid" value="{ib_post_id}">
@@ -2318,7 +2305,6 @@ async fn render_profile_html(
       post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user),
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user),
-      domain = DOMAIN
     );
   }
 
@@ -2536,11 +2522,10 @@ async fn render_search_users_html(
   let navigation_links = if session_uid.is_some() {
     format!(
       r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
-        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
-        <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
-        <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
-        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
-      domain = DOMAIN,
+        <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="war-room-display" href="https://{DOMAIN}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
+        <a class="projects-display" href="https://{DOMAIN}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
+        <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user)
     )
@@ -2565,11 +2550,11 @@ async fn render_search_users_html(
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
-  <form id="select-post-form" action="https://{domain}/v1/showpost" method="POST">
+  <form id="select-post-form" action="https://{DOMAIN}/v1/showpost" method="POST">
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
-  <form id="edit-profile-form" action="https://{domain}/v1/editprofile" method="GET">
+  <form id="edit-profile-form" action="https://{DOMAIN}/v1/editprofile" method="GET">
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
@@ -2586,7 +2571,6 @@ async fn render_search_users_html(
         {search_results_html}
       </div>
     </div>"#,
-    domain = DOMAIN,
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
     advert_html = advert_html,
@@ -2734,7 +2718,7 @@ async fn render_search_posts_html(
             <p>{post_body}</p>
             <div class="post-actions">
               {ack_controls}
-              <form class="show-post-form" action="https://{domain}/v1/showpost" method="GET">
+              <form class="show-post-form" action="https://{DOMAIN}/v1/showpost" method="GET">
                 <input type="hidden" name="ib_uid" value="{post_owner_uid}">
                 <input type="hidden" name="ib_user" value="{post_owner_user}">
                 <input type="hidden" name="pid" value="{post_id}">
@@ -2753,7 +2737,6 @@ async fn render_search_posts_html(
             render_ack_controls(ib_uid, ib_user, &row.postid)
           },
           acknowledged_count = row.acknowledged_count,
-          domain = DOMAIN,
           post_owner_uid = escape_html(&row.ib_uid),
           post_owner_user = escape_html(&row.username)
         );
@@ -2768,11 +2751,10 @@ async fn render_search_posts_html(
   let navigation_links = if session_uid.is_some() {
     format!(
       r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
-        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
-        <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
-        <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
-        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
-      domain = DOMAIN,
+        <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="war-room-display" href="https://{DOMAIN}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
+        <a class="projects-display" href="https://{DOMAIN}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
+        <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user)
     )
@@ -2797,11 +2779,11 @@ async fn render_search_posts_html(
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
-  <form id="select-post-form" action="https://{domain}/v1/showpost" method="POST">
+  <form id="select-post-form" action="https://{DOMAIN}/v1/showpost" method="POST">
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
-  <form id="edit-profile-form" action="https://{domain}/v1/editprofile" method="GET">
+  <form id="edit-profile-form" action="https://{DOMAIN}/v1/editprofile" method="GET">
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
@@ -2818,7 +2800,6 @@ async fn render_search_posts_html(
         {search_results_html}
       </div>
     </div>"#,
-    domain = DOMAIN,
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
     advert_html = advert_html,
@@ -2991,7 +2972,7 @@ async fn render_projects_html(
           format!(
             r#"<div class="post">
               <div class="post-meta">{owner_link}<span class="post-timestamp">{updated_at}</span></div>
-              <form class="edit-project-form" action="https://{domain}/v1/projects/edit" method="POST">
+              <form class="edit-project-form" action="https://{DOMAIN}/v1/projects/edit" method="POST">
                 <input type="hidden" name="ib_uid" value="{ib_uid}">
                 <input type="hidden" name="ib_user" value="{ib_user}">
                 <input type="hidden" name="project_id" value="{project_id}">
@@ -3008,7 +2989,6 @@ async fn render_projects_html(
                 <input class="post-submit" type="submit" value="Save Project">
               </form>
             </div>"#,
-            domain = DOMAIN,
             owner_link = owner_link,
             updated_at = escape_html(&row.updated_at),
             ib_uid = ib_uid,
@@ -3050,14 +3030,13 @@ async fn render_projects_html(
             && !already_reinforcing
           {
             format!(
-              r#"<form class="quick-response-force-form" action="https://{domain}/v1/projects/reinforce" method="POST">
+              r#"<form class="quick-response-force-form" action="https://{DOMAIN}/v1/projects/reinforce" method="POST">
                 <input type="hidden" name="ib_uid" value="{ib_uid}">
                 <input type="hidden" name="ib_user" value="{ib_user}">
                 <input type="hidden" name="project_id" value="{project_id}">
                 <input type="hidden" name="quick_response_force" value="1">
                 <input class="post-submit quick-response-submit" type="submit" value="Respond to Reinforcements Request">
               </form>"#,
-              domain = DOMAIN,
               ib_uid = ib_uid,
               ib_user = escape_html(ib_user),
               project_id = row.id
@@ -3068,14 +3047,13 @@ async fn render_projects_html(
             && already_reinforcing
           {
             format!(
-              r#"<form class="quick-response-force-form" action="https://{domain}/v1/projects/reinforce" method="POST">
+              r#"<form class="quick-response-force-form" action="https://{DOMAIN}/v1/projects/reinforce" method="POST">
                 <input type="hidden" name="ib_uid" value="{ib_uid}">
                 <input type="hidden" name="ib_user" value="{ib_user}">
                 <input type="hidden" name="project_id" value="{project_id}">
                 <input type="hidden" name="quick_response_force" value="retreat">
                 <input class="post-submit quick-response-submit" type="submit" value="Retreat">
               </form>"#,
-              domain = DOMAIN,
               ib_uid = ib_uid,
               ib_user = escape_html(ib_user),
               project_id = row.id
@@ -3129,11 +3107,10 @@ async fn render_projects_html(
 
     format!(
       r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
-        <a class="pro-home-display" href="https://{domain}/v1/profile/{session_ib_user}">:[[ :profile-home: ]]:</a>
-        <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={session_ib_uid}&ib_user={session_ib_user}">:[[ :war-room: ]]:</a>
-        <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={viewed_ib_uid}&ib_user={viewed_ib_user}">:[[ :projects: ]]:</a>
-        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={session_ib_uid}&ib_user={session_ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
-      domain = DOMAIN,
+        <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{session_ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="war-room-display" href="https://{DOMAIN}/v1/warroom?ib_uid={session_ib_uid}&ib_user={session_ib_user}">:[[ :war-room: ]]:</a>
+        <a class="projects-display" href="https://{DOMAIN}/v1/projects?ib_uid={viewed_ib_uid}&ib_user={viewed_ib_user}">:[[ :projects: ]]:</a>
+        <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={session_ib_uid}&ib_user={session_ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
       session_ib_uid = session_nav_uid,
       session_ib_user = escape_html(session_nav_user),
       viewed_ib_uid = ib_uid,
@@ -3146,7 +3123,7 @@ async fn render_projects_html(
   let add_project_form_html = if session_uid == Some(ib_uid) {
     format!(
       r#"<div class="post">
-          <form id="add-project-form" action="https://{domain}/v1/projects" method="POST">
+          <form id="add-project-form" action="https://{DOMAIN}/v1/projects" method="POST">
             <input type="hidden" name="ib_uid" value="{ib_uid}">
             <input type="hidden" name="ib_user" value="{ib_user}">
             <p><strong>Project:</strong></p>
@@ -3158,7 +3135,6 @@ async fn render_projects_html(
             <input class="post-submit" type="submit" value="Add Project">
           </form>
         </div>"#,
-      domain = DOMAIN,
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user)
     )
@@ -3183,11 +3159,11 @@ async fn render_projects_html(
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
-  <form id="select-post-form" action="https://{domain}/v1/showpost" method="POST">
+  <form id="select-post-form" action="https://{DOMAIN}/v1/showpost" method="POST">
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
-  <form id="edit-profile-form" action="https://{domain}/v1/editprofile" method="GET">
+  <form id="edit-profile-form" action="https://{DOMAIN}/v1/editprofile" method="GET">
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
@@ -3200,7 +3176,7 @@ async fn render_projects_html(
         {navigation_links}
       </div>
       <div id="post-form-section">
-        <form id="post-form" action="https://{domain}/v1/post" method="POST">
+        <form id="post-form" action="https://{DOMAIN}/v1/post" method="POST">
           <div id="post-message"></div>
           <div id="post-character-count"></div>
           <input type="hidden" name="ib_uid" value="{ib_uid}">
@@ -3216,7 +3192,6 @@ async fn render_projects_html(
         {projects_html}
       </div>
     </div>"#,
-    domain = DOMAIN,
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
     advert_html = advert_html,
@@ -3427,14 +3402,13 @@ async fn render_search_projects_html(
             && !already_reinforcing
           {
             format!(
-              r#"<form class="quick-response-force-form" action="https://{domain}/v1/projects/reinforce" method="POST">
+              r#"<form class="quick-response-force-form" action="https://{DOMAIN}/v1/projects/reinforce" method="POST">
                 <input type="hidden" name="ib_uid" value="{ib_uid}">
                 <input type="hidden" name="ib_user" value="{ib_user}">
                 <input type="hidden" name="project_id" value="{project_id}">
                 <input type="hidden" name="quick_response_force" value="1">
                 <input class="post-submit quick-response-submit" type="submit" value="Respond to Reinforcements Request">
               </form>"#,
-              domain = DOMAIN,
               ib_uid = ib_uid,
               ib_user = escape_html(ib_user),
               project_id = row.id
@@ -3445,14 +3419,13 @@ async fn render_search_projects_html(
             && already_reinforcing
           {
             format!(
-              r#"<form class="quick-response-force-form" action="https://{domain}/v1/projects/reinforce" method="POST">
+              r#"<form class="quick-response-force-form" action="https://{DOMAIN}/v1/projects/reinforce" method="POST">
                 <input type="hidden" name="ib_uid" value="{ib_uid}">
                 <input type="hidden" name="ib_user" value="{ib_user}">
                 <input type="hidden" name="project_id" value="{project_id}">
                 <input type="hidden" name="quick_response_force" value="retreat">
                 <input class="post-submit quick-response-submit" type="submit" value="Retreat">
               </form>"#,
-              domain = DOMAIN,
               ib_uid = ib_uid,
               ib_user = escape_html(ib_user),
               project_id = row.id
@@ -3503,11 +3476,10 @@ async fn render_search_projects_html(
   let navigation_links = if session_uid.is_some() {
     format!(
       r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
-        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
-        <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
-        <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
-        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
-      domain = DOMAIN,
+        <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="war-room-display" href="https://{DOMAIN}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
+        <a class="projects-display" href="https://{DOMAIN}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
+        <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user)
     )
@@ -3532,11 +3504,11 @@ async fn render_search_projects_html(
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
-  <form id="select-post-form" action="https://{domain}/v1/showpost" method="POST">
+  <form id="select-post-form" action="https://{DOMAIN}/v1/showpost" method="POST">
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
-  <form id="edit-profile-form" action="https://{domain}/v1/editprofile" method="GET">
+  <form id="edit-profile-form" action="https://{DOMAIN}/v1/editprofile" method="GET">
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
@@ -3553,7 +3525,6 @@ async fn render_search_projects_html(
         {search_results_html}
       </div>
     </div>"#,
-    domain = DOMAIN,
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
     advert_html = advert_html,
@@ -3736,7 +3707,7 @@ async fn render_war_room_posts_chunk(
         <p>{post_body}</p>
         <div class="post-actions">
           {ack_controls}
-          <form class="show-post-form" action="https://{domain}/v1/showpost" method="GET">
+          <form class="show-post-form" action="https://{DOMAIN}/v1/showpost" method="GET">
             <input type="hidden" name="ib_uid" value="{post_owner_uid}">
             <input type="hidden" name="ib_user" value="{post_owner_user}">
             <input type="hidden" name="pid" value="{post_id}">
@@ -3756,7 +3727,6 @@ async fn render_war_room_posts_chunk(
         render_ack_controls(ib_uid, ib_user, &post_row.postid)
       },
       acknowledged_count = post_row.acknowledged_count,
-      domain = DOMAIN,
       post_owner_uid = escape_html(&post_row.ib_uid),
       post_owner_user = escape_html(&post_row.username)
     );
@@ -3935,11 +3905,10 @@ async fn render_war_room_html(
   let navigation_links = if session_uid.is_some() {
     format!(
       r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
-        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
-        <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
-        <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
-        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
-      domain = DOMAIN,
+        <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="war-room-display" href="https://{DOMAIN}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
+        <a class="projects-display" href="https://{DOMAIN}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
+        <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user)
     )
@@ -3964,11 +3933,11 @@ async fn render_war_room_html(
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
-  <form id="select-post-form" action="https://{domain}/v1/showpost" method="POST">
+  <form id="select-post-form" action="https://{DOMAIN}/v1/showpost" method="POST">
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
-  <form id="edit-profile-form" action="https://{domain}/v1/editprofile" method="GET">
+  <form id="edit-profile-form" action="https://{DOMAIN}/v1/editprofile" method="GET">
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
@@ -3981,7 +3950,7 @@ async fn render_war_room_html(
         {navigation_links}
       </div>
       <div id="post-form-section">
-        <form id="post-form" action="https://{domain}/v1/post" method="POST">
+        <form id="post-form" action="https://{DOMAIN}/v1/post" method="POST">
           <div id="post-message"></div>
           <div id="post-character-count"></div>
           <input type="hidden" name="ib_uid" value="{ib_uid}">
@@ -3997,7 +3966,6 @@ async fn render_war_room_html(
         {sentinel_html}
       </div>
     </div>"#,
-    domain = DOMAIN,
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
     advert_html = advert_html,
@@ -4139,11 +4107,10 @@ async fn render_inbox_html(
   let navigation_links = if session_uid.is_some() {
     format!(
       r#"<a class="post-form-display" href="javascript:void(0);">:[[ :post: ]]:</a>
-        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
-        <a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
-        <a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
-        <a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
-      domain = DOMAIN,
+        <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="war-room-display" href="https://{DOMAIN}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
+        <a class="projects-display" href="https://{DOMAIN}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
+        <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user)
     )
@@ -4168,11 +4135,11 @@ async fn render_inbox_html(
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
-  <form id="select-post-form" action="https://{domain}/v1/showpost" method="POST">
+  <form id="select-post-form" action="https://{DOMAIN}/v1/showpost" method="POST">
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
-  <form id="edit-profile-form" action="https://{domain}/v1/editprofile" method="GET">
+  <form id="edit-profile-form" action="https://{DOMAIN}/v1/editprofile" method="GET">
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
@@ -4185,7 +4152,7 @@ async fn render_inbox_html(
         {navigation_links}
       </div>
       <div id="post-form-section">
-        <form id="post-form" action="https://{domain}/v1/post" method="POST">
+        <form id="post-form" action="https://{DOMAIN}/v1/post" method="POST">
           <div id="post-message"></div>
           <div id="post-character-count"></div>
           <input type="hidden" name="ib_uid" value="{ib_uid}">
@@ -4212,7 +4179,6 @@ async fn render_inbox_html(
         </div>
       </div>
     </div>"#,
-    domain = DOMAIN,
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
     advert_html = advert_html,
@@ -4366,14 +4332,14 @@ async fn render_single_post_html(
       let can_manage_reply = session_uid.is_some() && session_uid == reply.ib_uid.parse::<i64>().ok();
       let reply_manage_actions = if can_manage_reply {
         format!(
-          r#"<form class="delete-post-form" action="https://{domain}/v1/deletepost" method="POST">
+          r#"<form class="delete-post-form" action="https://{DOMAIN}/v1/deletepost" method="POST">
               <input type="hidden" name="ib_uid" value="{page_ib_uid}">
               <input type="hidden" name="ib_user" value="{page_ib_user}">
               <input type="hidden" name="pid" value="{reply_post_id}">
               <input type="hidden" name="root_pid" value="{root_pid}">
               <input type="hidden" name="post_owner_uid" value="{reply_owner_uid}">
             </form>
-            <form class="edit-post-form" action="https://{domain}/v1/editpost" method="GET">
+            <form class="edit-post-form" action="https://{DOMAIN}/v1/editpost" method="GET">
               <input type="hidden" name="ib_uid" value="{page_ib_uid}">
               <input type="hidden" name="ib_user" value="{page_ib_user}">
               <input type="hidden" name="pid" value="{reply_post_id}">
@@ -4381,7 +4347,6 @@ async fn render_single_post_html(
               <input type="hidden" name="post_owner_uid" value="{reply_owner_uid}">
             </form>
             <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a><a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>"#,
-          domain = DOMAIN,
           page_ib_uid = ib_uid,
           page_ib_user = escape_html(ib_user),
           root_pid = escape_html(pid),
@@ -4425,13 +4390,6 @@ async fn render_single_post_html(
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:site" content="@mj12_agency">
-  <meta property="og:title" content=":[[ :is-by: pro: {ib_user}: ]]:">
-  <meta property="og:description" content="GitHub-driven social media for the GitHub enthusiasts.">
-  <meta property="og:image" content="https://is-by.pro/images/Death_Angel-555x222.png">
-  <meta property="og:url" content="https://is-by.pro">
-
   <link rel="stylesheet" type="text/css" href="/css/is-by.css">
   <script src="/js/is-by_user.js" type="text/javascript"></script>
   <title>:[[ :is-by: pro: {ib_user}: ]]:</title>
@@ -4448,7 +4406,7 @@ async fn render_single_post_html(
         {advert_html}
       </div>
       <div id="navigation-section">
-        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
         {war_room_link}
         {projects_link}
         {dm_notification_link}
@@ -4465,7 +4423,7 @@ async fn render_single_post_html(
         </div>
         {replies_html}
         <div id="post-form-section" style="display:block;">
-          <form id="reply-form" action="https://{domain}/v1/reply" method="POST">
+          <form id="reply-form" action="https://{DOMAIN}/v1/reply" method="POST">
             <input type="hidden" name="ib_uid" value="{ib_uid}">
             <input type="hidden" name="ib_user" value="{ib_user}">
             <input type="hidden" name="pid" value="{ib_post_id}">
@@ -4475,13 +4433,11 @@ async fn render_single_post_html(
           </form>
         </div>
       </div>"#,
-    domain = DOMAIN,
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
     war_room_link = if session_uid.is_some() {
       format!(
-        r#"<a class="war-room-display" href="https://{domain}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>"#,
-        domain = DOMAIN,
+        r#"<a class="war-room-display" href="https://{DOMAIN}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>"#,
         ib_uid = ib_uid,
         ib_user = escape_html(ib_user)
       )
@@ -4490,8 +4446,7 @@ async fn render_single_post_html(
     },
     projects_link = if session_uid.is_some() {
       format!(
-        r#"<a class="projects-display" href="https://{domain}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>"#,
-        domain = DOMAIN,
+        r#"<a class="projects-display" href="https://{DOMAIN}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>"#,
         ib_uid = ib_uid,
         ib_user = escape_html(ib_user)
       )
@@ -4500,8 +4455,7 @@ async fn render_single_post_html(
     },
     dm_notification_link = if session_uid.is_some() {
       format!(
-        r#"<a class="dm-inbox-display" href="https://{domain}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
-        domain = DOMAIN,
+        r#"<a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
         ib_uid = ib_uid,
         ib_user = escape_html(ib_user)
       )
@@ -5249,10 +5203,10 @@ async fn edit_profile(
         {advert_html}
       </div>
       <div id="navigation-section">
-        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
       </div>
       <div id="post-form-section" style="display:block;">
-        <form id="edit-profile-form" action="https://{domain}/v1/editprofile" method="POST">
+        <form id="edit-profile-form" action="https://{DOMAIN}/v1/editprofile" method="POST">
           <input type="hidden" name="ib_uid" value="{ib_uid}">
           <input type="hidden" name="ib_user" value="{ib_user}">
           GitHub: https://github.com/<input class="post" type="text" name="ib_github" value="{ib_user}" autocomplete="off"><br>
@@ -5268,7 +5222,6 @@ async fn edit_profile(
   </div>
 </body>
 </html>"#,
-    domain = DOMAIN,
     ib_uid = query.ib_uid,
     ib_user = escape_html(&query.ib_user),
     advert_html = advert_html,
@@ -5461,10 +5414,10 @@ async fn edit_post(
   <div id="main-section">
     <div id="media-section">
       <div id="navigation-section">
-        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
       </div>
       <div id="post-form-section" style="display:block;">
-        <form id="editpost" action="https://{domain}/v1/editpost" method="POST">
+        <form id="editpost" action="https://{DOMAIN}/v1/editpost" method="POST">
           <div id="edit-post-message"></div>
           <input type="hidden" name="ib_uid" value="{ib_uid}">
           <input type="hidden" name="ib_user" value="{ib_user}">
@@ -5480,7 +5433,6 @@ async fn edit_post(
   </div>
 </body>
 </html>"#,
-    domain = DOMAIN,
     ib_uid = query.ib_uid,
     ib_user = escape_html(&query.ib_user),
     pid = escape_html(&query.pid),
@@ -5672,18 +5624,17 @@ async fn get_posts_page(
     let can_manage_post = session_uid.is_some() && session_uid == row_owner_uid;
     let manage_actions = if can_manage_post {
       format!(
-        r#"<form class="delete-post-form" action="https://{domain}/v1/deletepost" method="POST">
+        r#"<form class="delete-post-form" action="https://{DOMAIN}/v1/deletepost" method="POST">
             <input type="hidden" name="ib_uid" value="{ib_uid}">
             <input type="hidden" name="ib_user" value="{ib_user}">
             <input type="hidden" name="pid" value="{ib_post_id}">
           </form>
-          <form class="edit-post-form" action="https://{domain}/v1/editpost" method="GET">
+          <form class="edit-post-form" action="https://{DOMAIN}/v1/editpost" method="GET">
             <input type="hidden" name="ib_uid" value="{ib_uid}">
             <input type="hidden" name="ib_user" value="{ib_user}">
             <input type="hidden" name="pid" value="{ib_post_id}">
           </form>
           <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a><a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>"#,
-        domain = DOMAIN,
         ib_uid = ib_uid,
         ib_user = escape_html(ib_user),
         ib_post_id = escape_html(&row.postid),
@@ -5700,7 +5651,7 @@ async fn get_posts_page(
         <div class="post-actions">
           {ack_controls}
           {manage_actions}
-          <form class="show-post-form" action="https://{domain}/v1/showpost" method="GET">
+          <form class="show-post-form" action="https://{DOMAIN}/v1/showpost" method="GET">
             <input type="hidden" name="ib_uid" value="{ib_uid}">
             <input type="hidden" name="ib_user" value="{ib_user}">
             <input type="hidden" name="pid" value="{ib_post_id}">
@@ -5722,7 +5673,6 @@ async fn get_posts_page(
       post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user),
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user),
-      domain = DOMAIN
     );
   }
 
@@ -6163,7 +6113,7 @@ async fn ads_admin_page(
   <p><strong>ID:</strong> {imageid}</p>
   <p><strong>Views:</strong> {views} | <strong>Clicks:</strong> {clicks}</p>
   <p><strong>Preview:</strong><br><img src="{imagepath}" width="555" height="111" alt="{imageid}"></p>
-  <form id="ad-update-{imageid}" action="https://{domain}/v1/admin/ads/update" method="POST">
+  <form id="ad-update-{imageid}" action="https://{DOMAIN}/v1/admin/ads/update" method="POST">
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
     <input type="hidden" name="imageid" value="{imageid}">
@@ -6172,7 +6122,7 @@ async fn ads_admin_page(
   </form>
   <div style="display:flex; justify-content:center; align-items:center; gap:10px; margin-top:8px;">
     <input class="post-submit" type="submit" form="ad-update-{imageid}" value="Update Ad" style="position:static; left:0; margin:0;">
-    <form action="https://{domain}/v1/admin/ads/delete" method="POST" style="display:inline-flex; margin:0;">
+    <form action="https://{DOMAIN}/v1/admin/ads/delete" method="POST" style="display:inline-flex; margin:0;">
       <input type="hidden" name="ib_uid" value="{ib_uid}">
       <input type="hidden" name="ib_user" value="{ib_user}">
       <input type="hidden" name="imageid" value="{imageid}">
@@ -6180,7 +6130,6 @@ async fn ads_admin_page(
     </form>
   </div>
 </div>"#,
-      domain = DOMAIN,
       ib_uid = AD_ADMIN_UID,
       ib_user = AD_ADMIN_USER,
       imageid = row.imageid,
@@ -6204,12 +6153,12 @@ async fn ads_admin_page(
   <div id="main-section">
     <div id="media-section">
       <div id="navigation-section">
-        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
       </div>
       <div id="selected-user-posts-section" class="post-section">
         <div class="notice"><p><em>Ad Admin Panel</em></p></div>
         <div class="post" style="margin-bottom:16px;">
-          <form action="https://{domain}/v1/admin/ads/create" method="POST">
+          <form action="https://{DOMAIN}/v1/admin/ads/create" method="POST">
             <input type="hidden" name="ib_uid" value="{ib_uid}">
             <input type="hidden" name="ib_user" value="{ib_user}">
             <p>Image Path: <input class="post" type="text" name="imagepath" maxlength="1024" placeholder="/images/advert/example.png" required></p>
@@ -6223,7 +6172,6 @@ async fn ads_admin_page(
   </div>
 </body>
 </html>"#,
-    domain = DOMAIN,
     ib_uid = AD_ADMIN_UID,
     ib_user = AD_ADMIN_USER,
     ad_rows_html = ad_rows_html,
@@ -6361,8 +6309,7 @@ async fn ads_user_page(
       String::new()
     } else {
       format!(
-        r#"<form action="https://{domain}/v1/ads/pay/{imageid}" method="POST" style="display:inline-flex; margin:0 0 0 10px;"><input class="post-submit" type="submit" value="Pay with PayPal" style="position:static; left:0; margin:0;"></form>"#,
-        domain = DOMAIN,
+        r#"<form action="https://{DOMAIN}/v1/ads/pay/{imageid}" method="POST" style="display:inline-flex; margin:0 0 0 10px;"><input class="post-submit" type="submit" value="Pay with PayPal" style="position:static; left:0; margin:0;"></form>"#,
         imageid = row.imageid,
       )
     };
@@ -6372,20 +6319,19 @@ async fn ads_user_page(
   <p><strong>ID:</strong> {imageid} | <strong>Status:</strong> {status}</p>
   <p><strong>Views:</strong> {views} | <strong>Clicks:</strong> {clicks}</p>
   <p><img src="{imagepath}" width="555" height="111" alt="{imageid}"></p>
-  <form id="ad-user-update-{imageid}" action="https://{domain}/v1/ads/update" method="POST">
+  <form id="ad-user-update-{imageid}" action="https://{DOMAIN}/v1/ads/update" method="POST">
     <input type="hidden" name="imageid" value="{imageid}">
     <p>Target URL: <input class="post" type="text" name="url" value="{url}" maxlength="2048" required></p>
   </form>
   <div style="display:flex; justify-content:center; align-items:center; gap:10px; margin-top:8px;">
     <input class="post-submit" type="submit" form="ad-user-update-{imageid}" value="Update Ad" style="position:static; left:0; margin:0;">
-    <form action="https://{domain}/v1/ads/delete" method="POST" style="display:inline-flex; margin:0;">
+    <form action="https://{DOMAIN}/v1/ads/delete" method="POST" style="display:inline-flex; margin:0;">
       <input type="hidden" name="imageid" value="{imageid}">
       <input class="post-cancel" type="submit" value="Delete Ad" style="position:static; left:0; margin:0;">
     </form>
     {pay_now_html}
   </div>
 </div>"#,
-      domain = DOMAIN,
       imageid = row.imageid,
       status = escape_html(&row.payment_status),
       views = row.views,
@@ -6409,12 +6355,12 @@ async fn ads_user_page(
   <div id="main-section">
     <div id="media-section">
       <div id="navigation-section">
-        <a class="pro-home-display" href="https://{domain}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
       </div>
       <div id="selected-user-posts-section" class="post-section">
         <div class="notice"><p><em>My Ads (PayPal + 555x111 upload)</em></p></div>
         <div class="post" style="margin-bottom:16px;">
-          <form action="https://{domain}/v1/ads/create" method="POST" enctype="multipart/form-data">
+          <form action="https://{DOMAIN}/v1/ads/create" method="POST" enctype="multipart/form-data">
             <p>Target URL: <input class="post" type="text" name="url" maxlength="2048" placeholder="https://example.com" required></p>
             <p>Image (must be exactly 555x111): <input type="file" name="ad_image" accept="image/png,image/jpeg,image/gif,image/webp" required></p>
             <input class="post-submit" type="submit" value="Upload + Pay with PayPal" style="position:static; left:0; display:block; width:auto; min-width:280px; padding:6px 16px; margin:12px auto 0 auto;">
@@ -6426,7 +6372,6 @@ async fn ads_user_page(
   </div>
 </body>
 </html>"#,
-    domain = DOMAIN,
     ib_user = escape_html(&session_user),
     ad_rows_html = ad_rows_html,
   );
