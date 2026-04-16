@@ -624,6 +624,68 @@ fn decrypt_message(encrypted_data: &[u8]) -> Result<String, String> {
     String::from_utf8(decrypted_bytes).map_err(|_| "Failed to convert decrypted bytes to string".to_string())
 }
 
+fn encode_dm_encrypted_payload(payload: &[u8]) -> String {
+  const HEX: &[u8; 16] = b"0123456789abcdef";
+  let mut encoded = String::with_capacity(5 + payload.len() * 2);
+  encoded.push_str("enc1:");
+
+  for byte in payload {
+    encoded.push(HEX[(byte >> 4) as usize] as char);
+    encoded.push(HEX[(byte & 0x0f) as usize] as char);
+  }
+
+  encoded
+}
+
+fn decode_dm_hex_payload(input: &str) -> Result<Vec<u8>, String> {
+  if input.len() % 2 != 0 {
+    return Err("Invalid encrypted DM payload length".to_string());
+  }
+
+  fn hex_value(ch: u8) -> Option<u8> {
+    match ch {
+      b'0'..=b'9' => Some(ch - b'0'),
+      b'a'..=b'f' => Some(ch - b'a' + 10),
+      b'A'..=b'F' => Some(ch - b'A' + 10),
+      _ => None,
+    }
+  }
+
+  let bytes = input.as_bytes();
+  let mut decoded = Vec::with_capacity(bytes.len() / 2);
+  let mut index = 0usize;
+  while index < bytes.len() {
+    let high = hex_value(bytes[index]).ok_or_else(|| "Invalid hex in encrypted DM payload".to_string())?;
+    let low = hex_value(bytes[index + 1]).ok_or_else(|| "Invalid hex in encrypted DM payload".to_string())?;
+    decoded.push((high << 4) | low);
+    index += 2;
+  }
+
+  Ok(decoded)
+}
+
+fn encode_dm_message_for_storage(plaintext: &str) -> Result<String, String> {
+  let encrypted = encrypt_message(plaintext)?;
+  Ok(encode_dm_encrypted_payload(&encrypted))
+}
+
+fn decode_dm_message_from_storage(raw_message: &[u8]) -> Result<String, String> {
+  if let Ok(decrypted) = decrypt_message(raw_message) {
+    return Ok(decrypted);
+  }
+
+  let as_text = std::str::from_utf8(raw_message)
+    .map_err(|_| "Failed to decode stored DM message as UTF-8".to_string())?;
+
+  if let Some(hex_payload) = as_text.strip_prefix("enc1:") {
+    let decoded = decode_dm_hex_payload(hex_payload)?;
+    return decrypt_message(&decoded);
+  }
+
+  // Backward compatibility for legacy plaintext DM rows.
+  Ok(as_text.to_string())
+}
+
 fn load_rustls_config() -> ServerConfig {
   let cert_file = &mut BufReader::new(File::open(IB_CA_CERT).unwrap());
   let key_file  = &mut BufReader::new(File::open(IB_CA_KEY).unwrap());
@@ -4638,12 +4700,26 @@ async fn create_post(
             postid
           );
 
+          let stored_dm_message = match encode_dm_message_for_storage(&dm_message) {
+            Ok(value) => value,
+            Err(err) => {
+              eprintln!(
+                "Mention DM encryption failed from {} to {} for post {}: {}",
+                session_uid,
+                target_uid,
+                postid,
+                err
+              );
+              continue;
+            }
+          };
+
           if let Err(err) = sqlx::query(
             "INSERT INTO dm (sender_uid, recipient_uid, message) VALUES (?, ?, ?)",
           )
           .bind(session_uid)
           .bind(target_uid)
-          .bind(dm_message)
+          .bind(stored_dm_message)
           .execute(&state.db_pool)
           .await
           {
@@ -6850,7 +6926,7 @@ async fn send_direct_message(
     });
   }
 
-  let encrypted_message = match encrypt_message(message) {
+  let stored_message = match encode_dm_message_for_storage(message) {
     Ok(em) => em,
     Err(e) => return HttpResponse::InternalServerError().json(DMSendResponse {
         success: false,
@@ -6863,7 +6939,7 @@ async fn send_direct_message(
   )
   .bind(session_uid)
   .bind(target_uid)
-  .bind(encrypted_message)
+  .bind(stored_message)
   .execute(&state.db_pool)
   .await;
 
@@ -7050,7 +7126,8 @@ async fn direct_messages(
   let mut messages = rows
     .into_iter()
     .map(|row| {
-      let decrypted_message = decrypt_message(&row.message).unwrap_or_else(|_| "[DECRYPTION FAILED]".to_string());
+      let decrypted_message = decode_dm_message_from_storage(&row.message)
+        .unwrap_or_else(|_| "[DECRYPTION FAILED]".to_string());
       DMMessageResponseItem {
         id: row.id,
         sender_user: row.sender_username,
