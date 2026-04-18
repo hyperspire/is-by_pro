@@ -741,6 +741,7 @@ input[type=password] {
     justify-content: center;
     background-color: inherit;
     position: relative;
+    margin-bottom: 8px;
     top: 0px;
 }
 
@@ -752,7 +753,7 @@ input[type=password] {
     width: auto;
     height: auto;
     padding: 0;
-    margin: 8px 0;
+    margin: 0;
     border-radius: 0;
     color: #00ee33;
     font-size: 10px;
@@ -776,7 +777,7 @@ input[type=password] {
     width: auto;
     height: auto;
     padding: 0;
-    margin: 8px 0;
+    margin: 0;
     border-radius: 0;
     color: #3c5f3f;
     font-size: 10px;
@@ -788,7 +789,7 @@ input[type=password] {
 .acknowledged-count {
     color: #6f6f6f;
     font-size: 10px;
-    margin: 2px 6px 6px 6px;
+    margin: 8px 6px 6px 6px;
 }
 
 .edit-post-button,
