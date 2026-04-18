@@ -293,10 +293,15 @@ body {
   justify-content: center;
 }
 
-/* Overrides for dynamic width on posts and notices */
+/* Overrides for dynamic width on containers */
 .notice,
 .post,
-.reply-post {
+.reply-post,
+.for-the,
+.is-by,
+.is-with,
+.edit-pro,
+.delete-post-button {
   width: 100% !important;
   max-width: 100% !important;
   box-sizing: border-box !important;
