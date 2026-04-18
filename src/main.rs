@@ -4467,7 +4467,6 @@ async fn render_war_room_mobile_html(
       </form>
     </div><br>
   </div>
-</div>
 </body>
 
 </html>"#,
