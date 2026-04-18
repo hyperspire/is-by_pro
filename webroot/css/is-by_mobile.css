@@ -301,7 +301,8 @@ body {
 .is-by,
 .is-with,
 .edit-pro,
-.delete-post-button {
+.delete-post-button,
+#post-form-section {
   width: 100% !important;
   max-width: 100% !important;
   box-sizing: border-box !important;

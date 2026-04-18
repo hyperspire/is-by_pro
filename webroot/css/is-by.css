@@ -505,8 +505,7 @@ a:hover {
     display: none;
     position: relative;
     top: 0;
-    margin-top: 44px;
-    margin-bottom: 12px;
+    margin: 44px auto 12px auto;
     width: 422px;
     z-index: 2;
 }
