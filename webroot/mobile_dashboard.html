@@ -32,14 +32,12 @@
         {recent_activity_html}
       </div>
       <div id="user-search-section">
-        <p><strong>User Search:</strong></p>
         <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
           <input type="hidden" name="ib_uid" value="{ib_uid}">
           <input type="hidden" name="ib_user" value="{ib_user}">
           <input type="text" name="query" placeholder="Search Users" required>
           <input type="submit" value="Search">
         </form>
-        <p><strong>Project Search:</strong></p>
         <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
           <input type="hidden" name="ib_uid" value="{ib_uid}">
           <input type="hidden" name="ib_user" value="{ib_user}">

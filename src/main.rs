@@ -4978,6 +4978,203 @@ async fn render_single_post_html(
   Ok(html)
 }
 
+async fn render_single_post_mobile_html(
+  state: &AppState,
+  ib_uid: i64,
+  ib_user: &str,
+  pid: &str,
+  session_uid: Option<i64>,
+) -> Result<String, String> {
+  let advert_html = render_advert_html(state).await;
+
+  let post = sqlx::query_as::<_, PostRow>(
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.postid = ? LIMIT 1"
+    )
+    .bind(ib_uid)
+    .bind(pid)
+    .fetch_optional(&state.db_pool)
+    .await
+    .map_err(|e| format!("Post lookup failed: {}", e))?;
+
+  let post = match post {
+    Some(post) => post,
+    None => return Err(format!("Post not found: {}", pid)),
+  };
+
+  let replies = sqlx::query_as::<_, PostRow>(
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.parentid = ? ORDER BY post.timestamp ASC"
+    )
+    .bind(pid)
+    .fetch_all(&state.db_pool)
+    .await
+    .map_err(|e| format!("Reply lookup failed: {}", e))?;
+
+  let mut visible_post_ids = vec![post.postid.clone()];
+  visible_post_ids.extend(replies.iter().map(|reply| reply.postid.clone()));
+  let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &visible_post_ids).await;
+
+  let mut replies_html = String::new();
+
+  if !replies.is_empty() {
+    for reply in replies {
+      let reply_owner_uid = escape_html(&reply.ib_uid);
+      let can_manage_reply = session_uid.is_some() && session_uid == reply.ib_uid.parse::<i64>().ok();
+      let reply_manage_actions = if can_manage_reply {
+        format!(
+          r#"<form class="delete-post-form" action="https://{DOMAIN}/v1/deletepost" method="POST">
+              <input type="hidden" name="ib_uid" value="{page_ib_uid}">
+              <input type="hidden" name="ib_user" value="{page_ib_user}">
+              <input type="hidden" name="pid" value="{reply_post_id}">
+              <input type="hidden" name="root_pid" value="{root_pid}">
+              <input type="hidden" name="post_owner_uid" value="{reply_owner_uid}">
+            </form>
+            <form class="edit-post-form" action="https://{DOMAIN}/v1/editpost" method="GET">
+              <input type="hidden" name="ib_uid" value="{page_ib_uid}">
+              <input type="hidden" name="ib_user" value="{page_ib_user}">
+              <input type="hidden" name="pid" value="{reply_post_id}">
+              <input type="hidden" name="root_pid" value="{root_pid}">
+              <input type="hidden" name="post_owner_uid" value="{reply_owner_uid}">
+            </form>
+            <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a><a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>"#,
+          page_ib_uid = ib_uid,
+          page_ib_user = escape_html(ib_user),
+          root_pid = escape_html(pid),
+          reply_post_id = escape_html(&reply.postid),
+          reply_owner_uid = reply_owner_uid,
+        )
+      } else {
+        String::new()
+      };
+
+      replies_html += &format!(
+        r#"
+        <div class="post reply-post" data-postid="{reply_post_id}" data-timestamp="{reply_post_timestamp}">
+          {reply_post_meta}
+          <p>{reply_post_body}</p>
+          <div class="post-actions">
+            {reply_ack_controls}
+            {reply_manage_actions}
+          </div>
+          <p class="acknowledged-count">Acknowleged {reply_acknowledged_count} times.</p>
+        </div>"#,
+        reply_post_id = escape_html(&reply.postid),
+        reply_post_timestamp = escape_html(&reply.timestamp),
+        reply_post_meta = render_post_meta(&reply.ib_uid, &reply.username, &reply.timestamp, reply.user_total_acks),
+        reply_post_body = render_post_with_hashtags(&reply.post, ib_uid, ib_user),
+        reply_ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&reply.postid) {
+          render_ack_disabled()
+        } else {
+          render_ack_controls(ib_uid, ib_user, &reply.postid)
+        },
+        reply_acknowledged_count = reply.acknowledged_count,
+        reply_manage_actions = reply_manage_actions
+      );
+    }
+  }
+
+  let html = format!(
+    r#"<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
+  <link rel="stylesheet" type="text/css" href="/css/is-by_mobile.css">
+  <script src="/js/is-by_user.js" type="text/javascript"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <title>:[[ :is-by: pro: {ib_user}: ]]:</title>
+</head>
+
+<body>
+  <form id="select-user-form" action="/" method="GET">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <div class="content">
+    <div>
+      {advert_html}
+    </div>
+    <div id="selected-user-posts-section" class="post-section">
+      <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
+        {post_meta}
+        <p>{post_body}</p>
+        <div class="post-actions">
+          {ack_controls}
+          <p><a href="javascript:void(0);" class="copy-link">:[[ :copy-link: ]]:</a></p>
+        </div>
+        <p class="acknowledged-count">Acknowleged {ib_post_acknowledged_count} times.</p>
+      </div>
+      {replies_html}
+      <div id="post-form-section" style="display:block;">
+        <form id="reply-form" action="https://{DOMAIN}/v1/reply" method="POST">
+          <input type="hidden" name="ib_uid" value="{ib_uid}">
+          <input type="hidden" name="ib_user" value="{ib_user}">
+          <input type="hidden" name="pid" value="{ib_post_id}">
+          <input type="text" class="post" name="post" maxlength="1024" required>
+          <br>
+          <input class="post-submit" type="submit" value="Reply">
+        </form>
+      </div>
+      <div id="user-search-section">
+        <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
+          <input type="hidden" name="ib_uid" value="{ib_uid}">
+          <input type="hidden" name="ib_user" value="{ib_user}">
+          <input type="text" name="query" placeholder="Search Users" required>
+          <input type="submit" value="Search">
+        </form>
+        <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
+          <input type="hidden" name="ib_uid" value="{ib_uid}">
+          <input type="hidden" name="ib_user" value="{ib_user}">
+          <input type="text" name="query" placeholder="Search Projects" required>
+          <input type="submit" value="Search Projects">
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>"#,
+    ib_uid = ib_uid,
+    ib_user = escape_html(ib_user),
+    ib_post_id = escape_html(&post.postid),
+    ib_post_timestamp = escape_html(&post.timestamp),
+    ib_post_acknowledged_count = post.acknowledged_count,
+    post_meta = render_post_meta(&post.ib_uid, &post.username, &post.timestamp, post.user_total_acks),
+    ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&post.postid) {
+      render_ack_disabled()
+    } else {
+      render_ack_controls(ib_uid, ib_user, &post.postid)
+    },
+    post_body = render_post_with_hashtags(&post.post, ib_uid, ib_user),
+    advert_html = advert_html,
+    replies_html = replies_html
+  );
+
+  Ok(html)
+}
+
+fn is_mobile_device(req: &HttpRequest) -> bool {
+  if let Some(user_agent) = req.headers().get("user-agent") {
+    if let Ok(ua_str) = user_agent.to_str() {
+      let ua_lower = ua_str.to_lowercase();
+      ua_lower.contains("mobile") ||
+      ua_lower.contains("android") ||
+      ua_lower.contains("iphone") ||
+      ua_lower.contains("ipad") ||
+      ua_lower.contains("windows phone") ||
+      ua_lower.contains("blackberry") ||
+      ua_lower.contains("webos")
+    } else {
+      false
+    }
+  } else {
+    false
+  }
+}
+
 #[post("/v1/post")]
 async fn create_post(
   req: HttpRequest,
@@ -5167,6 +5364,7 @@ async fn show_post(
   payload: web::Form<ShowPostRequest>,
 ) -> impl Responder {
   render_show_post_response(
+    &req,
     &state,
     payload.ib_uid,
     &payload.ib_user,
@@ -5183,6 +5381,7 @@ async fn show_post_get(
   query: web::Query<ShowPostRequest>,
 ) -> impl Responder {
   render_show_post_response(
+    &req,
     &state,
     query.ib_uid,
     &query.ib_user,
@@ -5193,13 +5392,20 @@ async fn show_post_get(
 }
 
 async fn render_show_post_response(
+  req: &HttpRequest,
   state: &AppState,
   ib_uid: i64,
   ib_user: &str,
   pid: &str,
   session_uid: Option<i64>,
 ) -> HttpResponse {
-  match render_single_post_html(state, ib_uid, ib_user, pid, session_uid).await {
+  let html_result = if is_mobile_device(req) {
+    render_single_post_mobile_html(state, ib_uid, ib_user, pid, session_uid).await
+  } else {
+    render_single_post_html(state, ib_uid, ib_user, pid, session_uid).await
+  };
+
+  match html_result {
     Ok(html) => HttpResponse::Ok()
       .content_type("text/html; charset=utf-8")
       .body(html),
