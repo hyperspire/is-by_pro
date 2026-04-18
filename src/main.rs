@@ -1994,6 +1994,264 @@ async fn ensure_legacy_user_from_github(
   Ok(())
 }
 
+async fn render_profile_mobile_html(
+  state: &AppState,
+  ib_uid: i64,
+  ib_user: &str,
+  session_uid: Option<i64>,
+) -> Result<String, String> {
+  let advert_html = render_advert_html(state).await;
+
+  let viewed_user_row = sqlx::query_as::<_, FollowLookupRow>(
+      "SELECT username, COALESCE(followers, '') AS followers FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1"
+    )
+    .bind(ib_uid.to_string())
+    .fetch_optional(&state.db_pool)
+    .await
+    .map_err(|e| format!("Viewed user lookup failed: {}", e))?;
+
+  let viewed_username = viewed_user_row
+    .as_ref()
+    .map(|row| row.username.clone())
+    .unwrap_or_else(|| ib_user.to_string());
+
+  let session_username = if let Some(uid) = session_uid {
+    match sqlx::query_as::<_, SessionUserRow>(
+      "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
+    )
+    .bind(uid.to_string())
+    .fetch_optional(&state.db_pool)
+    .await
+    {
+      Ok(Some(row)) if !row.username.trim().is_empty() => Some(row.username),
+      _ => None,
+    }
+  } else {
+    None
+  };
+
+  let show_edit_profile_link = session_username
+    .as_ref()
+    .map(|username| username.eq_ignore_ascii_case(&viewed_username))
+    .unwrap_or(false);
+
+  let edit_profile_link = if show_edit_profile_link {
+    format!(r#"<a href="https://{DOMAIN}/v1/editprofile?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :edit-profile: ]]:</a>"#, ib_uid = ib_uid, ib_user = escape_html(ib_user))
+  } else {
+    String::new()
+  };
+
+  let mut html = format!(
+    r#"<!DOCTYPE html>
+<html lang="en-US">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
+  <link rel="stylesheet" type="text/css" href="/css/is-by_mobile.css">
+  <script src="/js/is-by_user.js" type="text/javascript"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <title>:[[ :is-by: pro: {ib_user}: ]]:</title>
+  <meta name="description" content="Dashboard for is-by.pro">
+</head>
+<body>
+
+  <div class="content">
+    <form id="select-user-form" action="/" method="GET">
+      <input type="hidden" name="ib_uid" value="{ib_uid}">
+      <input type="hidden" name="ib_user" value="{ib_user}">
+    </form>
+    <form id="select-post-form" action="https://{DOMAIN}/v1/showpost" method="POST">
+      <input type="hidden" name="ib_uid" value="{ib_uid}">
+      <input type="hidden" name="ib_user" value="{ib_user}">
+    </form>
+    <form id="edit-profile-form" action="https://{DOMAIN}/v1/editprofile" method="GET">
+      <input type="hidden" name="ib_uid" value="{ib_uid}">
+      <input type="hidden" name="ib_user" value="{ib_user}">
+    </form>
+    {advert_html}
+    <div id="post-form-section">
+      <form id="post-form" action="https://{DOMAIN}/v1/post" method="POST">
+        <div id="post-message"></div>
+        <div id="post-character-count"></div>
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input class="post" type="text" name="post" autocomplete="off" maxlength="1024" required>
+        <input id="post-cancel" class="post-cancel" type="button" value="Cancel">
+        <input class="post-submit" type="submit" value="Post">
+      </form>
+    </div>"#,
+    ib_user = escape_html(ib_user),
+    ib_uid = ib_uid,
+    advert_html = advert_html,
+  );
+
+  let ib_pro_result = sqlx::query_as::<_, ProRow>(
+      "SELECT ibp, pro, location, services, website, github FROM pro WHERE ib_uid = ?"
+    )
+    .bind(ib_uid)
+    .fetch_one(&state.db_pool)
+    .await;
+
+  if let Ok(ib_pro) = ib_pro_result {
+    let github_identity_html = render_github_identity_html(state, ib_user).await;
+
+    html += &format!(r#"
+    <p><strong>{github_identity_html}</strong></p>
+    <p class="paragraph"><em>{ib_ibp}</em></p>
+    <p class="description">{ib_pro}</p>
+    <p class="description">{ib_services}</p>
+    <p class="description">{ib_location}</p>
+    <p><a target="_blank" rel="noopener" href="{ib_website}">{ib_website}</a></p>
+    {edit_profile_link}"#,
+    ib_ibp = escape_html(&ib_pro.ibp),
+    ib_pro = escape_html(&ib_pro.pro),
+    ib_services = escape_html(&ib_pro.services),
+    ib_location = escape_html(&ib_pro.location),
+    ib_website = escape_html(&ib_pro.website),
+    edit_profile_link = edit_profile_link,
+    github_identity_html = github_identity_html,
+  );
+
+  let ib_post_results_length: i64 = sqlx::query_scalar(
+      "SELECT COUNT(*) FROM post WHERE post.ib_uid = ? AND (post.parentid = '' OR post.parentid IS NULL)"
+    )
+    .bind(ib_uid)
+    .fetch_one(&state.db_pool)
+    .await
+    .unwrap_or(0);
+
+  let ib_post_results = sqlx::query_as::<_, PostRow>(
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = '' OR post.parentid IS NULL) ORDER BY post.timestamp DESC LIMIT 21"
+    )
+    .bind(ib_uid)
+    .fetch_all(&state.db_pool)
+    .await
+    .map_err(|e| format!("Post query failed: {}", e))?;
+
+  let profile_has_more = ib_post_results.len() > 20;
+  let display_rows = &ib_post_results[..ib_post_results.len().min(20)];
+
+  let mut selected_user_posts_response_content = format!(
+    r#"<div class="notice"><p><em>:[[ :for-the: [[ posts: is-by: {ib_post_results_length}: is-with: showing-latest-results: ]]:</em></p></div>"#,
+    ib_post_results_length = ib_post_results_length,
+  );
+
+  let displayed_post_ids: Vec<String> = display_rows
+    .iter()
+    .map(|row| row.postid.clone())
+    .collect();
+  let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &displayed_post_ids).await;
+
+  for row in display_rows.iter() {
+    let row_owner_uid = row.ib_uid.parse::<i64>().ok();
+    let can_manage_post = session_uid.is_some() && session_uid == row_owner_uid;
+    let manage_actions = if can_manage_post {
+      format!(
+        r#"<form class="delete-post-form" action="https://{DOMAIN}/v1/deletepost" method="POST">
+            <input type="hidden" name="ib_uid" value="{ib_uid}">
+            <input type="hidden" name="ib_user" value="{ib_user}">
+            <input type="hidden" name="pid" value="{ib_post_id}">
+          </form>
+          <form class="edit-post-form" action="https://{DOMAIN}/v1/editpost" method="GET">
+            <input type="hidden" name="ib_uid" value="{ib_uid}">
+            <input type="hidden" name="ib_user" value="{ib_user}">
+            <input type="hidden" name="pid" value="{ib_post_id}">
+          </form>
+          <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a><a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>"#,
+        ib_uid = ib_uid,
+        ib_user = escape_html(ib_user),
+        ib_post_id = escape_html(&row.postid),
+      )
+    } else {
+      String::new()
+    };
+
+    selected_user_posts_response_content += &format!(
+      r#"
+      <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
+        {post_meta}
+        <p>{post_body}</p>
+        <div class="post-actions">
+          {ack_controls}
+          {manage_actions}
+          <form class="show-post-form" action="https://{DOMAIN}/v1/showpost" method="GET">
+            <input type="hidden" name="ib_uid" value="{ib_uid}">
+            <input type="hidden" name="ib_user" value="{ib_user}">
+            <input type="hidden" name="pid" value="{ib_post_id}">
+          </form>
+          <a href="javascript:void(0);" class="show-post">:[[ :show-post: ]]:</a>
+        </div>
+        <p class="acknowledged-count">Acknowleged {acknowledged_count} times.</p>
+      </div>"#,
+      ib_post_id = escape_html(&row.postid),
+      ib_post_timestamp = escape_html(&row.timestamp),
+      post_meta = render_post_meta(&row.ib_uid, &row.username, &row.timestamp, row.user_total_acks),
+      manage_actions = manage_actions,
+      ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&row.postid) {
+        render_ack_disabled()
+      } else {
+        render_ack_controls(ib_uid, ib_user, &row.postid)
+      },
+      acknowledged_count = row.acknowledged_count,
+      post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user),
+      ib_uid = ib_uid,
+      ib_user = escape_html(ib_user),
+    );
+  }
+
+  let sentinel_html = if profile_has_more {
+    r#"<div id="posts-load-sentinel"></div>"#
+  } else {
+    ""
+  };
+
+  html += &format!(
+    r#"<div id="selected-user-posts-section" data-ib-uid="{ib_uid}" data-ib-user="{ib_user_escaped}">{selected_user_posts_response_content}{sentinel_html}</div>"#,
+    selected_user_posts_response_content = selected_user_posts_response_content,
+    ib_uid = ib_uid,
+    ib_user_escaped = escape_html(ib_user),
+    sentinel_html = sentinel_html,
+  );
+
+  html += &format!(r#"
+    <div id="user-search-section">
+      <p><strong>User Search:</strong></p>
+      <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Users" required>
+        <input type="submit" value="Search">
+      </form>
+      <p><strong>Project Search:</strong></p>
+      <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Projects" required>
+        <input type="submit" value="Search Projects">
+      </form>
+    </div>
+  </div>
+</div>
+</body>
+
+</html>"#,
+      ib_user = escape_html(ib_user),
+    );
+  } else {
+    html += &format!(r#"
+    </div>
+  </div>
+</body>
+
+</html>"#);
+  }
+
+  Ok(html)
+}
+
 async fn render_profile_html(
   state: &AppState,
   ib_uid: i64,
@@ -2159,7 +2417,7 @@ async fn render_profile_html(
       },
       dm_link = if show_profile_dm_link {
         format!(
-          r#"<a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={session_ib_uid}&ib_user={session_ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
+          r#"<a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={session_ib_uid}&ib_user={session_ib_user}"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 4px;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg> <span id="dm-unread-count">0</span></a>"#,
           session_ib_uid = session_nav_uid,
           session_ib_user = escape_html(session_nav_user)
         )
@@ -2525,7 +2783,7 @@ async fn render_search_users_html(
         <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
         <a class="war-room-display" href="https://{DOMAIN}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
         <a class="projects-display" href="https://{DOMAIN}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
-        <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
+        <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 4px;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg> <span id="dm-unread-count">0</span></a>"#,
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user)
     )
@@ -2754,7 +3012,7 @@ async fn render_search_posts_html(
         <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
         <a class="war-room-display" href="https://{DOMAIN}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
         <a class="projects-display" href="https://{DOMAIN}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
-        <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
+        <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 4px;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg> <span id="dm-unread-count">0</span></a>"#,
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user)
     )
@@ -3110,7 +3368,7 @@ async fn render_projects_html(
         <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{session_ib_user}">:[[ :profile-home: ]]:</a>
         <a class="war-room-display" href="https://{DOMAIN}/v1/warroom?ib_uid={session_ib_uid}&ib_user={session_ib_user}">:[[ :war-room: ]]:</a>
         <a class="projects-display" href="https://{DOMAIN}/v1/projects?ib_uid={viewed_ib_uid}&ib_user={viewed_ib_user}">:[[ :projects: ]]:</a>
-        <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={session_ib_uid}&ib_user={session_ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
+        <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={session_ib_uid}&ib_user={session_ib_user}"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 4px;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg> <span id="dm-unread-count">0</span></a>"#,
       session_ib_uid = session_nav_uid,
       session_ib_user = escape_html(session_nav_user),
       viewed_ib_uid = ib_uid,
@@ -3479,7 +3737,7 @@ async fn render_search_projects_html(
         <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
         <a class="war-room-display" href="https://{DOMAIN}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
         <a class="projects-display" href="https://{DOMAIN}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
-        <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
+        <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 4px;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg> <span id="dm-unread-count">0</span></a>"#,
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user)
     )
@@ -3908,7 +4166,7 @@ async fn render_war_room_html(
         <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
         <a class="war-room-display" href="https://{DOMAIN}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
         <a class="projects-display" href="https://{DOMAIN}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
-        <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
+        <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 4px;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg> <span id="dm-unread-count">0</span></a>"#,
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user)
     )
@@ -4110,7 +4368,7 @@ async fn render_inbox_html(
         <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
         <a class="war-room-display" href="https://{DOMAIN}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
         <a class="projects-display" href="https://{DOMAIN}/v1/projects?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :projects: ]]:</a>
-        <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
+        <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 4px;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg> <span id="dm-unread-count">0</span></a>"#,
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user)
     )
@@ -4455,7 +4713,7 @@ async fn render_single_post_html(
     },
     dm_notification_link = if session_uid.is_some() {
       format!(
-        r#"<a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :dm: ]]: <span id="dm-unread-count">0</span></a>"#,
+        r#"<a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 4px;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg> <span id="dm-unread-count">0</span></a>"#,
         ib_uid = ib_uid,
         ib_user = escape_html(ib_user)
       )
@@ -5816,11 +6074,28 @@ async fn view_profile(
     }
   };
 
-  match render_profile_html(&state, ib_uid, &ib_user, get_session_uid(&req)).await {
-    Ok(html) => HttpResponse::Ok()
-      .content_type("text/html; charset=utf-8")
-      .body(html),
-    Err(err) => HttpResponse::InternalServerError().body(err),
+  let mut is_mobile = false;
+  if let Some(user_agent) = req.headers().get("user-agent") {
+    if let Ok(ua_str) = user_agent.to_str() {
+      let ua_lower = ua_str.to_lowercase();
+      is_mobile = ua_lower.contains("mobi") || ua_lower.contains("android") || ua_lower.contains("iphone") || ua_lower.contains("ipad");
+    }
+  }
+
+  if is_mobile {
+    match render_profile_mobile_html(&state, ib_uid, &ib_user, get_session_uid(&req)).await {
+      Ok(html) => HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html),
+      Err(err) => HttpResponse::InternalServerError().body(err),
+    }
+  } else {
+    match render_profile_html(&state, ib_uid, &ib_user, get_session_uid(&req)).await {
+      Ok(html) => HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html),
+      Err(err) => HttpResponse::InternalServerError().body(err),
+    }
   }
 }
 
