@@ -229,6 +229,7 @@ body {
 .content {
   flex: 1;
   width: 100%;
+  min-width: 0;
   padding: 24px;
   padding-bottom: 90px;
   /* Space for the bottom navigation bar */
@@ -297,10 +298,14 @@ body {
 .post,
 .reply-post {
   width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 .post input[type=text] {
   width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 #user-search-section {
