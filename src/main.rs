@@ -2221,14 +2221,12 @@ async fn render_profile_mobile_html(
 
   html += &format!(r#"
     <div id="user-search-section">
-      <p><strong>User Search:</strong></p>
       <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
-      <p><strong>Project Search:</strong></p>
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
@@ -2709,14 +2707,12 @@ async fn render_profile_html(
       </div>
     </div><br>
     <div id="user-search-section">
-      <p><strong>User Search:</strong></p>
       <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
-      <p><strong>Project Search:</strong></p>
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
@@ -2946,14 +2942,12 @@ async fn render_search_users_html(
       </div>
     </div><br>
     <div id="user-search-section">
-      <p><strong>User Search:</strong></p>
       <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
-      <p><strong>Project Search:</strong></p>
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
@@ -3179,14 +3173,12 @@ async fn render_search_posts_html(
       </div>
     </div><br>
     <div id="user-search-section">
-      <p><strong>User Search:</strong></p>
       <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
-      <p><strong>Project Search:</strong></p>
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
@@ -3567,14 +3559,12 @@ async fn render_projects_html(
       </div>
     </div><br>
     <div id="user-search-section">
-      <p><strong>User Search:</strong></p>
       <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
-      <p><strong>Project Search:</strong></p>
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
@@ -3900,14 +3890,12 @@ async fn render_search_projects_html(
       </div>
     </div><br>
     <div id="user-search-section">
-      <p><strong>User Search:</strong></p>
       <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
-      <p><strong>Project Search:</strong></p>
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
@@ -4342,14 +4330,12 @@ async fn render_war_room_html(
       </div>
     </div><br>
     <div id="user-search-section">
-      <p><strong>User Search:</strong></p>
       <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
-      <p><strong>Project Search:</strong></p>
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
@@ -4556,14 +4542,12 @@ async fn render_inbox_html(
       </div>
     </div><br>
     <div id="user-search-section">
-      <p><strong>User Search:</strong></p>
       <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
-      <p><strong>Project Search:</strong></p>
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
@@ -4844,14 +4828,12 @@ async fn render_single_post_html(
       </div>
     </div><br>
     <div id="user-search-section">
-      <p><strong>User Search:</strong></p>
       <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
         <input type="text" name="query" placeholder="Search Users" required>
         <input type="submit" value="Search">
       </form>
-      <p><strong>Project Search:</strong></p>
       <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
         <input type="hidden" name="ib_user" value="{ib_user}">
