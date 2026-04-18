@@ -741,7 +741,7 @@ input[type=password] {
     justify-content: center;
     background-color: inherit;
     position: relative;
-    margin-bottom: 8px;
+    margin-bottom: 24px;
     top: 0px;
 }
 
@@ -749,7 +749,7 @@ input[type=password] {
 .post-actions .ack-post:visited {
     position: absolute;
     left: 6px;
-    bottom: 2px;
+    bottom: -14px;
     width: auto;
     height: auto;
     padding: 0;
@@ -773,7 +773,7 @@ input[type=password] {
 .post-actions .ack-post-disabled {
     position: absolute;
     left: 6px;
-    bottom: 2px;
+    bottom: -14px;
     width: auto;
     height: auto;
     padding: 0;
