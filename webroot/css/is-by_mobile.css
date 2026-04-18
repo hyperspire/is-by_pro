@@ -302,3 +302,7 @@ body {
 .post input[type=text] {
   width: 100% !important;
 }
+
+#user-search-section {
+  margin: 0 auto;
+}
