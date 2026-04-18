@@ -209,6 +209,7 @@ body {
 /* Content Area */
 .content {
   flex: 1;
+  width: 100%;
   padding: 24px;
   padding-bottom: 90px; /* Space for the bottom navigation bar */
   overflow-y: auto;
