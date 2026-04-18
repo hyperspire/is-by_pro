@@ -2160,7 +2160,7 @@ async fn render_profile_mobile_html(
             <input type="hidden" name="ib_user" value="{ib_user}">
             <input type="hidden" name="pid" value="{ib_post_id}">
           </form>
-          <p><a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a><a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a></p><br>"#,
+          <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a><a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>"#,
         ib_uid = ib_uid,
         ib_user = escape_html(ib_user),
         ib_post_id = escape_html(&row.postid),
@@ -2184,7 +2184,7 @@ async fn render_profile_mobile_html(
           </form>
           <a href="javascript:void(0);" class="show-post">:[[ :show-post: ]]:</a>
         </div>
-        <br><p class="acknowledged-count">Acknowleged {acknowledged_count} times.</p><br>
+        <p class="acknowledged-count">Acknowleged {acknowledged_count} times.</p>
       </div>"#,
       ib_post_id = escape_html(&row.postid),
       ib_post_timestamp = escape_html(&row.timestamp),
