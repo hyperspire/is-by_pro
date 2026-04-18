@@ -302,10 +302,17 @@ body {
   box-sizing: border-box !important;
 }
 
-.post input[type=text] {
-  width: 400px !important;
-  max-width: 100% !important;
+input[type="text"],
+input[type="password"],
+input[type="submit"],
+textarea {
+  max-width: calc(100% - 12px) !important;
   box-sizing: border-box !important;
+}
+
+.post input[type=text],
+.edit-pro input[type=text] {
+  width: 400px !important;
 }
 
 #user-search-section {
