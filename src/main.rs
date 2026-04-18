@@ -4375,6 +4375,115 @@ async fn render_war_room_html(
   Ok(html)
 }
 
+async fn render_war_room_mobile_html(
+  state: &AppState,
+  ib_uid: i64,
+  ib_user: &str,
+  session_uid: Option<i64>,
+) -> Result<String, String> {
+  let advert_html = render_advert_html(state).await;
+
+  let war_room_chunk = render_war_room_posts_chunk(state, ib_uid, ib_user, session_uid, 0, 20).await?;
+
+  let war_room_content = if war_room_chunk.total_followers == 0 {
+    "<div class=\"notice\"><p><em>:[[ :war-room-no-followers: ]]:</em></p></div>".to_string()
+  } else if war_room_chunk.posts_html.trim().is_empty() && !war_room_chunk.has_more {
+    "<div class=\"notice\"><p><em>:[[ :war-room-no-follower-posts: ]]:</em></p></div>".to_string()
+  } else {
+    format!(
+      r#"<div class="notice"><p><em>:[[ :war-room-followers-selected: {selected_count}: ]]:</em></p></div>{rendered_posts}"#,
+      selected_count = war_room_chunk.total_followers,
+      rendered_posts = war_room_chunk.posts_html
+    )
+  };
+
+  let sentinel_html = if war_room_chunk.has_more {
+    r#"<div id="posts-load-sentinel"></div>"#
+  } else {
+    ""
+  };
+
+  let html = format!(
+    r#"<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
+  <link rel="stylesheet" type="text/css" href="/css/is-by_mobile.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <script src="/js/is-by_user.js" type="text/javascript"></script>
+  <title>:[[ :war-room: {ib_user}: ]]:</title>
+</head>
+
+<body>
+  <form id="select-user-form" action="/" method="GET">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <form id="select-post-form" action="https://{DOMAIN}/v1/showpost" method="POST">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <form id="edit-profile-form" action="https://{DOMAIN}/v1/editprofile" method="GET">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <div id="main-section">
+    <div id="media-section">
+      <div>
+        {advert_html}
+      </div>
+      <div id="post-form-section">
+        <form id="post-form" action="https://{DOMAIN}/v1/post" method="POST">
+          <div id="post-message"></div>
+          <div id="post-character-count"></div>
+          <input type="hidden" name="ib_uid" value="{ib_uid}">
+          <input type="hidden" name="ib_user" value="{ib_user}">
+          <input class="post" type="text" name="post" autocomplete="off" maxlength="1024" required>
+          <input id="post-cancel" class="post-cancel" type="button" value="Cancel">
+          <input class="post-submit" type="submit" value="Post">
+        </form>
+      </div>
+      <div id="selected-user-posts-section" class="post-section" data-feed-type="warroom" data-ib-uid="{ib_uid}" data-ib-user="{ib_user}" data-war-room-offset="{war_room_offset}">
+        <div class="notice"><p><em>:[[ :war-room: ]]:</em></p></div>
+        {war_room_content}
+        {sentinel_html}
+      </div>
+    </div>
+    <div id="user-search-section">
+      <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Users" required>
+        <input type="submit" value="Search">
+      </form>
+      <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Projects" required>
+        <input type="submit" value="Search Projects">
+      </form>
+    </div><br>
+  </div>
+</div>
+</body>
+
+</html>"#,
+    ib_uid = ib_uid,
+    ib_user = escape_html(ib_user),
+    advert_html = advert_html,
+    war_room_content = war_room_content,
+    war_room_offset = war_room_chunk.next_offset,
+    sentinel_html = sentinel_html
+  );
+
+  Ok(html)
+}
+
 async fn render_inbox_html(
   state: &AppState,
   ib_uid: i64,
@@ -7048,11 +7157,28 @@ async fn war_room(
     return HttpResponse::Unauthorized().body("Login required");
   }
 
-  match render_war_room_html(&state, query.ib_uid, &query.ib_user, session_uid).await {
-    Ok(html) => HttpResponse::Ok()
-      .content_type("text/html; charset=utf-8")
-      .body(html),
-    Err(err) => HttpResponse::InternalServerError().body(err),
+  let mut is_mobile = false;
+  if let Some(user_agent) = req.headers().get("user-agent") {
+    if let Ok(ua_str) = user_agent.to_str() {
+      let ua_lower = ua_str.to_lowercase();
+      is_mobile = ua_lower.contains("mobi") || ua_lower.contains("android") || ua_lower.contains("iphone") || ua_lower.contains("ipad");
+    }
+  }
+
+  if is_mobile {
+    match render_war_room_mobile_html(&state, query.ib_uid, &query.ib_user, session_uid).await {
+      Ok(html) => HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html),
+      Err(err) => HttpResponse::InternalServerError().body(err),
+    }
+  } else {
+    match render_war_room_html(&state, query.ib_uid, &query.ib_user, session_uid).await {
+      Ok(html) => HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html),
+      Err(err) => HttpResponse::InternalServerError().body(err),
+    }
   }
 }
 
