@@ -311,8 +311,10 @@ textarea {
 }
 
 .post input[type=text],
-.edit-pro input[type=text] {
-  width: 400px !important;
+.edit-pro input[type=text],
+.delete-post-button input[type=submit] {
+  width: calc(100% - 12px) !important;
+  max-width: 400px !important;
 }
 
 #user-search-section {
