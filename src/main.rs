@@ -4432,27 +4432,25 @@ async fn render_war_room_mobile_html(
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
   </form>
-  <div id="main-section">
-    <div id="media-section">
-      <div>
-        {advert_html}
-      </div>
-      <div id="post-form-section">
-        <form id="post-form" action="https://{DOMAIN}/v1/post" method="POST">
-          <div id="post-message"></div>
-          <div id="post-character-count"></div>
-          <input type="hidden" name="ib_uid" value="{ib_uid}">
-          <input type="hidden" name="ib_user" value="{ib_user}">
-          <input class="post" type="text" name="post" autocomplete="off" maxlength="1024" required>
-          <input id="post-cancel" class="post-cancel" type="button" value="Cancel">
-          <input class="post-submit" type="submit" value="Post">
-        </form>
-      </div>
-      <div id="selected-user-posts-section" class="post-section" data-feed-type="warroom" data-ib-uid="{ib_uid}" data-ib-user="{ib_user}" data-war-room-offset="{war_room_offset}">
-        <div class="notice"><p><em>:[[ :war-room: ]]:</em></p></div>
-        {war_room_content}
-        {sentinel_html}
-      </div>
+  <div class="content">
+    <div>
+      {advert_html}
+    </div>
+    <div id="post-form-section">
+      <form id="post-form" action="https://{DOMAIN}/v1/post" method="POST">
+        <div id="post-message"></div>
+        <div id="post-character-count"></div>
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input class="post" type="text" name="post" autocomplete="off" maxlength="1024" required>
+        <input id="post-cancel" class="post-cancel" type="button" value="Cancel">
+        <input class="post-submit" type="submit" value="Post">
+      </form>
+    </div>
+    <div id="selected-user-posts-section" class="post-section" data-feed-type="warroom" data-ib-uid="{ib_uid}" data-ib-user="{ib_user}" data-war-room-offset="{war_room_offset}">
+      <div class="notice"><p><em>:[[ :war-room: ]]:</em></p></div>
+      {war_room_content}
+      {sentinel_html}
     </div>
     <div id="user-search-section">
       <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
