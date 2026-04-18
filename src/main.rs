@@ -2036,7 +2036,7 @@ async fn render_profile_mobile_html(
     .unwrap_or(false);
 
   let edit_profile_link = if show_edit_profile_link {
-    format!(r#"<a href="https://{DOMAIN}/v1/editprofile?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :edit-profile: ]]:</a>"#, ib_uid = ib_uid, ib_user = escape_html(ib_user))
+    format!(r#"<p><a href="https://{DOMAIN}/v1/editprofile?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :edit-profile: ]]:</a></p>"#, ib_uid = ib_uid, ib_user = escape_html(ib_user))
   } else {
     String::new()
   };
