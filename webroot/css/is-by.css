@@ -506,7 +506,7 @@ a:hover {
     position: relative;
     top: 0;
     margin: 44px auto 12px auto;
-    width: 422px;
+    width: 380px;
     z-index: 2;
 }
 
@@ -523,7 +523,7 @@ a:hover {
     border-radius: 4px;
     padding: 6px 6px 6px 6px;
     margin: 6px 6px 6px 6px;
-    width: 422px;
+    width: 380px;
     margin-top: 10px;
 }
 
@@ -540,7 +540,7 @@ a:hover {
     border-radius: 4px;
     padding: 6px 6px 6px 6px;
     margin: 6px 6px 6px 6px;
-    width: 380px;
+    width: 360px;
     margin-top: 10px;
 }
 
@@ -820,7 +820,7 @@ a:hover {
     border-radius: 4px;
     padding: 6px 6px 6px 6px;
     margin: 6px 6px 6px 6px;
-    width: 380px;
+    width: 360px;
     height: 33px;
 }
 
