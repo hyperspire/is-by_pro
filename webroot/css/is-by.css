@@ -317,7 +317,7 @@ input[type=password] {
     right: 0;
 }
 
-#userlist-section > p {
+#userlist-section>p {
     width: 100%;
     text-align: left;
     margin: 4px 0;
@@ -810,7 +810,7 @@ input[type=password] {
 }
 
 .delete-post-button,
-.delete-post-button input[type=submit], 
+.delete-post-button input[type=submit],
 #profile-section #unfollow-form input[type=submit] {
     color: #000000 !important;
     text-decoration: none;
@@ -1151,6 +1151,7 @@ input[type=password] {
     font-size: 11px;
     margin: 4px 0 0 0;
 }
+
 #posts-load-sentinel {
     text-align: center;
     color: #3F3F3F;
