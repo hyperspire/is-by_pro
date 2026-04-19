@@ -2030,6 +2030,57 @@ async fn render_profile_mobile_html(
     None
   };
 
+  let follower_list: Vec<String> = viewed_user_row
+    .as_ref()
+    .map(|row| {
+      row
+        .followers
+        .split(',')
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+        .collect()
+    })
+    .unwrap_or_default();
+
+  let show_unfollow = session_username
+    .as_ref()
+    .map(|username| {
+      follower_list
+        .iter()
+        .any(|follower| follower.eq_ignore_ascii_case(username))
+    })
+    .unwrap_or(false);
+
+  let show_follow = session_username
+    .as_ref()
+    .map(|username| !show_unfollow && !username.eq_ignore_ascii_case(&viewed_username))
+    .unwrap_or(false);
+
+  let follow_form_html = if show_follow {
+    format!(
+      r#"<form id="follow-form" action="https://{DOMAIN}/v1/follow" method="POST">
+        <input type="hidden" name="target_user" value="{target_user}">
+        <input type="submit" value="Follow">
+      </form>"#,
+      target_user = escape_html(&viewed_username)
+    )
+  } else {
+    String::new()
+  };
+
+  let unfollow_form_html = if show_unfollow {
+    format!(
+      r#"<form id="unfollow-form" action="https://{DOMAIN}/v1/unfollow" method="POST">
+        <input type="hidden" name="target_user" value="{target_user}">
+        <input type="submit" value="Unfollow">
+      </form>"#,
+      target_user = escape_html(&viewed_username)
+    )
+  } else {
+    String::new()
+  };
+
   let show_edit_profile_link = session_username
     .as_ref()
     .map(|username| username.eq_ignore_ascii_case(&viewed_username))
@@ -2114,6 +2165,18 @@ async fn render_profile_mobile_html(
     edit_profile_link = edit_profile_link,
     github_identity_html = github_identity_html,
   );
+
+  html += &format!(
+      r#"<div id="follow-section">
+      {follow_form_html}
+      {unfollow_form_html}
+    </div>"#,
+      follow_form_html = follow_form_html,
+      unfollow_form_html = unfollow_form_html
+    );
+  } else {
+    // ib_pro_result is Err, no profile info to display
+  }
 
   let ib_post_results_length: i64 = sqlx::query_scalar(
       "SELECT COUNT(*) FROM post WHERE post.ib_uid = ? AND (post.parentid = '' OR post.parentid IS NULL)"
@@ -2219,7 +2282,8 @@ async fn render_profile_mobile_html(
   let session_nav_uid = session_uid.unwrap_or(ib_uid);
   let session_nav_user = session_username.as_deref().unwrap_or(ib_user);
 
-  html += &format!(r#"
+  if session_uid.is_some() {
+    html += &format!(r#"
     <div id="user-search-section">
       <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
         <input type="hidden" name="ib_uid" value="{ib_uid}">
