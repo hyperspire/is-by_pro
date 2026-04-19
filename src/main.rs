@@ -3983,7 +3983,7 @@ async fn render_projects_mobile_html(
             style="width: 32px; height: 32px; border-radius: 50%;">
         </div>
       </a>
-      <a class="projects-display" href="https://{DOMAIN}/v1/projects?ib_uid={viewed_ib_uid}&ib_user={viewed_ib_user}">
+      <a class="projects-display" href="https://{DOMAIN}/v1/projects?ib_uid={session_ib_uid}&ib_user={session_ib_user}">
         <div class="nav-icon">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
