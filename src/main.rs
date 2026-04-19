@@ -3721,7 +3721,7 @@ async fn render_projects_mobile_html(
     .map_err(|e| format!("Projects query failed: {}", e))?;
 
   let projects_html = if rows.is_empty() {
-    "<p><em>:[[ :no-projects-yet: ]]:</em></p>".to_string()
+    "<p class=\"notice\"><em>:[[ :no-projects-yet: ]]:</em></p>".to_string()
   } else {
     let reinforcement_names: HashSet<String> = rows
       .iter()
