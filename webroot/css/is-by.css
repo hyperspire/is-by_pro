@@ -362,8 +362,8 @@ a:hover {
 #user-search-form input[type=submit],
 #project-search-form input[type=submit],
 #profile-section #follow-form input[type=submit],
-#profile-section #unfollow-form input[type=submit],
 #profile-section #dm-form input[type=submit],
+#follow-form input[type=submit],
 #dm-form input[type=submit] {
     color: #1C1C1C !important;
     text-decoration: none;
@@ -684,7 +684,8 @@ a:hover {
 
 .delete-post-button,
 .delete-post-button input[type=submit],
-#profile-section #unfollow-form input[type=submit] {
+#profile-section #unfollow-form input[type=submit],
+#unfollow-form input[type=submit] {
     color: #000000 !important;
     text-decoration: none;
     font-weight: bold;
