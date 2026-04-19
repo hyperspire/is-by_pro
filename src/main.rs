@@ -2216,7 +2216,7 @@ async fn render_profile_mobile_html(
   let display_rows = &ib_post_results[..ib_post_results.len().min(20)];
 
   let mut selected_user_posts_response_content = format!(
-    r#"<div class="notice"><p><em>:[[ :for-the: [[ posts: is-by: {ib_post_results_length}: is-with: showing-latest-results: ]]:</em></p></div>"#,
+    r#"<br><div class="notice"><p><em>:[[ :for-the: [[ posts: is-by: {ib_post_results_length}: is-with: showing-latest-results: ]]:</em></p></div>"#,
     ib_post_results_length = ib_post_results_length,
   );
 
