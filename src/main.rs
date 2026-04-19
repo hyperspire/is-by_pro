@@ -2169,12 +2169,15 @@ async fn render_profile_mobile_html(
     <p class="description">{ib_services}</p>
     <p class="description">{ib_location}</p>
     <p><a target="_blank" rel="noopener" href="{ib_website}">{ib_website}</a></p>
-    {edit_profile_link}"#,
+    {edit_profile_link}
+    <p><a class="projects-display" href="https://{DOMAIN}/v1/projects?ib_uid={viewed_ib_uid}&ib_user={viewed_ib_user}">:[[ :projects: ]]:</a></p>"#,
     ib_ibp = escape_html(&ib_pro.ibp),
     ib_pro = escape_html(&ib_pro.pro),
     ib_services = escape_html(&ib_pro.services),
     ib_location = escape_html(&ib_pro.location),
     ib_website = escape_html(&ib_pro.website),
+    viewed_ib_uid = ib_uid,
+    viewed_ib_user = escape_html(ib_user),
     edit_profile_link = edit_profile_link,
     github_identity_html = github_identity_html,
     rank_name = rank_name,
@@ -2499,7 +2502,7 @@ async fn render_profile_html(
       format!(
         r#"<form id="follow-form" action="https://{DOMAIN}/v1/follow" method="POST">
         <input type="hidden" name="target_user" value="{target_user}">
-        <input type="submit" value="Follow" style="background-color: #2ecc71; color: white;">
+        <input type="submit" value="Follow" style="background-color: #00ee33; color: #1C1C1C;">
       </form>"#,
         target_user = escape_html(&viewed_username)
       )
@@ -2511,7 +2514,7 @@ async fn render_profile_html(
       format!(
         r#"<form id="unfollow-form" action="https://{DOMAIN}/v1/unfollow" method="POST">
         <input type="hidden" name="target_user" value="{target_user}">
-        <input type="submit" value="Unfollow" style="background-color: #ff8c00; color: white;">
+        <input type="submit" value="Unfollow" style="background-color: #ff3300; color: #000000;">
       </form>"#,
         target_user = escape_html(&viewed_username)
       )
@@ -4011,9 +4014,7 @@ async fn render_projects_mobile_html(
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
     session_ib_uid = session_nav_uid,
-    session_ib_user = escape_html(session_nav_user),
-    viewed_ib_uid = ib_uid,
-    viewed_ib_user = escape_html(ib_user)
+    session_ib_user = escape_html(session_nav_user)
   );
 
   Ok(html)
