@@ -2061,7 +2061,7 @@ async fn render_profile_mobile_html(
     format!(
       r#"<form id="follow-form" action="https://{DOMAIN}/v1/follow" method="POST">
         <input type="hidden" name="target_user" value="{target_user}">
-        <input type="submit" value="Follow" style="background-color: #00ee33; color: #3F3F3F;">
+        <input type="submit" value="Follow">
       </form>"#,
       target_user = escape_html(&viewed_username)
     )
@@ -2073,7 +2073,7 @@ async fn render_profile_mobile_html(
     format!(
       r#"<form id="unfollow-form" action="https://{DOMAIN}/v1/unfollow" method="POST">
         <input type="hidden" name="target_user" value="{target_user}">
-        <input type="submit" value="Unfollow" style="background-color: #ff3300; color: #000000;">
+        <input type="submit" value="Unfollow">
       </form>"#,
       target_user = escape_html(&viewed_username)
     )
