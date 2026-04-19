@@ -2146,11 +2146,24 @@ async fn render_profile_mobile_html(
     .fetch_one(&state.db_pool)
     .await;
 
+  let total_acks = match sqlx::query_as::<_, UserHoverLookupRow>(
+    "SELECT CONVERT(ib_uid USING utf8mb4) AS ib_uid, username, COALESCE(followers, '') AS followers, COALESCE(total_acknowledgments, 0) AS total_acknowledgments FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1",
+  )
+  .bind(ib_user)
+  .fetch_optional(&state.db_pool)
+  .await
+  {
+    Ok(Some(row)) => row.total_acknowledgments,
+    _ => 0,
+  };
+  let (rank_level, rank_name) = rank_from_unique_acknowledgments(total_acks);
+
   if let Ok(ib_pro) = ib_pro_result {
     let github_identity_html = render_github_identity_html(state, ib_user).await;
 
     html += &format!(r#"
     <p><strong>{github_identity_html}</strong></p>
+    <p class="description">{rank_name} {rank_level}</p>
     <p class="paragraph"><em>{ib_ibp}</em></p>
     <p class="description">{ib_pro}</p>
     <p class="description">{ib_services}</p>
@@ -2164,6 +2177,8 @@ async fn render_profile_mobile_html(
     ib_website = escape_html(&ib_pro.website),
     edit_profile_link = edit_profile_link,
     github_identity_html = github_identity_html,
+    rank_name = rank_name,
+    rank_level = rank_level,
   );
 
   html += &format!(
@@ -3936,7 +3951,6 @@ async fn render_projects_mobile_html(
 
   let session_nav_uid = session_uid.unwrap_or(ib_uid);
   let session_nav_user = session_username.as_deref().unwrap_or(ib_user);
-
   html += &format!(r#"
     <div id="user-search-section">
       <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
