@@ -5555,8 +5555,23 @@ async fn render_single_post_mobile_html(
     }
   }
 
+  let session_username = if let Some(uid) = session_uid {
+    match sqlx::query_as::<_, SessionUserRow>(
+      "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
+    )
+    .bind(uid.to_string())
+    .fetch_optional(&state.db_pool)
+    .await
+    {
+      Ok(Some(row)) if !row.username.trim().is_empty() => Some(row.username),
+      _ => None,
+    }
+  } else {
+    None
+  };
+  
   let session_nav_uid = session_uid.unwrap_or(ib_uid);
-  let session_nav_user = ib_user;
+  let session_nav_user = session_username.as_deref().unwrap_or(ib_user);
 
   let html = format!(
     r#"<!DOCTYPE html>
