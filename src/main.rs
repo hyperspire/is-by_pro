@@ -3977,9 +3977,9 @@ async fn render_projects_mobile_html(
           </svg>
         </div>
       </a>
-      <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{viewed_ib_user}">
+      <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{session_ib_user}">
         <div class="nav-icon">
-          <img src="https://github.com/{viewed_ib_user}.png?size=64" alt="Profile"
+          <img src="https://github.com/{session_ib_user}.png?size=64" alt="Profile"
             style="width: 32px; height: 32px; border-radius: 50%;">
         </div>
       </a>
