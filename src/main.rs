@@ -2059,10 +2059,10 @@ async fn render_profile_mobile_html(
 
   let follow_form_html = if show_follow {
     format!(
-      r#"<p><form id="follow-form" action="https://{DOMAIN}/v1/follow" method="POST">
+      r#"<form id="follow-form" action="https://{DOMAIN}/v1/follow" method="POST">
         <input type="hidden" name="target_user" value="{target_user}">
-        <input type="submit" value="Follow">
-      </form></p>"#,
+        <input type="submit" value="Follow" style="background-color: #00ee33; color: #3F3F3F;">
+      </form>"#,
       target_user = escape_html(&viewed_username)
     )
   } else {
@@ -2071,10 +2071,10 @@ async fn render_profile_mobile_html(
 
   let unfollow_form_html = if show_unfollow {
     format!(
-      r#"<p><form id="unfollow-form" action="https://{DOMAIN}/v1/unfollow" method="POST">
+      r#"<form id="unfollow-form" action="https://{DOMAIN}/v1/unfollow" method="POST">
         <input type="hidden" name="target_user" value="{target_user}">
-        <input type="submit" value="Unfollow">
-      </form></p>"#,
+        <input type="submit" value="Unfollow" style="background-color: #ff3300; color: #000000;">
+      </form>"#,
       target_user = escape_html(&viewed_username)
     )
   } else {
@@ -2481,7 +2481,7 @@ async fn render_profile_html(
       format!(
         r#"<form id="follow-form" action="https://{DOMAIN}/v1/follow" method="POST">
         <input type="hidden" name="target_user" value="{target_user}">
-        <input type="submit" value="Follow">
+        <input type="submit" value="Follow" style="background-color: #2ecc71; color: white;">
       </form>"#,
         target_user = escape_html(&viewed_username)
       )
@@ -2493,7 +2493,7 @@ async fn render_profile_html(
       format!(
         r#"<form id="unfollow-form" action="https://{DOMAIN}/v1/unfollow" method="POST">
         <input type="hidden" name="target_user" value="{target_user}">
-        <input type="submit" value="Unfollow">
+        <input type="submit" value="Unfollow" style="background-color: #ff8c00; color: white;">
       </form>"#,
         target_user = escape_html(&viewed_username)
       )
