@@ -586,7 +586,7 @@ a:hover {
 
 .reply-post {
     margin-left: 28px;
-    width: 340px;
+    width: 340px !important;
 }
 
 .post-section {
