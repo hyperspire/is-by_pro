@@ -3986,6 +3986,20 @@ async fn render_projects_mobile_html(
             style="width: 32px; height: 32px; border-radius: 50%;">
         </div>
       </a>
+      <a class="war-room-display"
+        href="https://{DOMAIN}/v1/warroom?ib_uid={session_ib_uid}&amp;ib_user={session_ib_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <circle cx="12" cy="12" r="4"></circle>
+            <line x1="12" y1="2" x2="12" y2="8"></line>
+            <line x1="12" y1="16" x2="12" y2="22"></line>
+            <line x1="2" y1="12" x2="8" y2="12"></line>
+            <line x1="16" y1="12" x2="22" y2="12"></line>
+          </svg>
+        </div>
+      </a>
       <a class="projects-display" href="https://{DOMAIN}/v1/projects?ib_uid={session_ib_uid}&ib_user={session_ib_user}">
         <div class="nav-icon">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
