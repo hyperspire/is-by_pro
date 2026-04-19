@@ -2059,10 +2059,10 @@ async fn render_profile_mobile_html(
 
   let follow_form_html = if show_follow {
     format!(
-      r#"<form id="follow-form" action="https://{DOMAIN}/v1/follow" method="POST">
+      r#"<p><form id="follow-form" action="https://{DOMAIN}/v1/follow" method="POST">
         <input type="hidden" name="target_user" value="{target_user}">
         <input type="submit" value="Follow">
-      </form>"#,
+      </form></p>"#,
       target_user = escape_html(&viewed_username)
     )
   } else {
@@ -2071,10 +2071,10 @@ async fn render_profile_mobile_html(
 
   let unfollow_form_html = if show_unfollow {
     format!(
-      r#"<form id="unfollow-form" action="https://{DOMAIN}/v1/unfollow" method="POST">
+      r#"<p><form id="unfollow-form" action="https://{DOMAIN}/v1/unfollow" method="POST">
         <input type="hidden" name="target_user" value="{target_user}">
         <input type="submit" value="Unfollow">
-      </form>"#,
+      </form></p>"#,
       target_user = escape_html(&viewed_username)
     )
   } else {
