@@ -3934,6 +3934,9 @@ async fn render_projects_mobile_html(
     projects_html = projects_html,
   );
 
+  let session_nav_uid = session_uid.unwrap_or(ib_uid);
+  let session_nav_user = session_username.as_deref().unwrap_or(ib_user);
+
   html += &format!(r#"
     <div id="user-search-section">
       <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
@@ -3993,6 +3996,8 @@ async fn render_projects_mobile_html(
 </html>"#,
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
+    session_ib_uid = session_nav_uid,
+    session_ib_user = escape_html(session_nav_user),
     viewed_ib_uid = ib_uid,
     viewed_ib_user = escape_html(ib_user)
   );
