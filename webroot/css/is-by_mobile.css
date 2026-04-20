@@ -508,8 +508,8 @@ body {
 .pwa-nav {
   position: sticky;
   bottom: 0;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  display: flex;
+  flex-direction: row;
   gap: 10px;
   width: 100%;
   padding: 14px 0 calc(14px + env(safe-area-inset-bottom));
@@ -521,6 +521,8 @@ body {
 }
 
 .pwa-nav-item {
+    flex: 1 1 0;
+    text-align: center;
   appearance: none;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
