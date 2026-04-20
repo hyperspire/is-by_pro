@@ -45,13 +45,23 @@ function showUpdateBanner(registration) {
   }
 
   updateBanner.hidden = false;
-  updateButton.onclick = () => {
-    if (registration.waiting) {
-      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-      updateButton.disabled = true;
-      updateButton.textContent = 'Refreshing...';
-    }
-  };
+  
+  // Remove any existing listeners
+  const newButton = updateButton.cloneNode(true);
+  updateButton.parentNode.replaceChild(newButton, updateButton);
+  
+  // Attach fresh listener
+  const freshButton = document.getElementById('update-banner-action');
+  if (freshButton) {
+    freshButton.addEventListener('click', () => {
+      if (registration.waiting) {
+        console.log('Sending SKIP_WAITING message to service worker');
+        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        freshButton.disabled = true;
+        freshButton.textContent = 'Refreshing...';
+      }
+    });
+  }
 }
 
 function hideUpdateBanner() {
@@ -151,6 +161,7 @@ async function registerServiceWorker() {
 function bindInstallPrompt() {
   const installButton = document.getElementById('install-app-button');
   if (!installButton) {
+    console.warn('Install button not found in DOM');
     return;
   }
 
@@ -173,6 +184,7 @@ function bindInstallPrompt() {
   }
 
   window.addEventListener('beforeinstallprompt', (event) => {
+    console.log('beforeinstallprompt event triggered');
     event.preventDefault();
     deferredInstallPrompt = event;
     installButton.hidden = false;
@@ -182,36 +194,50 @@ function bindInstallPrompt() {
   });
 
   window.addEventListener('appinstalled', () => {
+    console.log('appinstalled event triggered');
     deferredInstallPrompt = null;
     installButton.hidden = true;
     setInstallStatus('is-by.pro is installed on this device.');
     setInstallGuide('', false);
   });
 
-  installButton.addEventListener('click', async () => {
+  installButton.addEventListener('click', async (event) => {
+    console.log('Install button clicked');
+    event.preventDefault();
+    event.stopPropagation();
+    
     if (isIosDevice() && !deferredInstallPrompt) {
+      console.log('iOS device without install prompt');
       setInstallStatus('Use Safari Share > Add to Home Screen to install is-by.pro.');
       setInstallGuide('In Safari, tap Share, then choose Add to Home Screen.', true);
       return;
     }
 
     if (!deferredInstallPrompt) {
+      console.log('No install prompt deferred');
       setInstallStatus('Use your browser menu to add this app to the home screen.');
       setInstallGuide('Open the browser menu and choose Install App or Add to Home Screen.', true);
       return;
     }
 
-    deferredInstallPrompt.prompt();
-    const choice = await deferredInstallPrompt.userChoice;
-    deferredInstallPrompt = null;
-    installButton.hidden = true;
+    try {
+      console.log('Showing install prompt');
+      deferredInstallPrompt.prompt();
+      const choice = await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+      installButton.hidden = true;
 
-    if (choice.outcome === 'accepted') {
-      setInstallStatus('Installation accepted. Launch the app from your home screen.');
-      setInstallGuide('', false);
-    } else {
-      setInstallStatus('Installation dismissed. You can install it later from the browser menu.');
-      setInstallGuide('Open the browser menu and choose Install App or Add to Home Screen when you are ready.', true);
+      if (choice.outcome === 'accepted') {
+        console.log('User accepted installation');
+        setInstallStatus('Installation accepted. Launch the app from your home screen.');
+        setInstallGuide('', false);
+      } else {
+        console.log('User dismissed installation');
+        setInstallStatus('Installation dismissed. You can install it later from the browser menu.');
+        setInstallGuide('Open the browser menu and choose Install App or Add to Home Screen when you are ready.', true);
+      }
+    } catch (error) {
+      console.error('Error during install prompt:', error);
     }
   });
 }

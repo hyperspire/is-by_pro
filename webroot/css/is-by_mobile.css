@@ -439,11 +439,22 @@ body {
 
 .install-note {
   margin-top: 16px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  background: rgba(88, 166, 255, 0.08);
-  border: 1px solid rgba(88, 166, 255, 0.16);
+  padding: 12px 14px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: all 0.2s ease;
 }
+
+.update-banner-action:active,
+.update-banner-action:hover {
+  transform: scale(0.98);
+  opacity: 0.9;
+}
+
+.update-banner-action:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 
 .install-guide {
   margin-top: 12px;
@@ -451,6 +462,19 @@ body {
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  max-width: 100%;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: all 0.2s ease;
+}
+
+.install-chip:active,
+.install-chip:hover,
+.btn-secondary:active,
+.btn-secondary:hover {
+  transform: scale(0.98);
+  opacity: 0.85;
 }
 
 .install-guide strong {
