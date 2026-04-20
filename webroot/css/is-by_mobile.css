@@ -544,6 +544,7 @@ body {
 
 .list-divider {
   text-align: left !important;
+  width: 250px;
 }
 
 .list-divider > p,
