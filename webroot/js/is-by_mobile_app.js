@@ -1,6 +1,7 @@
 const APP_PANELS = ['home', 'mission', 'access'];
 const SHELL_CACHE_NAME = 'is-by-mobile-shell-v4';
 const SHELL_VERSION = 'mobile-shell-v4';
+const UPDATE_BANNER_SUPPRESS_KEY = 'is-by-mobile-update-banner-suppressed';
 
 let deferredInstallPrompt = null;
 let refreshingForUpdate = false;
@@ -38,10 +39,82 @@ function setInstallGuide(message, visible = true) {
   installGuide.hidden = !visible;
 }
 
+function getSuppressedWorkerUrl() {
+  try {
+    return window.sessionStorage.getItem(UPDATE_BANNER_SUPPRESS_KEY) || '';
+  } catch (_error) {
+    return '';
+  }
+}
+
+function clearUpdateBannerSuppression() {
+  try {
+    window.sessionStorage.removeItem(UPDATE_BANNER_SUPPRESS_KEY);
+  } catch (_error) {
+    // Ignore storage exceptions in strict/private modes.
+  }
+}
+
+function suppressUpdateBannerForSession(registration) {
+  const waitingUrl = registration?.waiting?.scriptURL || '';
+  if (!waitingUrl) {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(UPDATE_BANNER_SUPPRESS_KEY, waitingUrl);
+  } catch (_error) {
+    // Ignore storage exceptions in strict/private modes.
+  }
+}
+
+function reconcileUpdateBannerSuppression(registration) {
+  const waitingUrl = registration?.waiting?.scriptURL || '';
+  if (!waitingUrl) {
+    return;
+  }
+
+  const suppressedUrl = getSuppressedWorkerUrl();
+  if (suppressedUrl && suppressedUrl !== waitingUrl) {
+    clearUpdateBannerSuppression();
+  }
+}
+
+function isUpdateBannerSuppressedForSession(registration) {
+  const waitingUrl = registration?.waiting?.scriptURL || '';
+  const suppressedUrl = getSuppressedWorkerUrl();
+  return Boolean(waitingUrl && suppressedUrl && waitingUrl === suppressedUrl);
+}
+
+function suppressUpdateBannerForReloadCycle() {
+  try {
+    window.sessionStorage.setItem(`${UPDATE_BANNER_SUPPRESS_KEY}:reloading`, '1');
+  } catch (_error) {
+    // Ignore storage exceptions in strict/private modes.
+  }
+}
+
+function clearReloadCycleSuppression() {
+  try {
+    window.sessionStorage.removeItem(`${UPDATE_BANNER_SUPPRESS_KEY}:reloading`);
+  } catch (_error) {
+    // Ignore storage exceptions in strict/private modes.
+  }
+}
+
+function isReloadCycleSuppressed() {
+  try {
+    return window.sessionStorage.getItem(`${UPDATE_BANNER_SUPPRESS_KEY}:reloading`) === '1';
+  } catch (_error) {
+    return false;
+  }
+}
+
 function showUpdateBanner(registration) {
   const updateBanner = document.getElementById('update-banner');
   const updateButton = document.getElementById('update-banner-action');
-  if (!updateBanner || !updateButton || !registration?.waiting) {
+  reconcileUpdateBannerSuppression(registration);
+  if (!updateBanner || !updateButton || !registration?.waiting || isUpdateBannerSuppressedForSession(registration)) {
     return;
   }
 
@@ -56,6 +129,8 @@ function showUpdateBanner(registration) {
   if (freshButton) {
     freshButton.addEventListener('click', () => {
       if (registration.waiting) {
+        suppressUpdateBannerForSession(registration);
+        suppressUpdateBannerForReloadCycle();
         console.log('Sending SKIP_WAITING message to service worker');
         registration.waiting.postMessage({ type: 'SKIP_WAITING' });
         freshButton.disabled = true;
@@ -63,6 +138,22 @@ function showUpdateBanner(registration) {
       }
     });
   }
+}
+
+function hasNewWaitingWorker(registration) {
+  if (!registration || !registration.waiting) {
+    return false;
+  }
+
+  const waitingUrl = registration.waiting.scriptURL || '';
+  const activeUrl = registration.active?.scriptURL || '';
+
+  // Show the banner only when the waiting worker is different from active.
+  if (activeUrl && waitingUrl === activeUrl) {
+    return false;
+  }
+
+  return true;
 }
 
 function hideUpdateBanner() {
@@ -78,9 +169,17 @@ function hideUpdateBanner() {
 }
 
 function watchServiceWorkerRegistration(registration) {
-  if (registration.waiting) {
-    setInstallStatus('An updated shell is ready. Reload the page to apply it.');
-    showUpdateBanner(registration);
+  reconcileUpdateBannerSuppression(registration);
+
+  if (hasNewWaitingWorker(registration)) {
+    if (isUpdateBannerSuppressedForSession(registration)) {
+      hideUpdateBanner();
+    } else {
+      setInstallStatus('An updated shell is ready. Reload the page to apply it.');
+      showUpdateBanner(registration);
+    }
+  } else {
+    hideUpdateBanner();
   }
 
   registration.addEventListener('updatefound', () => {
@@ -90,9 +189,17 @@ function watchServiceWorkerRegistration(registration) {
     }
 
     installingWorker.addEventListener('statechange', () => {
-      if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-        setInstallStatus('An updated shell is ready. Refresh the page to apply it.');
-        showUpdateBanner(registration);
+      if (installingWorker.state === 'installed' && navigator.serviceWorker.controller && hasNewWaitingWorker(registration)) {
+        reconcileUpdateBannerSuppression(registration);
+        if (isUpdateBannerSuppressedForSession(registration)) {
+          hideUpdateBanner();
+        } else {
+          setInstallStatus('An updated shell is ready. Refresh the page to apply it.');
+          showUpdateBanner(registration);
+        }
+      } else if (installingWorker.state === 'activated') {
+        clearReloadCycleSuppression();
+        hideUpdateBanner();
       }
     });
   });
@@ -147,10 +254,12 @@ async function registerServiceWorker() {
     watchServiceWorkerRegistration(registration);
 
     navigator.serviceWorker.addEventListener('controllerchange', () => {
+      hideUpdateBanner();
       if (refreshingForUpdate) {
         return;
       }
       refreshingForUpdate = true;
+      clearReloadCycleSuppression();
       window.location.reload();
     });
   } catch (error) {
@@ -283,6 +392,8 @@ function bindRefreshFallback() {
       if (registration) {
         await registration.update();
         if (registration.waiting) {
+          suppressUpdateBannerForSession(registration);
+          suppressUpdateBannerForReloadCycle();
           registration.waiting.postMessage({ type: 'SKIP_WAITING' });
           updateButton.disabled = true;
           updateButton.textContent = 'Refreshing...';
@@ -300,6 +411,9 @@ function bindRefreshFallback() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  if (isReloadCycleSuppressed()) {
+    hideUpdateBanner();
+  }
   hideUpdateBanner();
   bindRefreshFallback();
   bindPanelNavigation();
