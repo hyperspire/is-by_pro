@@ -1,5 +1,6 @@
 const APP_PANELS = ['home', 'mission', 'access'];
-const SHELL_CACHE_NAME = 'is-by-mobile-shell-v3';
+const SHELL_CACHE_NAME = 'is-by-mobile-shell-v4';
+const SHELL_VERSION = 'mobile-shell-v4';
 
 let deferredInstallPrompt = null;
 let refreshingForUpdate = false;
@@ -140,7 +141,7 @@ async function registerServiceWorker() {
   }
 
   try {
-    const registration = await navigator.serviceWorker.register('/sw.js?v=mobile-shell-v3', { scope: '/' });
+    const registration = await navigator.serviceWorker.register(`/sw.js?v=${SHELL_VERSION}`, { scope: '/' });
     registration.update();
     setStatus(`Mobile shell cached: ${SHELL_CACHE_NAME}`);
     watchServiceWorkerRegistration(registration);
@@ -208,15 +209,23 @@ function bindInstallPrompt() {
     
     if (isIosDevice() && !deferredInstallPrompt) {
       console.log('iOS device without install prompt');
+      installButton.textContent = 'Use Share Menu';
       setInstallStatus('Use Safari Share > Add to Home Screen to install is-by.pro.');
       setInstallGuide('In Safari, tap Share, then choose Add to Home Screen.', true);
+      setTimeout(() => {
+        installButton.textContent = 'How to Install';
+      }, 2200);
       return;
     }
 
     if (!deferredInstallPrompt) {
       console.log('No install prompt deferred');
+      installButton.textContent = 'Use Browser Menu';
       setInstallStatus('Use your browser menu to add this app to the home screen.');
       setInstallGuide('Open the browser menu and choose Install App or Add to Home Screen.', true);
+      setTimeout(() => {
+        installButton.textContent = 'Install App';
+      }, 2200);
       return;
     }
 
@@ -256,8 +265,43 @@ function bindConnectivityState() {
   update();
 }
 
+function bindRefreshFallback() {
+  const updateButton = document.getElementById('update-banner-action');
+  if (!updateButton) {
+    return;
+  }
+
+  updateButton.addEventListener('click', async () => {
+    if (updateButton.disabled) {
+      return;
+    }
+
+    updateButton.textContent = 'Checking...';
+
+    try {
+      const registration = await navigator.serviceWorker.getRegistration('/');
+      if (registration) {
+        await registration.update();
+        if (registration.waiting) {
+          registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+          updateButton.disabled = true;
+          updateButton.textContent = 'Refreshing...';
+          return;
+        }
+      }
+
+      // Fallback when no waiting worker exists: force a fresh page load.
+      window.location.reload();
+    } catch (error) {
+      console.error('Refresh fallback failed:', error);
+      window.location.reload();
+    }
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   hideUpdateBanner();
+  bindRefreshFallback();
   bindPanelNavigation();
   bindInstallPrompt();
   bindConnectivityState();
