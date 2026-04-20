@@ -5569,7 +5569,7 @@ async fn render_single_post_mobile_html(
   } else {
     None
   };
-  
+
   let session_nav_uid = session_uid.unwrap_or(ib_uid);
   let session_nav_user = session_username.as_deref().unwrap_or(ib_user);
 
@@ -5597,6 +5597,17 @@ async fn render_single_post_mobile_html(
   <div class="content">
     <div>
       {advert_html}
+    </div>
+    <div id="post-form-section">
+      <form id="post-form" action="https://{DOMAIN}/v1/post" method="POST">
+        <div id="post-message"></div>
+        <div id="post-character-count"></div>
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input class="post" type="text" name="post" autocomplete="off" maxlength="1024" required>
+        <input id="post-cancel" class="post-cancel" type="button" value="Cancel">
+        <input class="post-submit" type="submit" value="Post">
+      </form>
     </div>
     <div id="selected-user-posts-section" class="post-section">
       <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
