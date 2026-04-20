@@ -546,6 +546,18 @@ body {
   text-align: left !important;
 }
 
+.list-divider > p,
+.list-divider > ul,
+.list-divider > ul > li {
+  text-align: left !important;
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.list-divider ul {
+  padding-left: 1.5rem;
+}
+
 @media (min-width: 540px) {
   .app-shell {
     margin: 0 auto;
