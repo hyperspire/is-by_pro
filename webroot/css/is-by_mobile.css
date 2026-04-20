@@ -543,7 +543,7 @@ body {
 }
 
 .list-divider {
-  text-align: left;
+  text-align: left !important;
 }
 
 @media (min-width: 540px) {
