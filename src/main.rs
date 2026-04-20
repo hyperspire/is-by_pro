@@ -4639,7 +4639,7 @@ async fn render_search_projects_mobile_html(
       .map(|term| escape_mysql_regex_token(term))
       .collect();
     let pattern = format!(
-      "(^|[[:space:],])({})[[:space:],]|$)",
+      "(^|[[:space:],])({})([[:space:],]|$)",
       regex_terms.join("|")
     );
 
