@@ -55,6 +55,12 @@ function clearUpdateBannerSuppression() {
   } catch (_error) {
     // Ignore storage exceptions in strict/private modes.
   }
+
+  try {
+    window.localStorage.removeItem(UPDATE_BANNER_SUPPRESS_VERSION_KEY);
+  } catch (_error) {
+    // Ignore storage exceptions in strict/private modes.
+  }
 }
 
 function suppressUpdateBannerForCurrentShellVersion() {
@@ -63,9 +69,23 @@ function suppressUpdateBannerForCurrentShellVersion() {
   } catch (_error) {
     // Ignore storage exceptions in strict/private modes.
   }
+
+  try {
+    window.localStorage.setItem(UPDATE_BANNER_SUPPRESS_VERSION_KEY, SHELL_VERSION);
+  } catch (_error) {
+    // Ignore storage exceptions in strict/private modes.
+  }
 }
 
 function isUpdateBannerSuppressedForCurrentShellVersion() {
+  try {
+    if (window.localStorage.getItem(UPDATE_BANNER_SUPPRESS_VERSION_KEY) === SHELL_VERSION) {
+      return true;
+    }
+  } catch (_error) {
+    // Ignore storage exceptions in strict/private modes.
+  }
+
   try {
     return window.sessionStorage.getItem(UPDATE_BANNER_SUPPRESS_VERSION_KEY) === SHELL_VERSION;
   } catch (_error) {
