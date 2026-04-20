@@ -8,6 +8,9 @@ let deferredInstallPrompt = null;
 let refreshingForUpdate = false;
 
 function isIosDevice() {
+  function isFirefox() {
+    return /firefox/i.test(window.navigator.userAgent || '');
+  }
   return /iphone|ipad|ipod/i.test(window.navigator.userAgent || '');
 }
 
@@ -325,21 +328,28 @@ function bindInstallPrompt() {
     installButton.textContent = 'How to Install';
     setInstallStatus('Safari does not show a PWA prompt. Use the share menu to install.');
     setInstallGuide('In Safari, tap Share, then choose Add to Home Screen.', true);
+  } else if (isFirefox()) {
+    installButton.hidden = false;
+    installButton.textContent = 'How to Install';
+    setInstallStatus('Firefox does not support the install prompt.');
+    setInstallGuide('Open the browser menu and choose "Install" or "Add to Home screen".', true);
   } else {
     installButton.hidden = false;
     installButton.textContent = 'Install App';
     setInstallGuide('If no install prompt appears, open the browser menu and choose Install App or Add to Home Screen.', true);
   }
 
-  window.addEventListener('beforeinstallprompt', (event) => {
-    console.log('beforeinstallprompt event triggered');
-    event.preventDefault();
-    deferredInstallPrompt = event;
-    installButton.hidden = false;
-    installButton.textContent = 'Install App';
-    setInstallStatus('Install is-by.pro for faster access and offline shell support.');
-    setInstallGuide('Tap Install App to add is-by.pro to your home screen.', true);
-  });
+  if (!isFirefox()) {
+    window.addEventListener('beforeinstallprompt', (event) => {
+      console.log('beforeinstallprompt event triggered');
+      event.preventDefault();
+      deferredInstallPrompt = event;
+      installButton.hidden = false;
+      installButton.textContent = 'Install App';
+      setInstallStatus('Install is-by.pro for faster access and offline shell support.');
+      setInstallGuide('Tap Install App to add is-by.pro to your home screen.', true);
+    });
+  }
 
   window.addEventListener('appinstalled', () => {
     console.log('appinstalled event triggered');
@@ -353,9 +363,8 @@ function bindInstallPrompt() {
     console.log('Install button clicked');
     event.preventDefault();
     event.stopPropagation();
-    
+
     if (isIosDevice() && !deferredInstallPrompt) {
-      console.log('iOS device without install prompt');
       installButton.textContent = 'Use Share Menu';
       setInstallStatus('Use Safari Share > Add to Home Screen to install is-by.pro.');
       setInstallGuide('In Safari, tap Share, then choose Add to Home Screen.', true);
@@ -365,8 +374,17 @@ function bindInstallPrompt() {
       return;
     }
 
+    if (isFirefox()) {
+      installButton.textContent = 'Use Browser Menu';
+      setInstallStatus('Use the Firefox menu to add this app to your home screen.');
+      setInstallGuide('Open the browser menu and choose "Install" or "Add to Home screen".', true);
+      setTimeout(() => {
+        installButton.textContent = 'How to Install';
+      }, 2200);
+      return;
+    }
+
     if (!deferredInstallPrompt) {
-      console.log('No install prompt deferred');
       installButton.textContent = 'Use Browser Menu';
       setInstallStatus('Use your browser menu to add this app to the home screen.');
       setInstallGuide('Open the browser menu and choose Install App or Add to Home Screen.', true);
@@ -377,18 +395,15 @@ function bindInstallPrompt() {
     }
 
     try {
-      console.log('Showing install prompt');
       deferredInstallPrompt.prompt();
       const choice = await deferredInstallPrompt.userChoice;
       deferredInstallPrompt = null;
       installButton.hidden = true;
 
       if (choice.outcome === 'accepted') {
-        console.log('User accepted installation');
         setInstallStatus('Installation accepted. Launch the app from your home screen.');
         setInstallGuide('', false);
       } else {
-        console.log('User dismissed installation');
         setInstallStatus('Installation dismissed. You can install it later from the browser menu.');
         setInstallGuide('Open the browser menu and choose Install App or Add to Home Screen when you are ready.', true);
       }
@@ -430,6 +445,7 @@ function bindRefreshFallback() {
       updateBanner.hidden = true;
     }
     suppressUpdateBannerForCurrentShellVersion();
+    let didUpdate = false;
     try {
       const registration = await navigator.serviceWorker.getRegistration('/');
       if (registration) {
@@ -438,6 +454,9 @@ function bindRefreshFallback() {
           suppressUpdateBannerForSession(registration);
           suppressUpdateBannerForReloadCycle();
           registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+          didUpdate = true;
+          // Give the SW a moment to activate, then reload
+          setTimeout(() => window.location.reload(), 1200);
           return;
         }
       }
@@ -446,6 +465,10 @@ function bindRefreshFallback() {
     } catch (error) {
       console.error('Refresh fallback failed:', error);
       window.location.reload();
+    }
+    // If SW update did not trigger, reload after a short delay as fallback
+    if (!didUpdate) {
+      setTimeout(() => window.location.reload(), 1200);
     }
   });
 }
