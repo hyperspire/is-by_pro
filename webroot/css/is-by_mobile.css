@@ -543,20 +543,23 @@ body {
 }
 
 .list-divider {
-  text-align: left !important;
+  display: block;
   width: 250px;
+  text-align: left !important;
+  margin: 0 auto;
 }
 
-.list-divider > p,
-.list-divider > ul,
-.list-divider > ul > li {
+.list-divider p {
   text-align: left !important;
-  margin-left: 0;
-  margin-right: auto;
 }
 
 .list-divider ul {
+  text-align: left !important;
   padding-left: 1.5rem;
+}
+
+.list-divider li {
+  text-align: left !important;
 }
 
 @media (min-width: 540px) {
