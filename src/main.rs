@@ -4365,6 +4365,69 @@ async fn render_search_projects_html(
   Ok(html)
 }
 
+async fn render_user_search_section_html(
+  _state: &AppState,
+  ib_uid: i64,
+  ib_user: &str,
+) -> Result<String, String> {
+  let html = format!(
+    r#"<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
+  <link rel="stylesheet" type="text/css" href="/css/is-by_mobile.css">
+  <script src="/js/is-by_user.js" type="text/javascript"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <title>:[[ :is-by: pro: search: ]]:</title>
+  <meta name="description" content="Search for users and projects on Is By. Find developers, projects, and more.">
+</head>
+
+<body>
+
+  <div class="content">
+    <div>
+      {advert_html}
+    </div>
+    <div id="post-form-section">
+      <form id="post-form" action="https://{DOMAIN}/v1/post" method="POST">
+        <div id="post-message"></div>
+        <div id="post-character-count"></div>
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input class="post" type="text" name="post" autocomplete="off" maxlength="1024" required>
+        <input id="post-cancel" class="post-cancel" type="button" value="Cancel">
+        <input class="post-submit" type="submit" value="Post">
+      </form>
+    </div>
+    <div id="user-search-section">
+      <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Users" required>
+        <input type="submit" value="Search Users">
+      </form>
+      <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
+        <input type="hidden" name="ib_uid" value="{ib_uid}">
+        <input type="hidden" name="ib_user" value="{ib_user}">
+        <input type="text" name="query" placeholder="Search Projects" required>
+        <input type="submit" value="Search Projects">
+      </form>
+    </div>
+  </div>
+</body>
+</html>"#,
+    ib_uid = ib_uid,
+    ib_user = escape_html(ib_user),
+  );
+
+  Ok(html)
+}
+
 async fn render_war_room_posts_chunk(
   state: &AppState,
   ib_uid: i64,
@@ -7068,6 +7131,19 @@ async fn search_projects(
     &query.query,
     get_session_uid(&req),
   ).await {
+    Ok(html) => HttpResponse::Ok()
+      .content_type("text/html; charset=utf-8")
+      .body(html),
+    Err(err) => HttpResponse::InternalServerError().body(err),
+  }
+}
+
+#[get("/v1/search-section")]
+async fn search_section(
+  state: web::Data<AppState>,
+  query: web::Query<ProfileRequest>,
+) -> impl Responder {
+  match render_user_search_section_html(&state, query.ib_uid, &query.ib_user).await {
     Ok(html) => HttpResponse::Ok()
       .content_type("text/html; charset=utf-8")
       .body(html),
