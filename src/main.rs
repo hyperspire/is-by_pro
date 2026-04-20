@@ -5630,6 +5630,7 @@ async fn render_single_post_mobile_html(
           <input class="post-submit" type="submit" value="Reply">
         </form>
       </div>
+    </div>
       <div id="user-search-section">
         <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
           <input type="hidden" name="ib_uid" value="{ib_uid}">
@@ -5644,7 +5645,7 @@ async fn render_single_post_mobile_html(
           <input type="submit" value="Search Projects">
         </form>
       </div>
-    </div><nav class="bottom-nav">
+      <nav class="bottom-nav">
       <a class="post-form-display" href="javascript:void(0);">
         <div class="nav-icon">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
