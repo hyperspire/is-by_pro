@@ -542,6 +542,10 @@ body {
   }
 }
 
+.list-divider {
+  text-align: left;
+}
+
 @media (min-width: 540px) {
   .app-shell {
     margin: 0 auto;
