@@ -1,14 +1,14 @@
-const SHELL_CACHE = 'is-by-mobile-shell-v2';
+const SHELL_CACHE = 'is-by-mobile-shell-v3';
 const SHELL_ASSETS = [
   '/mobile.html',
-  '/css/is-by_mobile.css',
-  '/js/is-by_mobile_app.js',
+  '/css/is-by_mobile.css?v=mobile-shell-v3',
+  '/js/is-by_mobile_app.js?v=mobile-shell-v3',
   '/images/Death_Angel-555x222.png',
   '/images/is-by_app_icon.svg',
   '/images/is-by_app_icon-192.png',
   '/images/is-by_app_icon-512.png',
   '/favicon.ico',
-  '/app.webmanifest'
+  '/app.webmanifest?v=mobile-shell-v3'
 ];
 
 self.addEventListener('install', (event) => {
@@ -23,6 +23,12 @@ self.addEventListener('activate', (event) => {
       keys.filter((key) => key !== SHELL_CACHE).map((key) => caches.delete(key))
     )).then(() => self.clients.claim())
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', (event) => {

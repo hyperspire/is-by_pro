@@ -1,7 +1,8 @@
 const APP_PANELS = ['home', 'mission', 'access'];
-const SHELL_CACHE_NAME = 'is-by-mobile-shell-v2';
+const SHELL_CACHE_NAME = 'is-by-mobile-shell-v3';
 
 let deferredInstallPrompt = null;
+let refreshingForUpdate = false;
 
 function isIosDevice() {
   return /iphone|ipad|ipod/i.test(window.navigator.userAgent || '');
@@ -34,6 +35,56 @@ function setInstallGuide(message, visible = true) {
 
   installGuideText.textContent = message;
   installGuide.hidden = !visible;
+}
+
+function showUpdateBanner(registration) {
+  const updateBanner = document.getElementById('update-banner');
+  const updateButton = document.getElementById('update-banner-action');
+  if (!updateBanner || !updateButton || !registration?.waiting) {
+    return;
+  }
+
+  updateBanner.hidden = false;
+  updateButton.onclick = () => {
+    if (registration.waiting) {
+      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+      updateButton.disabled = true;
+      updateButton.textContent = 'Refreshing...';
+    }
+  };
+}
+
+function hideUpdateBanner() {
+  const updateBanner = document.getElementById('update-banner');
+  const updateButton = document.getElementById('update-banner-action');
+  if (updateBanner) {
+    updateBanner.hidden = true;
+  }
+  if (updateButton) {
+    updateButton.disabled = false;
+    updateButton.textContent = 'Refresh Now';
+  }
+}
+
+function watchServiceWorkerRegistration(registration) {
+  if (registration.waiting) {
+    setInstallStatus('An updated shell is ready. Reload the page to apply it.');
+    showUpdateBanner(registration);
+  }
+
+  registration.addEventListener('updatefound', () => {
+    const installingWorker = registration.installing;
+    if (!installingWorker) {
+      return;
+    }
+
+    installingWorker.addEventListener('statechange', () => {
+      if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+        setInstallStatus('An updated shell is ready. Refresh the page to apply it.');
+        showUpdateBanner(registration);
+      }
+    });
+  });
 }
 
 function activatePanel(panelName) {
@@ -79,12 +130,18 @@ async function registerServiceWorker() {
   }
 
   try {
-    const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    const registration = await navigator.serviceWorker.register('/sw.js?v=mobile-shell-v3', { scope: '/' });
+    registration.update();
     setStatus(`Mobile shell cached: ${SHELL_CACHE_NAME}`);
+    watchServiceWorkerRegistration(registration);
 
-    if (registration.waiting) {
-      setInstallStatus('An updated shell is ready. Reload the page to apply it.');
-    }
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshingForUpdate) {
+        return;
+      }
+      refreshingForUpdate = true;
+      window.location.reload();
+    });
   } catch (error) {
     console.error('Service worker registration failed', error);
     setStatus('Service worker registration failed.');
@@ -174,6 +231,7 @@ function bindConnectivityState() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  hideUpdateBanner();
   bindPanelNavigation();
   bindInstallPrompt();
   bindConnectivityState();

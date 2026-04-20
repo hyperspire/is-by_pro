@@ -8,20 +8,28 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="is-by.pro">
   <meta name="description" content="GitHub-driven social media for the GitHub enthusiasts, rebels, misfits and outcasts.">
-  <link rel="manifest" href="/app.webmanifest">
+  <link rel="manifest" href="/app.webmanifest?v=mobile-shell-v3">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/images/is-by_app_icon-192.png">
-  <link rel="stylesheet" type="text/css" href="/css/is-by_mobile.css">
+  <link rel="stylesheet" type="text/css" href="/css/is-by_mobile.css?v=mobile-shell-v3">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-  <script src="/js/is-by_mobile_app.js" type="text/javascript" defer></script>
+  <script src="/js/is-by_mobile_app.js?v=mobile-shell-v3" type="text/javascript" defer></script>
   <title>:[[ :is-by: pro: anti-social: social-media: ]]:</title>
 </head>
 <body class="app-shell-page">
   <div class="bg-glow"></div>
   <div class="bg-grid"></div>
   <div class="app-shell">
+    <section class="update-banner" id="update-banner" hidden aria-live="polite">
+      <div class="update-banner-copy">
+        <strong>Update available</strong>
+        <p>A newer mobile shell is ready. Refresh into the latest version.</p>
+      </div>
+      <button class="update-banner-action" id="update-banner-action" type="button">Refresh Now</button>
+    </section>
+
     <header class="app-topbar">
       <div class="brand-lockup">
         <span class="brand-badge">is-by.pro</span>

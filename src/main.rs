@@ -9457,6 +9457,36 @@ async fn hello(req: HttpRequest) -> impl Responder {
   HttpResponse::Ok().body(html)
 }
 
+#[get("/mobile.html")]
+async fn mobile_shell_html() -> impl Responder {
+  HttpResponse::Ok()
+    .insert_header(("Cache-Control", "no-cache, no-store, must-revalidate"))
+    .insert_header(("Pragma", "no-cache"))
+    .insert_header(("Expires", "0"))
+    .content_type("text/html; charset=utf-8")
+    .body(include_str!("../webroot/mobile.html"))
+}
+
+#[get("/app.webmanifest")]
+async fn mobile_shell_manifest() -> impl Responder {
+  HttpResponse::Ok()
+    .insert_header(("Cache-Control", "no-cache, no-store, must-revalidate"))
+    .insert_header(("Pragma", "no-cache"))
+    .insert_header(("Expires", "0"))
+    .content_type("application/manifest+json")
+    .body(include_str!("../webroot/app.webmanifest"))
+}
+
+#[get("/sw.js")]
+async fn mobile_shell_service_worker() -> impl Responder {
+  HttpResponse::Ok()
+    .insert_header(("Cache-Control", "no-cache, no-store, must-revalidate"))
+    .insert_header(("Pragma", "no-cache"))
+    .insert_header(("Expires", "0"))
+    .content_type("text/javascript; charset=utf-8")
+    .body(include_str!("../webroot/sw.js"))
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
   rustls::crypto::aws_lc_rs::default_provider()
@@ -9618,6 +9648,9 @@ async fn main() -> std::io::Result<()> {
       .service(direct_message_unread_count)
       .service(github_auth_start_v1)
       .service(github_auth_callback_v1)
+        .service(mobile_shell_html)
+        .service(mobile_shell_manifest)
+        .service(mobile_shell_service_worker)
       .service(Files::new("/", "./webroot").default_handler(
           actix_web::web::to(|| async {
               actix_web::HttpResponse::NotFound().body("404 Not Found")
