@@ -2323,7 +2323,7 @@ async fn render_profile_mobile_html(
       </form>
     </div>
 
-    <nav class="bottom-nav">
+    <nav class="pwa-nav force-horizontal-nav">
       <a class="post-form-display" href="javascript:void(0);">
         <div class="nav-icon">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
@@ -3223,7 +3223,7 @@ async fn render_search_users_mobile_html(
       <div class="notice"><p><em>:[[ :search-users-for: {raw_query}: ]]:</em></p></div>
       {search_results_html}
     </div>
-    <nav class="bottom-nav">
+    <nav class="pwa-nav force-horizontal-nav">
       <a class="post-form-display" href="javascript:void(0);">
         <div class="nav-icon">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
@@ -4196,7 +4196,7 @@ async fn render_projects_mobile_html(
       </form>
     </div>
 
-    <nav class="bottom-nav">
+    <nav class="pwa-nav force-horizontal-nav">
       <a class="post-form-display" href="javascript:void(0);">
         <div class="nav-icon">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
@@ -4821,7 +4821,7 @@ async fn render_search_projects_mobile_html(
       <div class="notice"><p><em>:[[ :search-project-languages-for: {raw_query}: ]]:</em></p></div>
       {search_results_html}
     </div>
-    <nav class="bottom-nav">
+    <nav class="pwa-nav force-horizontal-nav">
       <a class="post-form-display" href="javascript:void(0);">
         <div class="nav-icon">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
@@ -4956,7 +4956,7 @@ async fn render_user_search_section_html(
         </form>
       </div>
     </div>
-     <nav class="bottom-nav">
+     <nav class="pwa-nav force-horizontal-nav">
       <a class="post-form-display" href="javascript:void(0);">
         <div class="nav-icon">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
@@ -5560,7 +5560,8 @@ async fn render_war_room_mobile_html(
         <input type="text" name="query" placeholder="Search Projects" required>
         <input type="submit" value="Search Projects">
       </form>
-    </div><nav class="bottom-nav">
+    </div>
+    <nav class="pwa-nav force-horizontal-nav">
       <a class="post-form-display" href="javascript:void(0);">
         <div class="nav-icon">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
@@ -5954,7 +5955,7 @@ async fn render_inbox_mobile_html(
         </div>
       </div>
     </div>
-    <nav class="bottom-nav">
+    <nav class="pwa-nav force-horizontal-nav">
       <a class="post-form-display" href="javascript:void(0);">
         <div class="nav-icon">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
@@ -6500,7 +6501,7 @@ async fn render_single_post_mobile_html(
           <input type="submit" value="Search Projects">
         </form>
       </div>
-      <nav class="bottom-nav">
+      <nav class="pwa-nav force-horizontal-nav">
       <a class="post-form-display" href="javascript:void(0);">
         <div class="nav-icon">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
