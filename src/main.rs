@@ -3088,6 +3088,216 @@ async fn render_search_users_html(
   Ok(html)
 }
 
+async fn render_search_users_mobile_html(
+  state: &AppState,
+  ib_uid: i64,
+  ib_user: &str,
+  raw_query: &str,
+  session_uid: Option<i64>,
+) -> Result<String, String> {
+  let advert_html = render_advert_html(state).await;
+
+  let search_terms: Vec<String> = raw_query
+    .split_whitespace()
+    .map(|term| term.trim().to_lowercase())
+    .filter(|term| !term.is_empty())
+    .collect();
+
+  let search_results_html = if search_terms.is_empty() {
+    "<p><em>:[[ :search-users-empty-query: ]]:</em></p>".to_string()
+  } else {
+    let mut sql = String::from(
+      "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments, COALESCE(candidate.ibp, '') AS ibp FROM pro AS candidate LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE "
+    );
+
+    for index in 0..search_terms.len() {
+      if index > 0 {
+        sql.push_str(" AND ");
+      }
+
+      sql.push_str("(LOWER(COALESCE(user.username, '')) LIKE ? ESCAPE '\\\\' OR LOWER(COALESCE(candidate.github, '')) LIKE ? ESCAPE '\\\\' OR LOWER(COALESCE(candidate.ibp, '')) LIKE ? ESCAPE '\\\\' OR LOWER(COALESCE(candidate.pro, '')) LIKE ? ESCAPE '\\\\' OR LOWER(COALESCE(candidate.services, '')) LIKE ? ESCAPE '\\\\' OR LOWER(COALESCE(candidate.location, '')) LIKE ? ESCAPE '\\\\' OR LOWER(COALESCE(candidate.website, '')) LIKE ? ESCAPE '\\\\')");
+    }
+
+    sql.push_str(" ORDER BY RAND() LIMIT 200");
+
+    let mut rows_query = sqlx::query_as::<_, SearchUserRow>(&sql);
+    for term in &search_terms {
+      let token = format!("%{}%", escape_mysql_like_token(term));
+      rows_query = rows_query
+        .bind(token.clone())
+        .bind(token.clone())
+        .bind(token.clone())
+        .bind(token.clone())
+        .bind(token.clone())
+        .bind(token.clone())
+        .bind(token);
+    }
+
+    let rows = rows_query
+      .fetch_all(&state.db_pool)
+      .await
+      .map_err(|e| format!("Search users query failed: {}", e))?;
+
+    let mut html = String::new();
+
+    for row in rows {
+      if row.username.trim().is_empty() {
+        continue;
+      }
+
+      let profile_link = render_project_profile_link(&row.username, row.total_acknowledgments);
+
+      html += &format!(
+        r#"<p>{profile_link}<br><small>{ibp}</small></p>"#,
+        profile_link = profile_link,
+        ibp = highlight_terms(&row.ibp, &search_terms)
+      );
+    }
+
+    if html.is_empty() {
+      "<p><em>:[[ :search-users-no-results: ]]:</em></p>".to_string()
+    } else {
+      html
+    }
+  };
+
+  let session_username = if let Some(uid) = session_uid {
+    match sqlx::query_as::<_, SessionUserRow>(
+      "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
+    )
+    .bind(uid.to_string())
+    .fetch_optional(&state.db_pool)
+    .await
+    {
+      Ok(Some(row)) if !row.username.trim().is_empty() => Some(row.username),
+      _ => None,
+    }
+  } else {
+    None
+  };
+
+  let session_nav_uid = session_uid.unwrap_or(ib_uid);
+  let session_nav_user = session_username.as_deref().unwrap_or(ib_user);
+
+  let html = format!(
+    r#"<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
+  <link rel="stylesheet" type="text/css" href="/css/is-by_mobile.css">
+  <script src="/js/is-by_user.js" type="text/javascript"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <title>:[[ :search-users: {ib_user}: ]]:</title>
+</head>
+
+<body>
+  <form id="select-user-form" action="/" method="GET">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <form id="select-post-form" action="https://{DOMAIN}/v1/showpost" method="POST">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <div class="content">
+    <div>
+      {advert_html}
+    </div>
+    <div id="post-form-section">
+      <form id="post-form" action="https://{DOMAIN}/v1/post" method="POST">
+        <div id="post-message"></div>
+        <div id="post-character-count"></div>
+        <input type="hidden" name="ib_uid" value="{session_nav_uid}">
+        <input type="hidden" name="ib_user" value="{session_nav_user}">
+        <input class="post" type="text" name="post" autocomplete="off" maxlength="1024" required>
+        <input id="post-cancel" class="post-cancel" type="button" value="Cancel">
+        <input class="post-submit" type="submit" value="Post">
+      </form>
+    </div>
+    <div class="glass-card">
+      <div class="notice"><p><em>:[[ :search-users-for: {raw_query}: ]]:</em></p></div>
+      {search_results_html}
+    </div>
+    <nav class="bottom-nav">
+      <a class="post-form-display" href="javascript:void(0);">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+          </svg>
+        </div>
+      </a>
+      <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{session_nav_user}">
+        <div class="nav-icon">
+          <img src="https://github.com/{session_nav_user}.png?size=64" alt="Profile"
+            style="width: 32px; height: 32px; border-radius: 50%;">
+        </div>
+      </a>
+      <a class="war-room-display"
+        href="https://{DOMAIN}/v1/warroom?ib_uid={session_nav_uid}&amp;ib_user={session_nav_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <circle cx="12" cy="12" r="4"></circle>
+            <line x1="12" y1="2" x2="12" y2="8"></line>
+            <line x1="12" y1="16" x2="12" y2="22"></line>
+            <line x1="2" y1="12" x2="8" y2="12"></line>
+            <line x1="16" y1="12" x2="22" y2="12"></line>
+          </svg>
+        </div>
+      </a>
+      <a class="search-display"
+        href="https://{DOMAIN}/v1/search-section?ib_uid={session_nav_uid}&amp;ib_user={session_nav_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </div>
+      </a>
+      <a class="projects-display"
+        href="https://{DOMAIN}/v1/projects?ib_uid={session_nav_uid}&amp;ib_user={session_nav_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </div>
+      </a>
+      <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={session_nav_uid}&ib_user={session_nav_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            style="vertical-align: middle; margin-right: 4px;">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+            <polyline points="22,6 12,13 2,6"></polyline>
+          </svg> <span id="dm-unread-count">0</span>
+        </div>
+      </a>
+    </nav>
+  </div>
+</body>
+</html>"#,
+    ib_uid = ib_uid,
+    ib_user = escape_html(ib_user),
+    advert_html = advert_html,
+    raw_query = escape_html(raw_query),
+    search_results_html = search_results_html,
+    session_nav_uid = session_nav_uid,
+    session_nav_user = escape_html(session_nav_user),
+  );
+
+  Ok(html)
+}
+
 async fn render_search_posts_html(
   state: &AppState,
   ib_uid: i64,
@@ -4391,6 +4601,301 @@ async fn render_search_projects_html(
   Ok(html)
 }
 
+async fn render_search_projects_mobile_html(
+  state: &AppState,
+  ib_uid: i64,
+  ib_user: &str,
+  raw_query: &str,
+  session_uid: Option<i64>,
+) -> Result<String, String> {
+  let advert_html = render_advert_html(state).await;
+
+  let session_username = if let Some(uid) = session_uid {
+    match sqlx::query_as::<_, SessionUserRow>(
+      "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
+    )
+    .bind(uid.to_string())
+    .fetch_optional(&state.db_pool)
+    .await
+    {
+      Ok(Some(row)) if !row.username.trim().is_empty() => Some(row.username),
+      _ => None,
+    }
+  } else {
+    None
+  };
+
+  let search_terms: Vec<String> = raw_query
+    .split_whitespace()
+    .map(|term| term.trim().to_lowercase())
+    .filter(|term| !term.is_empty())
+    .collect();
+
+  let search_results_html = if search_terms.is_empty() {
+    "<p><em>:[[ :search-projects-empty-query: ]]:</em></p>".to_string()
+  } else {
+    let regex_terms: Vec<String> = search_terms
+      .iter()
+      .map(|term| escape_mysql_regex_token(term))
+      .collect();
+    let pattern = format!(
+      "(^|[[:space:],])({})[[:space:],]|$)",
+      regex_terms.join("|")
+    );
+
+    let rows = sqlx::query_as::<_, ProjectProfileRow>(
+        "SELECT project.id, project.ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments, project.project, project.description, project.languages, CAST(project.updated_at AS CHAR CHARACTER SET utf8mb4) AS updated_at, COALESCE(project.reinforcements, '') AS reinforcements, COALESCE(project.reinforcements_request, FALSE) AS reinforcements_request FROM project_profile AS project LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(project.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(project.languages, '')) REGEXP ? ORDER BY project.updated_at DESC LIMIT 500"
+      )
+      .bind(&pattern)
+      .fetch_all(&state.db_pool)
+      .await
+      .map_err(|e| format!("Search projects query failed: {}", e))?;
+
+    if rows.is_empty() {
+      "<p><em>:[[ :search-projects-no-results: ]]:</em></p>".to_string()
+    } else {
+      let reinforcement_names: HashSet<String> = rows
+        .iter()
+        .flat_map(|row| {
+          row
+            .reinforcements
+            .as_deref()
+            .unwrap_or("")
+            .split(',')
+            .map(|item| item.trim())
+            .filter(|item| !item.is_empty())
+            .map(|item| item.to_string())
+            .collect::<Vec<String>>()
+        })
+        .collect();
+      let reinforcement_ack_map = load_project_profile_ack_map(state, &reinforcement_names).await;
+
+      rows
+        .iter()
+        .map(|row| {
+          let owner_link = render_project_profile_link(&row.username, row.total_acknowledgments);
+          let reinforcements_badge = if row.reinforcements_request == Some(true) {
+            "<p><em>:[[ :requesting-reinforcements: ]]:</em></p>".to_string()
+          } else {
+            String::new()
+          };
+          let reinforcement_usernames: Vec<String> = row
+            .reinforcements
+            .as_deref()
+            .unwrap_or("")
+            .split(',')
+            .map(|item| item.trim())
+            .filter(|item| !item.is_empty())
+            .map(|item| item.to_string())
+            .collect();
+          let already_reinforcing = session_username
+            .as_ref()
+            .map(|username| {
+              reinforcement_usernames
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case(username))
+            })
+            .unwrap_or(false);
+
+          let quick_response_form = if row.reinforcements_request == Some(true)
+            && session_uid.is_some()
+            && session_uid != Some(row.ib_uid)
+            && !already_reinforcing
+          {
+            format!(
+              r#"<form class="quick-response-force-form" action="https://{DOMAIN}/v1/projects/reinforce" method="POST">
+                <input type="hidden" name="ib_uid" value="{ib_uid}">
+                <input type="hidden" name="ib_user" value="{ib_user}">
+                <input type="hidden" name="project_id" value="{project_id}">
+                <input type="hidden" name="quick_response_force" value="1">
+                <input class="post-submit quick-response-submit" type="submit" value="Respond to Reinforcements Request">
+              </form>"#,
+              ib_uid = ib_uid,
+              ib_user = escape_html(ib_user),
+              project_id = row.id
+            )
+          } else if row.reinforcements_request == Some(true)
+            && session_uid.is_some()
+            && session_uid != Some(row.ib_uid)
+            && already_reinforcing
+          {
+            format!(
+              r#"<form class="quick-response-force-form" action="https://{DOMAIN}/v1/projects/reinforce" method="POST">
+                <input type="hidden" name="ib_uid" value="{ib_uid}">
+                <input type="hidden" name="ib_user" value="{ib_user}">
+                <input type="hidden" name="project_id" value="{project_id}">
+                <input type="hidden" name="quick_response_force" value="retreat">
+                <input class="post-submit quick-response-submit" type="submit" value="Retreat">
+              </form>"#,
+              ib_uid = ib_uid,
+              ib_user = escape_html(ib_user),
+              project_id = row.id
+            )
+          } else {
+            String::new()
+          };
+          format!(
+            r#"<div class="post">
+              <div class="post-meta">{owner_link}<span class="post-timestamp">{updated_at}</span></div>
+              <p><strong>Project:</strong> {project}</p>
+              <p><strong>Description:</strong> {description}</p>
+              <p><strong>Languages:</strong> {languages}</p>
+              {reinforcements_section}
+              {reinforcements_badge}
+              {quick_response_form}
+            </div>"#,
+            owner_link = owner_link,
+            updated_at = escape_html(&row.updated_at),
+            project = escape_html(&row.project),
+            description = render_post_with_hashtags(&row.description, ib_uid, ib_user),
+            languages = highlight_terms(&row.languages, &search_terms),
+            reinforcements_section = if let Some(ref r) = row.reinforcements {
+              if !r.trim().is_empty() {
+                let links: String = r.split(',').map(|name| name.trim()).filter(|name| !name.is_empty()).map(|name| {
+                  let total_acks = reinforcement_ack_map
+                    .get(&name.to_ascii_lowercase())
+                    .copied()
+                    .unwrap_or(0);
+                  render_project_profile_link(name, total_acks)
+                }).collect::<Vec<_>>().join(" ");
+                format!("<p><strong>Reinforcements:</strong> {}</p>", links)
+              } else {
+                String::new()
+              }
+            } else {
+              String::new()
+            },
+            reinforcements_badge = reinforcements_badge,
+            quick_response_form = quick_response_form
+          )
+        })
+        .collect::<Vec<String>>()
+        .join("")
+    }
+  };
+
+  let session_nav_uid = session_uid.unwrap_or(ib_uid);
+  let session_nav_user = session_username.as_deref().unwrap_or(ib_user);
+
+  let html = format!(
+    r#"<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
+  <link rel="stylesheet" type="text/css" href="/css/is-by_mobile.css">
+  <script src="/js/is-by_user.js" type="text/javascript"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <title>:[[ :search-projects: {ib_user}: ]]:</title>
+</head>
+
+<body>
+  <form id="select-user-form" action="/" method="GET">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <form id="select-post-form" action="https://{DOMAIN}/v1/showpost" method="POST">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <div class="content">
+    <div>
+      {advert_html}
+    </div>
+    <div id="post-form-section">
+      <form id="post-form" action="https://{DOMAIN}/v1/post" method="POST">
+        <div id="post-message"></div>
+        <div id="post-character-count"></div>
+        <input type="hidden" name="ib_uid" value="{session_nav_uid}">
+        <input type="hidden" name="ib_user" value="{session_nav_user}">
+        <input class="post" type="text" name="post" autocomplete="off" maxlength="1024" required>
+        <input id="post-cancel" class="post-cancel" type="button" value="Cancel">
+        <input class="post-submit" type="submit" value="Post">
+      </form>
+    </div>
+    <div class="glass-card">
+      <div class="notice"><p><em>:[[ :search-project-languages-for: {raw_query}: ]]:</em></p></div>
+      {search_results_html}
+    </div>
+    <nav class="bottom-nav">
+      <a class="post-form-display" href="javascript:void(0);">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+          </svg>
+        </div>
+      </a>
+      <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{session_nav_user}">
+        <div class="nav-icon">
+          <img src="https://github.com/{session_nav_user}.png?size=64" alt="Profile"
+            style="width: 32px; height: 32px; border-radius: 50%;">
+        </div>
+      </a>
+      <a class="war-room-display"
+        href="https://{DOMAIN}/v1/warroom?ib_uid={session_nav_uid}&amp;ib_user={session_nav_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <circle cx="12" cy="12" r="4"></circle>
+            <line x1="12" y1="2" x2="12" y2="8"></line>
+            <line x1="12" y1="16" x2="12" y2="22"></line>
+            <line x1="2" y1="12" x2="8" y2="12"></line>
+            <line x1="16" y1="12" x2="22" y2="12"></line>
+          </svg>
+        </div>
+      </a>
+      <a class="search-display"
+        href="https://{DOMAIN}/v1/search-section?ib_uid={session_nav_uid}&amp;ib_user={session_nav_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </div>
+      </a>
+      <a class="projects-display"
+        href="https://{DOMAIN}/v1/projects?ib_uid={session_nav_uid}&amp;ib_user={session_nav_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </div>
+      </a>
+      <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={session_nav_uid}&ib_user={session_nav_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            style="vertical-align: middle; margin-right: 4px;">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+            <polyline points="22,6 12,13 2,6"></polyline>
+          </svg> <span id="dm-unread-count">0</span>
+        </div>
+      </a>
+    </nav>
+  </div>
+</body>
+</html>"#,
+    ib_uid = ib_uid,
+    ib_user = escape_html(ib_user),
+    advert_html = advert_html,
+    raw_query = escape_html(raw_query),
+    search_results_html = search_results_html,
+    session_nav_uid = session_nav_uid,
+    session_nav_user = escape_html(session_nav_user),
+  );
+
+  Ok(html)
+}
+
 async fn render_user_search_section_html(
   _state: &AppState,
   ib_uid: i64,
@@ -4467,6 +4972,16 @@ async fn render_user_search_section_html(
             style="width: 32px; height: 32px; border-radius: 50%;">
         </div>
       </a>
+      <a class="search-display"
+        href="https://{DOMAIN}/v1/search-section?ib_uid={session_ib_uid}&amp;ib_user={session_ib_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </div>
+      </a>
       <a class="war-room-display"
         href="https://{DOMAIN}/v1/warroom?ib_uid={session_ib_uid}&amp;ib_user={session_ib_user}">
         <div class="nav-icon">
@@ -4478,16 +4993,6 @@ async fn render_user_search_section_html(
             <line x1="12" y1="16" x2="12" y2="22"></line>
             <line x1="2" y1="12" x2="8" y2="12"></line>
             <line x1="16" y1="12" x2="22" y2="12"></line>
-          </svg>
-        </div>
-      </a>
-      <a class="search-display"
-        href="https://{DOMAIN}/v1/search-section?ib_uid={session_ib_uid}&amp;ib_user={session_ib_user}">
-        <div class="nav-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
           </svg>
         </div>
       </a>
@@ -7201,13 +7706,13 @@ async fn search_users(
   state: web::Data<AppState>,
   query: web::Query<SearchUsersRequest>,
 ) -> impl Responder {
-  match render_search_users_html(
-    &state,
-    query.ib_uid,
-    &query.ib_user,
-    &query.query,
-    get_session_uid(&req),
-  ).await {
+  let session_uid = get_session_uid(&req);
+  let html_result = if is_mobile_device(&req) {
+    render_search_users_mobile_html(&state, query.ib_uid, &query.ib_user, &query.query, session_uid).await
+  } else {
+    render_search_users_html(&state, query.ib_uid, &query.ib_user, &query.query, session_uid).await
+  };
+  match html_result {
     Ok(html) => HttpResponse::Ok()
       .content_type("text/html; charset=utf-8")
       .body(html),
@@ -7241,13 +7746,13 @@ async fn search_projects(
   state: web::Data<AppState>,
   query: web::Query<SearchProjectsRequest>,
 ) -> impl Responder {
-  match render_search_projects_html(
-    &state,
-    query.ib_uid,
-    &query.ib_user,
-    &query.query,
-    get_session_uid(&req),
-  ).await {
+  let session_uid = get_session_uid(&req);
+  let html_result = if is_mobile_device(&req) {
+    render_search_projects_mobile_html(&state, query.ib_uid, &query.ib_user, &query.query, session_uid).await
+  } else {
+    render_search_projects_html(&state, query.ib_uid, &query.ib_user, &query.query, session_uid).await
+  };
+  match html_result {
     Ok(html) => HttpResponse::Ok()
       .content_type("text/html; charset=utf-8")
       .body(html),
