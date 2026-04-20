@@ -284,6 +284,12 @@ struct SearchProjectsRequest {
 }
 
 #[derive(Deserialize)]
+struct SearchSectionRequest {
+  ib_uid: i64,
+  ib_user: String,
+}
+
+#[derive(Deserialize)]
 struct ProjectsRequest {
   ib_uid: i64,
   ib_user: String,
@@ -2333,6 +2339,16 @@ async fn render_profile_mobile_html(
             style="width: 32px; height: 32px; border-radius: 50%;">
         </div>
       </a>
+      <a class="search-display"
+        href="https://{DOMAIN}/v1/search-section?ib_uid={session_ib_uid}&amp;ib_user={session_ib_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </div>
+      </a>
       <a class="war-room-display"
         href="https://{DOMAIN}/v1/warroom?ib_uid={session_ib_uid}&amp;ib_user={session_ib_user}">
         <div class="nav-icon">
@@ -3986,6 +4002,16 @@ async fn render_projects_mobile_html(
             style="width: 32px; height: 32px; border-radius: 50%;">
         </div>
       </a>
+      <a class="search-display"
+        href="https://{DOMAIN}/v1/search-section?ib_uid={session_ib_uid}&amp;ib_user={session_ib_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </div>
+      </a>
       <a class="war-room-display"
         href="https://{DOMAIN}/v1/warroom?ib_uid={session_ib_uid}&amp;ib_user={session_ib_user}">
         <div class="nav-icon">
@@ -4370,6 +4396,7 @@ async fn render_user_search_section_html(
   ib_uid: i64,
   ib_user: &str,
 ) -> Result<String, String> {
+  let advert_html = render_advert_html(_state).await;
   let html = format!(
     r#"<!DOCTYPE html>
 <html lang="en-US">
@@ -4404,19 +4431,21 @@ async fn render_user_search_section_html(
         <input class="post-submit" type="submit" value="Post">
       </form>
     </div>
-    <div id="user-search-section">
-      <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
-        <input type="hidden" name="ib_uid" value="{ib_uid}">
-        <input type="hidden" name="ib_user" value="{ib_user}">
-        <input type="text" name="query" placeholder="Search Users" required>
-        <input type="submit" value="Search Users">
-      </form>
-      <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
-        <input type="hidden" name="ib_uid" value="{ib_uid}">
-        <input type="hidden" name="ib_user" value="{ib_user}">
-        <input type="text" name="query" placeholder="Search Projects" required>
-        <input type="submit" value="Search Projects">
-      </form>
+    <div class="glass-card">
+      <div id="user-search-section">
+        <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
+          <input type="hidden" name="ib_uid" value="{ib_uid}">
+          <input type="hidden" name="ib_user" value="{ib_user}">
+          <input type="text" name="query" placeholder="Search Users" required>
+          <input type="submit" value="Search Users">
+        </form>
+        <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
+          <input type="hidden" name="ib_uid" value="{ib_uid}">
+          <input type="hidden" name="ib_user" value="{ib_user}">
+          <input type="text" name="query" placeholder="Search Projects" required>
+          <input type="submit" value="Search Projects">
+        </form>
+      </div>
     </div>
   </div>
 </body>
@@ -4972,6 +5001,16 @@ async fn render_war_room_mobile_html(
         <div class="nav-icon">
           <img src="https://github.com/{session_ib_user}.png?size=64" alt="Profile"
             style="width: 32px; height: 32px; border-radius: 50%;">
+        </div>
+      </a>
+      <a class="search-display"
+        href="https://{DOMAIN}/v1/search-section?ib_uid={session_ib_uid}&amp;ib_user={session_ib_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
         </div>
       </a>
       <a class="war-room-display"
@@ -5722,6 +5761,16 @@ async fn render_single_post_mobile_html(
         <div class="nav-icon">
           <img src="https://github.com/{session_ib_user}.png?size=64" alt="Profile"
             style="width: 32px; height: 32px; border-radius: 50%;">
+        </div>
+      </a>
+      <a class="search-display"
+        href="https://{DOMAIN}/v1/search-section?ib_uid={session_ib_uid}&amp;ib_user={session_ib_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
         </div>
       </a>
       <a class="war-room-display"
@@ -7141,7 +7190,7 @@ async fn search_projects(
 #[get("/v1/search-section")]
 async fn search_section(
   state: web::Data<AppState>,
-  query: web::Query<ProfileRequest>,
+  query: web::Query<SearchSectionRequest>,
 ) -> impl Responder {
   match render_user_search_section_html(&state, query.ib_uid, &query.ib_user).await {
     Ok(html) => HttpResponse::Ok()
