@@ -4397,6 +4397,10 @@ async fn render_user_search_section_html(
   ib_user: &str,
 ) -> Result<String, String> {
   let advert_html = render_advert_html(_state).await;
+  let session_ib_uid = ib_uid;
+  let session_ib_user = escape_html(ib_user);
+  let viewed_ib_uid = ib_uid;
+  let viewed_ib_user = escape_html(ib_user);
   let html = format!(
     r#"<!DOCTYPE html>
 <html lang="en-US">
@@ -4447,11 +4451,75 @@ async fn render_user_search_section_html(
         </form>
       </div>
     </div>
+     <nav class="bottom-nav">
+      <a class="post-form-display" href="javascript:void(0);">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+          </svg>
+        </div>
+      </a>
+      <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{session_ib_user}">
+        <div class="nav-icon">
+          <img src="https://github.com/{session_ib_user}.png?size=64" alt="Profile"
+            style="width: 32px; height: 32px; border-radius: 50%;">
+        </div>
+      </a>
+      <a class="war-room-display"
+        href="https://{DOMAIN}/v1/warroom?ib_uid={session_ib_uid}&amp;ib_user={session_ib_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <circle cx="12" cy="12" r="4"></circle>
+            <line x1="12" y1="2" x2="12" y2="8"></line>
+            <line x1="12" y1="16" x2="12" y2="22"></line>
+            <line x1="2" y1="12" x2="8" y2="12"></line>
+            <line x1="16" y1="12" x2="22" y2="12"></line>
+          </svg>
+        </div>
+      </a>
+      <a class="search-display"
+        href="https://{DOMAIN}/v1/search-section?ib_uid={session_ib_uid}&amp;ib_user={session_ib_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </div>
+      </a>
+      <a class="projects-display"
+        href="https://{DOMAIN}/v1/projects?ib_uid={viewed_ib_uid}&amp;ib_user={viewed_ib_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </div>
+      </a>
+      <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={session_ib_uid}&ib_user={session_ib_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            style="vertical-align: middle; margin-right: 4px;">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+            <polyline points="22,6 12,13 2,6"></polyline>
+          </svg> <span id="dm-unread-count">0</span>
+        </div>
+      </a>
+    </nav>
   </div>
 </body>
 </html>"#,
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
+  session_ib_uid = session_ib_uid,
+  session_ib_user = session_ib_user,
+  viewed_ib_uid = viewed_ib_uid,
+  viewed_ib_user = viewed_ib_user,
   );
 
   Ok(html)
@@ -8840,6 +8908,7 @@ async fn main() -> std::io::Result<()> {
       .service(search_users)
       .service(search_posts)
       .service(search_projects)
+      .service(search_section)
       .service(projects_page)
       .service(create_project_profile)
       .service(update_project_profile)
