@@ -15,6 +15,35 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+    nav.pwa-nav.force-horizontal-nav,
+    .pwa-nav.force-horizontal-nav {
+      position: fixed !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      width: 100vw !important;
+      max-width: 100vw !important;
+      display: flex !important;
+      flex-direction: row !important;
+      gap: 0 !important;
+      z-index: 10000 !important;
+      background: #161b22 !important;
+      border-top: 2px solid #ff7b72 !important;
+      padding: 0 !important;
+    }
+    .pwa-nav.force-horizontal-nav > * {
+      flex: 1 1 0 !important;
+      min-width: 0 !important;
+      width: 100% !important;
+      max-width: none !important;
+      box-sizing: border-box !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      border: 1px solid #ff7b72 !important;
+    }
+    </style>
   <script src="/js/is-by_mobile_app.js?v=mobile-shell-v4" type="text/javascript" defer></script>
   <title>:[[ :is-by: pro: anti-social: social-media: ]]:</title>
 </head>
