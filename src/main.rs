@@ -1447,7 +1447,7 @@ async fn load_project_profile_ack_map(state: &AppState, usernames: &HashSet<Stri
 }
 
 async fn render_advert_html(state: &AppState) -> String {
-  const FALLBACK_IMAGE: &str = "/images/advert/Death_Angel-555x111.png";
+  const FALLBACK_IMAGE: &str = "/images/advert/Death_Angel-400x111.png";
   const FALLBACK_URL: &str = "https://is-by.pro/advertise.html";
 
   let ad_row = sqlx::query_as::<_, AdvertImageRow>(
@@ -1458,7 +1458,7 @@ async fn render_advert_html(state: &AppState) -> String {
 
   let Some(ad_row) = ad_row.ok().flatten() else {
     return format!(
-      r#"<a href="{url}" target="_blank" rel="noopener noreferrer"><img src="{imagepath}" width="555" height="111" alt="fallback"></a>"#,
+      r#"<a href="{url}" target="_blank" rel="noopener noreferrer"><img src="{imagepath}" width="400" height="111" alt="fallback"></a>"#,
       url = FALLBACK_URL,
       imagepath = FALLBACK_IMAGE,
     );
@@ -1472,7 +1472,7 @@ async fn render_advert_html(state: &AppState) -> String {
   .await;
 
   format!(
-    r#"<a href="https://{DOMAIN}/v1/ad/click/{imageid}"><img src="{imagepath}" width="555" height="111" alt="{imageid}"></a>"#,
+    r#"<a href="https://{DOMAIN}/v1/ad/click/{imageid}"><img src="{imagepath}" width="400" height="111" alt="{imageid}"></a>"#,
     imageid = ad_row.imageid,
     imagepath = escape_html(&ad_row.imagepath),
   )
@@ -8188,7 +8188,7 @@ async fn ads_admin_page(
       r#"<div class="post" style="margin-bottom:16px;">
   <p><strong>ID:</strong> {imageid}</p>
   <p><strong>Views:</strong> {views} | <strong>Clicks:</strong> {clicks}</p>
-  <p><strong>Preview:</strong><br><img src="{imagepath}" width="555" height="111" alt="{imageid}"></p>
+  <p><strong>Preview:</strong><br><img src="{imagepath}" width="400" height="111" alt="{imageid}"></p>
   <form id="ad-update-{imageid}" action="https://{DOMAIN}/v1/admin/ads/update" method="POST">
     <input type="hidden" name="ib_uid" value="{ib_uid}">
     <input type="hidden" name="ib_user" value="{ib_user}">
@@ -8394,7 +8394,7 @@ async fn ads_user_page(
       r#"<div class="post" style="margin-bottom:16px;">
   <p><strong>ID:</strong> {imageid} | <strong>Status:</strong> {status}</p>
   <p><strong>Views:</strong> {views} | <strong>Clicks:</strong> {clicks}</p>
-  <p><img src="{imagepath}" width="555" height="111" alt="{imageid}"></p>
+  <p><img src="{imagepath}" width="400" height="111" alt="{imageid}"></p>
   <form id="ad-user-update-{imageid}" action="https://{DOMAIN}/v1/ads/update" method="POST">
     <input type="hidden" name="imageid" value="{imageid}">
     <p>Target URL: <input class="post" type="text" name="url" value="{url}" maxlength="2048" required></p>
@@ -8434,11 +8434,11 @@ async fn ads_user_page(
         <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
       </div>
       <div id="selected-user-posts-section" class="post-section">
-        <div class="notice"><p><em>My Ads (PayPal + 555x111 upload)</em></p></div>
+        <div class="notice"><p><em>My Ads (PayPal + 400x111 upload)</em></p></div>
         <div class="post" style="margin-bottom:16px;">
           <form action="https://{DOMAIN}/v1/ads/create" method="POST" enctype="multipart/form-data">
             <p>Target URL: <input class="post" type="text" name="url" maxlength="2048" placeholder="https://example.com" required></p>
-            <p>Image (must be exactly 555x111): <input type="file" name="ad_image" accept="image/png,image/jpeg,image/gif,image/webp" required></p>
+            <p>Image (must be exactly 400x111): <input type="file" name="ad_image" accept="image/png,image/jpeg,image/gif,image/webp" required></p>
             <input class="post-submit" type="submit" value="Upload + Pay with PayPal" style="position:static; left:0; display:block; width:auto; min-width:280px; padding:6px 16px; margin:12px auto 0 auto;">
           </form>
         </div>
@@ -8531,8 +8531,8 @@ async fn ads_user_create(
     Err(_) => return HttpResponse::BadRequest().body("Invalid image data"),
   };
 
-  if image_dimensions != (555, 111) {
-    return HttpResponse::BadRequest().body("Image must be exactly 555x111 pixels");
+  if image_dimensions != (400, 111) {
+    return HttpResponse::BadRequest().body("Image must be exactly 400x111 pixels");
   }
 
   if let Err(err) = fs::create_dir_all("./webroot/images/advert") {
@@ -9424,7 +9424,7 @@ async fn hello(req: HttpRequest) -> impl Responder {
 <body>
   <div id="main-section">
     <div id="media-section">
-      <img src="/images/Death_Angel-555x222.png" alt=":Death_Angel-555x222.png:" width="555"
+      <img src="/images/Death_Angel-400x222.png" alt=":Death_Angel-400x222.png:" width="400"
         height="222">
       <div class="for-the">
         <p><em>:[[ :for-the: [[ QWOD-MJ12: ATSOSSDEV-A: HyperSpire-Foundation: is-with: GitHub-driven: social-media: for-the: GitHub-enthusiasts: rebels: misfits: outcasts: ]]: ]]:</em></p>
