@@ -5851,6 +5851,186 @@ async fn render_inbox_html(
   Ok(html)
 }
 
+async fn render_inbox_mobile_html(
+  state: &AppState,
+  ib_uid: i64,
+  ib_user: &str,
+  session_uid: Option<i64>,
+  requested_target_user: Option<&str>,
+) -> Result<String, String> {
+  let advert_html = render_advert_html(state).await;
+
+  let inbox_users = load_inbox_contacts(state, ib_uid, ib_user).await?;
+
+  let initial_contacts: Vec<String> = inbox_users.iter().take(20).cloned().collect();
+  let contacts_next_offset = initial_contacts.len();
+  let contacts_has_more = inbox_users.len() > initial_contacts.len();
+  let contacts_sentinel_html = if contacts_has_more {
+    r#"<div id="dm-contacts-load-sentinel"></div>"#
+  } else {
+    ""
+  };
+
+  let default_target_user = requested_target_user
+    .map(|value| value.trim())
+    .filter(|value| !value.is_empty())
+    .map(|value| value.to_string())
+    .or_else(|| inbox_users.first().cloned())
+    .unwrap_or_default();
+
+  let contact_list_html = render_inbox_contacts_html(&initial_contacts);
+
+  let session_username = if let Some(uid) = session_uid {
+    match sqlx::query_as::<_, SessionUserRow>(
+      "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
+    )
+    .bind(uid.to_string())
+    .fetch_optional(&state.db_pool)
+    .await
+    {
+      Ok(Some(row)) if !row.username.trim().is_empty() => Some(row.username),
+      _ => None,
+    }
+  } else {
+    None
+  };
+
+  let session_nav_uid = session_uid.unwrap_or(ib_uid);
+  let session_nav_user = session_username.as_deref().unwrap_or(ib_user);
+
+  let html = format!(
+    r#"<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
+  <link rel="stylesheet" type="text/css" href="/css/is-by_mobile.css">
+  <script src="/js/is-by_user.js" type="text/javascript"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <title>:[[ :dm-inbox: {ib_user}: ]]:</title>
+</head>
+
+<body>
+  <form id="select-user-form" action="/" method="GET">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <form id="select-post-form" action="https://{DOMAIN}/v1/showpost" method="POST">
+    <input type="hidden" name="ib_uid" value="{ib_uid}">
+    <input type="hidden" name="ib_user" value="{ib_user}">
+  </form>
+  <div class="content">
+    <div>
+      {advert_html}
+    </div>
+    <div id="post-form-section">
+      <form id="post-form" action="https://{DOMAIN}/v1/post" method="POST">
+        <div id="post-message"></div>
+        <div id="post-character-count"></div>
+        <input type="hidden" name="ib_uid" value="{session_nav_uid}">
+        <input type="hidden" name="ib_user" value="{session_nav_user}">
+        <input class="post" type="text" name="post" autocomplete="off" maxlength="1024" required>
+        <input id="post-cancel" class="post-cancel" type="button" value="Cancel">
+        <input class="post-submit" type="submit" value="Post">
+      </form>
+    </div>
+    <div class="glass-card">
+      <div class="notice"><p><em>:[[ :direct-message-inbox: ]]:</em></p></div>
+      <div id="dm-inbox-layout">
+        <div id="dm-contact-list" data-ib-uid="{ib_uid}" data-ib-user="{ib_user}" data-contacts-offset="{contacts_next_offset}">{contact_list_html}{contacts_sentinel_html}</div>
+        <div id="dm-panel" style="display:block;">
+          <p><strong>:[[ :direct-messages: ]]: <span id="dm-target-user">{default_target_user}</span></strong></p>
+          <div id="dm-message-status"></div>
+          <div id="dm-thread"></div>
+          <form id="dm-form" action="https://{DOMAIN}/v1/dm/send" method="POST">
+            <input type="hidden" id="dm-target-user-input" name="target_user" value="{default_target_user}">
+            <input type="text" id="dm-message-input" name="message" maxlength="1024" placeholder="Type a direct message" required>
+            <input type="submit" value="Send">
+          </form>
+        </div>
+      </div>
+    </div>
+    <nav class="bottom-nav">
+      <a class="post-form-display" href="javascript:void(0);">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+          </svg>
+        </div>
+      </a>
+      <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{session_nav_user}">
+        <div class="nav-icon">
+          <img src="https://github.com/{session_nav_user}.png?size=64" alt="Profile"
+            style="width: 32px; height: 32px; border-radius: 50%;">
+        </div>
+      </a>
+      <a class="war-room-display"
+        href="https://{DOMAIN}/v1/warroom?ib_uid={session_nav_uid}&amp;ib_user={session_nav_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <circle cx="12" cy="12" r="4"></circle>
+            <line x1="12" y1="2" x2="12" y2="8"></line>
+            <line x1="12" y1="16" x2="12" y2="22"></line>
+            <line x1="2" y1="12" x2="8" y2="12"></line>
+            <line x1="16" y1="12" x2="22" y2="12"></line>
+          </svg>
+        </div>
+      </a>
+      <a class="search-display"
+        href="https://{DOMAIN}/v1/search-section?ib_uid={session_nav_uid}&amp;ib_user={session_nav_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </div>
+      </a>
+      <a class="projects-display"
+        href="https://{DOMAIN}/v1/projects?ib_uid={session_nav_uid}&amp;ib_user={session_nav_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </div>
+      </a>
+      <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={session_nav_uid}&ib_user={session_nav_user}">
+        <div class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            style="vertical-align: middle; margin-right: 4px;">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+            <polyline points="22,6 12,13 2,6"></polyline>
+          </svg> <span id="dm-unread-count">0</span>
+        </div>
+      </a>
+    </nav>
+  </div>
+</body>
+</html>"#,
+    ib_uid = ib_uid,
+    ib_user = escape_html(ib_user),
+    advert_html = advert_html,
+    contacts_next_offset = contacts_next_offset,
+    contact_list_html = contact_list_html,
+    contacts_sentinel_html = contacts_sentinel_html,
+    default_target_user = escape_html(&default_target_user),
+    session_nav_uid = session_nav_uid,
+    session_nav_user = escape_html(session_nav_user),
+  );
+
+  Ok(html)
+}
+
 async fn render_single_post_html(
   state: &AppState,
   ib_uid: i64,
@@ -8667,13 +8847,13 @@ async fn inbox(
     return HttpResponse::Unauthorized().body("Login required");
   }
 
-  match render_inbox_html(
-    &state,
-    query.ib_uid,
-    &query.ib_user,
-    session_uid,
-    query.target_user.as_deref(),
-  ).await {
+  let html_result = if is_mobile_device(&req) {
+    render_inbox_mobile_html(&state, query.ib_uid, &query.ib_user, session_uid, query.target_user.as_deref()).await
+  } else {
+    render_inbox_html(&state, query.ib_uid, &query.ib_user, session_uid, query.target_user.as_deref()).await
+  };
+
+  match html_result {
     Ok(html) => HttpResponse::Ok()
       .content_type("text/html; charset=utf-8")
       .body(html),
