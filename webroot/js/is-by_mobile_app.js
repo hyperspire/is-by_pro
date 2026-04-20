@@ -159,16 +159,20 @@ function showUpdateBanner(registration) {
   const freshButton = document.getElementById('update-banner-action');
   if (freshButton) {
     freshButton.addEventListener('click', () => {
-      // Suppress banner for this deployed shell version immediately on click.
+      // Immediately hide the banner and button on click
+      const updateBanner = document.getElementById('update-banner');
+      freshButton.disabled = true;
+      freshButton.textContent = 'Refreshing...';
+      if (updateBanner) {
+        updateBanner.hidden = true;
+      }
+      // Optionally, still do the SW update logic
       suppressUpdateBannerForCurrentShellVersion();
-
       if (registration.waiting) {
         suppressUpdateBannerForSession(registration);
         suppressUpdateBannerForReloadCycle();
         console.log('Sending SKIP_WAITING message to service worker');
         registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-        freshButton.disabled = true;
-        freshButton.textContent = 'Refreshing...';
       }
     });
   }
@@ -418,26 +422,25 @@ function bindRefreshFallback() {
     if (updateButton.disabled) {
       return;
     }
-
-    // Suppress banner for this deployed shell version immediately on click.
+    // Immediately hide the banner and button on click
+    const updateBanner = document.getElementById('update-banner');
+    updateButton.disabled = true;
+    updateButton.textContent = 'Refreshing...';
+    if (updateBanner) {
+      updateBanner.hidden = true;
+    }
     suppressUpdateBannerForCurrentShellVersion();
-    updateButton.textContent = 'Checking...';
-
     try {
       const registration = await navigator.serviceWorker.getRegistration('/');
       if (registration) {
         await registration.update();
         if (registration.waiting) {
           suppressUpdateBannerForSession(registration);
-          suppressUpdateBannerForCurrentShellVersion();
           suppressUpdateBannerForReloadCycle();
           registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-          updateButton.disabled = true;
-          updateButton.textContent = 'Refreshing...';
           return;
         }
       }
-
       // Fallback when no waiting worker exists: force a fresh page load.
       window.location.reload();
     } catch (error) {
