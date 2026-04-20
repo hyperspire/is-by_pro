@@ -1447,7 +1447,7 @@ async fn load_project_profile_ack_map(state: &AppState, usernames: &HashSet<Stri
 }
 
 async fn render_advert_html(state: &AppState) -> String {
-  const FALLBACK_IMAGE: &str = "/images/advert/Death_Angel-400x111.png";
+  const FALLBACK_IMAGE: &str = "/images/advert/Death_Angel-Ad-400x111.png";
   const FALLBACK_URL: &str = "https://is-by.pro/advertise.html";
 
   let ad_row = sqlx::query_as::<_, AdvertImageRow>(
