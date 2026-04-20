@@ -402,7 +402,7 @@ body {
 .hero-actions {
   display: grid;
   gap: 12px;
-  margin-top: 20px;
+  margin-top: 0;
   min-width: 0;
 }
 
@@ -524,6 +524,9 @@ body {
 }
 
 .pwa-nav-item {
+        display: flex;
+        align-items: center;
+        justify-content: center;
       min-width: 0;
       width: 100%;
       box-sizing: border-box;
