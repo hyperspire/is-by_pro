@@ -4,23 +4,129 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#11161f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="is-by.pro">
   <meta name="description" content="GitHub-driven social media for the GitHub enthusiasts, rebels, misfits and outcasts.">
+  <link rel="manifest" href="/app.webmanifest?v=mobile-shell-v4">
   <link rel="icon" href="/favicon.ico" sizes="any">
-  <link rel="stylesheet" type="text/css" href="/css/is-by_mobile.css">
+  <link rel="apple-touch-icon" href="/images/is-by_app_icon-192.png">
+  <link rel="stylesheet" type="text/css" href="/css/is-by_mobile.css?v=mobile-shell-v4">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <script src="/js/is-by_mobile_app.js?v=mobile-shell-v4" type="text/javascript" defer></script>
   <title>:[[ :is-by: pro: anti-social: social-media: ]]:</title>
 </head>
-<body>
-  <div class="content">
-    <img src="/images/Death_Angel-555x222.png" alt="Death Angel Logo">
-    <div class="glass-card hero-panel">
-      <p class="eyebrow">GitHub-driven social media for the GitHub enthusiasts, rebels, misfits and outcasts.</p>
-    </div>
-    <div class="hero-actions">
-      <a href="/v1/auth/github" class="btn-login">Login with GitHub</a>
-    </div>
+<body class="app-shell-page">
+  <div class="bg-glow"></div>
+  <div class="bg-grid"></div>
+  <div class="app-shell">
+    <section class="update-banner" id="update-banner" hidden aria-live="polite">
+      <div class="update-banner-copy">
+        <strong>Update available</strong>
+        <p>A newer mobile shell is ready. Refresh into the latest version.</p>
+      </div>
+      <button class="update-banner-action" id="update-banner-action" type="button">Refresh Now</button>
+    </section>
+
+    <header class="app-topbar">
+      <div class="brand-lockup">
+        <span class="brand-badge">is-by.pro</span>
+        <p class="brand-status" id="connection-status">Mobile shell ready</p>
+      </div>
+      <button id="install-app-button" class="install-chip" type="button">Install App</button>
+    </header>
+
+    <main class="app-panels" id="app-panels">
+      <section class="panel is-active" data-panel="home" aria-labelledby="home-title">
+        <div class="hero-panel glass-card">
+          <img src="/images/Death_Angel-555x222.png" alt="Death Angel Logo" class="hero-mark">
+          <p class="eyebrow">GitHub-driven mobile field kit</p>
+          <h1 id="home-title" class="app-headline">Responsive PWA shell for the rebels, misfits, and outcasts.</h1>
+          <p class="app-copy">Install it, launch it full-screen, and keep the mobile entry point fast while the existing Rust routes continue to power the authenticated experience.</p>
+          <div class="hero-actions">
+            <a href="/v1/auth/github" class="btn-login">Login with GitHub</a>
+            <a href="#access" class="btn-secondary" data-target="access">Open Access Panel</a>
+          </div>
+        </div>
+
+        <div class="glass-card metrics-card">
+          <div class="metric-grid">
+            <div>
+              <strong>Installable</strong>
+              <p>Manifest + service worker + full-screen launch.</p>
+            </div>
+            <div>
+              <strong>Single-page</strong>
+              <p>Hash-routed panels without leaving the shell.</p>
+            </div>
+            <div>
+              <strong>Mobile-first</strong>
+              <p>Safe-area aware layout with touch navigation.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="mission" aria-labelledby="mission-title">
+        <div class="glass-card">
+          <p class="eyebrow">Mission</p>
+          <h2 id="mission-title" class="section-title">What the mobile shell is doing</h2>
+          <p class="app-copy">The public mobile homepage now behaves like an app shell: quick to load, installable, and navigable without full-page refreshes inside the landing experience.</p>
+          <div class="feature-stack">
+            <article class="feature-card">
+              <strong>Install path</strong>
+              <p>The shell exposes install affordances when the browser supports the PWA prompt.</p>
+            </article>
+            <article class="feature-card">
+              <strong>Offline fallback</strong>
+              <p>Core assets are cached so the shell can still open when connectivity drops.</p>
+            </article>
+            <article class="feature-card">
+              <strong>Backend preserved</strong>
+              <p>Existing mobile routes for profile, inbox, projects, search, and war room remain the source of truth after login.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="access" aria-labelledby="access-title">
+        <div class="glass-card">
+          <p class="eyebrow">Access</p>
+          <h2 id="access-title" class="section-title">Open the network</h2>
+          <div class="route-grid">
+            <a class="route-card route-card-primary" href="/v1/auth/github">
+              <strong>Authenticate</strong>
+              <span>Sign in with GitHub and enter the mobile routes.</span>
+            </a>
+            <a class="route-card" href="/advertise.html">
+              <strong>Advertise</strong>
+              <span>Commercial and placement details.</span>
+            </a>
+            <a class="route-card" href="/privacy.html">
+              <strong>Privacy</strong>
+              <span>Read the current privacy policy.</span>
+            </a>
+            <a class="route-card" href="/tos.html">
+              <strong>Terms</strong>
+              <span>Review the current service terms.</span>
+            </a>
+          </div>
+          <div class="install-note" id="install-status">Install the app from your browser menu if no prompt appears automatically.</div>
+          <div class="install-guide" id="install-guide" hidden>
+            <strong>Install guide</strong>
+            <p id="install-guide-text">Open the browser menu and choose Add to Home Screen.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <nav class="pwa-nav" aria-label="Primary mobile navigation">
+      <button class="pwa-nav-item is-active" type="button" data-target="home">Home</button>
+      <button class="pwa-nav-item" type="button" data-target="mission">Mission</button>
+      <button class="pwa-nav-item" type="button" data-target="access">Access</button>
+    </nav>
   </div>
 </body>
 </html>
