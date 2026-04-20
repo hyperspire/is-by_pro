@@ -51,13 +51,6 @@ function getSuppressedWorkerUrl() {
 function clearUpdateBannerSuppression() {
   try {
     window.sessionStorage.removeItem(UPDATE_BANNER_SUPPRESS_KEY);
-    window.sessionStorage.removeItem(UPDATE_BANNER_SUPPRESS_VERSION_KEY);
-  } catch (_error) {
-    // Ignore storage exceptions in strict/private modes.
-  }
-
-  try {
-    window.localStorage.removeItem(UPDATE_BANNER_SUPPRESS_VERSION_KEY);
   } catch (_error) {
     // Ignore storage exceptions in strict/private modes.
   }
@@ -166,9 +159,11 @@ function showUpdateBanner(registration) {
   const freshButton = document.getElementById('update-banner-action');
   if (freshButton) {
     freshButton.addEventListener('click', () => {
+      // Suppress banner for this deployed shell version immediately on click.
+      suppressUpdateBannerForCurrentShellVersion();
+
       if (registration.waiting) {
         suppressUpdateBannerForSession(registration);
-        suppressUpdateBannerForCurrentShellVersion();
         suppressUpdateBannerForReloadCycle();
         console.log('Sending SKIP_WAITING message to service worker');
         registration.waiting.postMessage({ type: 'SKIP_WAITING' });
@@ -424,6 +419,8 @@ function bindRefreshFallback() {
       return;
     }
 
+    // Suppress banner for this deployed shell version immediately on click.
+    suppressUpdateBannerForCurrentShellVersion();
     updateButton.textContent = 'Checking...';
 
     try {
