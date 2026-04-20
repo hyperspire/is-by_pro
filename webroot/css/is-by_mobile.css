@@ -210,6 +210,231 @@ body {
   font-size: 0.7rem;
 }
 
+.app-shell-page {
+  position: relative;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-bottom: calc(92px + env(safe-area-inset-bottom));
+}
+
+.app-shell-page .bg-grid {
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 32px 32px;
+  opacity: 0.12;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.app-shell {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 520px);
+  min-height: 100vh;
+  padding: 20px 20px 0;
+}
+
+.app-topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.brand-lockup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.brand-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255, 123, 114, 0.16);
+  color: #ffb5ad;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.brand-status {
+  color: #8b949e;
+  font-size: 0.82rem;
+}
+
+.install-chip,
+.btn-secondary {
+  appearance: none;
+  border: 1px solid rgba(240, 246, 252, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #e6edf3;
+  padding: 12px 16px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.app-panels {
+  position: relative;
+}
+
+.panel {
+  display: none;
+  animation: slideUp 0.35s ease both;
+}
+
+.panel.is-active {
+  display: block;
+}
+
+.hero-panel {
+  text-align: left;
+  padding: 24px;
+}
+
+.hero-mark {
+  width: 100%;
+  border-radius: 18px;
+  margin-bottom: 20px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+}
+
+.eyebrow {
+  color: #58a6ff;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.72rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.app-headline,
+.section-title {
+  color: #f0f6fc;
+  font-size: clamp(1.6rem, 6vw, 2.3rem);
+  line-height: 1.08;
+  margin-bottom: 14px;
+}
+
+.section-title {
+  font-size: 1.35rem;
+}
+
+.app-copy {
+  color: #b7c0ca;
+  font-size: 0.98rem;
+  line-height: 1.6;
+}
+
+.hero-actions {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.metrics-card {
+  margin-top: 16px;
+}
+
+.metric-grid,
+.route-grid,
+.feature-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.metric-grid strong,
+.feature-card strong,
+.route-card strong {
+  display: block;
+  color: #f0f6fc;
+  margin-bottom: 6px;
+}
+
+.metric-grid p,
+.feature-card p,
+.route-card span,
+.install-note {
+  color: #8b949e;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.feature-card,
+.route-card {
+  display: block;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  text-decoration: none;
+}
+
+.route-card-primary {
+  background: linear-gradient(180deg, rgba(46, 160, 67, 0.2) 0%, rgba(35, 134, 54, 0.12) 100%);
+  border-color: rgba(46, 160, 67, 0.3);
+}
+
+.install-note {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(88, 166, 255, 0.08);
+  border: 1px solid rgba(88, 166, 255, 0.16);
+}
+
+.pwa-nav {
+  position: sticky;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  width: 100%;
+  padding: 14px 0 calc(14px + env(safe-area-inset-bottom));
+  margin-top: 20px;
+  background: linear-gradient(180deg, rgba(15, 17, 26, 0) 0%, rgba(15, 17, 26, 0.94) 34%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.pwa-nav-item {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #8b949e;
+  font-weight: 700;
+  padding: 14px 10px;
+}
+
+.pwa-nav-item.is-active {
+  color: #f0f6fc;
+  background: rgba(255, 123, 114, 0.14);
+  border-color: rgba(255, 123, 114, 0.28);
+}
+
+@media (min-width: 540px) {
+  .app-shell {
+    margin: 0 auto;
+    padding-top: 28px;
+  }
+
+  .hero-actions,
+  .metric-grid,
+  .route-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* Header */
 .header {
   position: sticky;
