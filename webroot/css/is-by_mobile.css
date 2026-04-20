@@ -11,6 +11,7 @@ body {
   color: #e6edf3;
   font-family: 'Inter', sans-serif;
   min-height: 100vh;
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -235,10 +236,12 @@ body {
   width: min(100%, 520px);
   min-height: 100vh;
   padding: 20px 20px 0;
+  min-width: 0;
 }
 
 .app-topbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
@@ -268,6 +271,7 @@ body {
 .brand-status {
   color: #8b949e;
   font-size: 0.82rem;
+  overflow-wrap: anywhere;
 }
 
 .install-chip,
@@ -281,6 +285,9 @@ body {
   font-size: 0.88rem;
   font-weight: 700;
   text-decoration: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: 100%;
 }
 
 .app-panels {
@@ -323,6 +330,7 @@ body {
   font-size: clamp(1.6rem, 6vw, 2.3rem);
   line-height: 1.08;
   margin-bottom: 14px;
+  overflow-wrap: anywhere;
 }
 
 .section-title {
@@ -333,12 +341,14 @@ body {
   color: #b7c0ca;
   font-size: 0.98rem;
   line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 
 .hero-actions {
   display: grid;
   gap: 12px;
   margin-top: 20px;
+  min-width: 0;
 }
 
 .metrics-card {
@@ -367,11 +377,13 @@ body {
   color: #8b949e;
   font-size: 0.9rem;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .feature-card,
 .route-card {
   display: block;
+  min-width: 0;
   padding: 16px;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.035);
@@ -390,6 +402,27 @@ body {
   border-radius: 14px;
   background: rgba(88, 166, 255, 0.08);
   border: 1px solid rgba(88, 166, 255, 0.16);
+}
+
+.install-guide {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.install-guide strong {
+  display: block;
+  color: #f0f6fc;
+  margin-bottom: 6px;
+}
+
+.install-guide p {
+  color: #8b949e;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .pwa-nav {
@@ -414,6 +447,9 @@ body {
   color: #8b949e;
   font-weight: 700;
   padding: 14px 10px;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .pwa-nav-item.is-active {

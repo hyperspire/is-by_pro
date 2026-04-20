@@ -1,10 +1,12 @@
-const SHELL_CACHE = 'is-by-mobile-shell-v1';
+const SHELL_CACHE = 'is-by-mobile-shell-v2';
 const SHELL_ASSETS = [
   '/mobile.html',
   '/css/is-by_mobile.css',
   '/js/is-by_mobile_app.js',
   '/images/Death_Angel-555x222.png',
   '/images/is-by_app_icon.svg',
+  '/images/is-by_app_icon-192.png',
+  '/images/is-by_app_icon-512.png',
   '/favicon.ico',
   '/app.webmanifest'
 ];

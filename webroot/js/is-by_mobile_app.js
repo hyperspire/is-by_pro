@@ -1,7 +1,15 @@
 const APP_PANELS = ['home', 'mission', 'access'];
-const SHELL_CACHE_NAME = 'is-by-mobile-shell-v1';
+const SHELL_CACHE_NAME = 'is-by-mobile-shell-v2';
 
 let deferredInstallPrompt = null;
+
+function isIosDevice() {
+  return /iphone|ipad|ipod/i.test(window.navigator.userAgent || '');
+}
+
+function isStandaloneDisplay() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
 
 function setStatus(message) {
   const status = document.getElementById('connection-status');
@@ -15,6 +23,17 @@ function setInstallStatus(message) {
   if (installStatus) {
     installStatus.textContent = message;
   }
+}
+
+function setInstallGuide(message, visible = true) {
+  const installGuide = document.getElementById('install-guide');
+  const installGuideText = document.getElementById('install-guide-text');
+  if (!installGuide || !installGuideText) {
+    return;
+  }
+
+  installGuideText.textContent = message;
+  installGuide.hidden = !visible;
 }
 
 function activatePanel(panelName) {
@@ -78,22 +97,50 @@ function bindInstallPrompt() {
     return;
   }
 
+  if (isStandaloneDisplay()) {
+    installButton.hidden = true;
+    setInstallStatus('is-by.pro is already installed on this device.');
+    setInstallGuide('', false);
+    return;
+  }
+
+  if (isIosDevice()) {
+    installButton.hidden = false;
+    installButton.textContent = 'How to Install';
+    setInstallStatus('Safari does not show a PWA prompt. Use the share menu to install.');
+    setInstallGuide('In Safari, tap Share, then choose Add to Home Screen.', true);
+  } else {
+    installButton.hidden = false;
+    installButton.textContent = 'Install App';
+    setInstallGuide('If no install prompt appears, open the browser menu and choose Install App or Add to Home Screen.', true);
+  }
+
   window.addEventListener('beforeinstallprompt', (event) => {
     event.preventDefault();
     deferredInstallPrompt = event;
     installButton.hidden = false;
+    installButton.textContent = 'Install App';
     setInstallStatus('Install is-by.pro for faster access and offline shell support.');
+    setInstallGuide('Tap Install App to add is-by.pro to your home screen.', true);
   });
 
   window.addEventListener('appinstalled', () => {
     deferredInstallPrompt = null;
     installButton.hidden = true;
     setInstallStatus('is-by.pro is installed on this device.');
+    setInstallGuide('', false);
   });
 
   installButton.addEventListener('click', async () => {
+    if (isIosDevice() && !deferredInstallPrompt) {
+      setInstallStatus('Use Safari Share > Add to Home Screen to install is-by.pro.');
+      setInstallGuide('In Safari, tap Share, then choose Add to Home Screen.', true);
+      return;
+    }
+
     if (!deferredInstallPrompt) {
       setInstallStatus('Use your browser menu to add this app to the home screen.');
+      setInstallGuide('Open the browser menu and choose Install App or Add to Home Screen.', true);
       return;
     }
 
@@ -104,8 +151,10 @@ function bindInstallPrompt() {
 
     if (choice.outcome === 'accepted') {
       setInstallStatus('Installation accepted. Launch the app from your home screen.');
+      setInstallGuide('', false);
     } else {
       setInstallStatus('Installation dismissed. You can install it later from the browser menu.');
+      setInstallGuide('Open the browser menu and choose Install App or Add to Home Screen when you are ready.', true);
     }
   });
 }
