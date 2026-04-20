@@ -2,6 +2,7 @@ const APP_PANELS = ['home', 'mission', 'access'];
 const SHELL_CACHE_NAME = 'is-by-mobile-shell-v4';
 const SHELL_VERSION = 'mobile-shell-v4';
 const UPDATE_BANNER_SUPPRESS_KEY = 'is-by-mobile-update-banner-suppressed';
+const UPDATE_BANNER_SUPPRESS_VERSION_KEY = 'is-by-mobile-update-banner-suppressed-version';
 
 let deferredInstallPrompt = null;
 let refreshingForUpdate = false;
@@ -50,8 +51,25 @@ function getSuppressedWorkerUrl() {
 function clearUpdateBannerSuppression() {
   try {
     window.sessionStorage.removeItem(UPDATE_BANNER_SUPPRESS_KEY);
+    window.sessionStorage.removeItem(UPDATE_BANNER_SUPPRESS_VERSION_KEY);
   } catch (_error) {
     // Ignore storage exceptions in strict/private modes.
+  }
+}
+
+function suppressUpdateBannerForCurrentShellVersion() {
+  try {
+    window.sessionStorage.setItem(UPDATE_BANNER_SUPPRESS_VERSION_KEY, SHELL_VERSION);
+  } catch (_error) {
+    // Ignore storage exceptions in strict/private modes.
+  }
+}
+
+function isUpdateBannerSuppressedForCurrentShellVersion() {
+  try {
+    return window.sessionStorage.getItem(UPDATE_BANNER_SUPPRESS_VERSION_KEY) === SHELL_VERSION;
+  } catch (_error) {
+    return false;
   }
 }
 
@@ -114,7 +132,7 @@ function showUpdateBanner(registration) {
   const updateBanner = document.getElementById('update-banner');
   const updateButton = document.getElementById('update-banner-action');
   reconcileUpdateBannerSuppression(registration);
-  if (!updateBanner || !updateButton || !registration?.waiting || isUpdateBannerSuppressedForSession(registration)) {
+  if (!updateBanner || !updateButton || !registration?.waiting || isUpdateBannerSuppressedForSession(registration) || isUpdateBannerSuppressedForCurrentShellVersion()) {
     return;
   }
 
@@ -130,6 +148,7 @@ function showUpdateBanner(registration) {
     freshButton.addEventListener('click', () => {
       if (registration.waiting) {
         suppressUpdateBannerForSession(registration);
+        suppressUpdateBannerForCurrentShellVersion();
         suppressUpdateBannerForReloadCycle();
         console.log('Sending SKIP_WAITING message to service worker');
         registration.waiting.postMessage({ type: 'SKIP_WAITING' });
@@ -172,7 +191,7 @@ function watchServiceWorkerRegistration(registration) {
   reconcileUpdateBannerSuppression(registration);
 
   if (hasNewWaitingWorker(registration)) {
-    if (isUpdateBannerSuppressedForSession(registration)) {
+    if (isUpdateBannerSuppressedForSession(registration) || isUpdateBannerSuppressedForCurrentShellVersion()) {
       hideUpdateBanner();
     } else {
       setInstallStatus('An updated shell is ready. Reload the page to apply it.');
@@ -191,7 +210,7 @@ function watchServiceWorkerRegistration(registration) {
     installingWorker.addEventListener('statechange', () => {
       if (installingWorker.state === 'installed' && navigator.serviceWorker.controller && hasNewWaitingWorker(registration)) {
         reconcileUpdateBannerSuppression(registration);
-        if (isUpdateBannerSuppressedForSession(registration)) {
+        if (isUpdateBannerSuppressedForSession(registration) || isUpdateBannerSuppressedForCurrentShellVersion()) {
           hideUpdateBanner();
         } else {
           setInstallStatus('An updated shell is ready. Refresh the page to apply it.');
@@ -393,6 +412,7 @@ function bindRefreshFallback() {
         await registration.update();
         if (registration.waiting) {
           suppressUpdateBannerForSession(registration);
+          suppressUpdateBannerForCurrentShellVersion();
           suppressUpdateBannerForReloadCycle();
           registration.waiting.postMessage({ type: 'SKIP_WAITING' });
           updateButton.disabled = true;
