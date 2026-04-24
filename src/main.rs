@@ -76,11 +76,19 @@ use tera::{Tera, Context};
 
 static AES256_KEY: std::sync::OnceLock<[u8; 32]> = std::sync::OnceLock::new();
 
+#[derive(Clone, Debug, Serialize)]
+pub struct SseEvent {
+  pub target_uid: i64,
+  pub event_type: String,
+  pub message: String,
+}
+
 #[derive(Clone)]
 struct AppState {
   db_pool: MySqlPool,
   github_client_id: String,
   github_client_secret: String,
+  sse_sender: tokio::sync::broadcast::Sender<SseEvent>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -8322,6 +8330,12 @@ async fn quick_response_force_project(
     {
       return HttpResponse::InternalServerError().body(format!("Failed to update reinforcements: {}", err));
     }
+
+    let _ = state.sse_sender.send(SseEvent {
+      target_uid: project_row.ib_uid,
+      event_type: "reinforcement".to_string(),
+      message: format!("{} responded to your reinforcements request!", session_username),
+    });
   }
 
   let fallback_location = format!(
@@ -8341,6 +8355,33 @@ async fn quick_response_force_project(
   HttpResponse::SeeOther()
     .insert_header(("Location", location))
     .finish()
+}
+
+#[get("/v1/events")]
+async fn events_endpoint(req: HttpRequest, state: web::Data<AppState>) -> impl Responder {
+  let Some((session_uid, _)) = get_session_identity(&req, &state).await else {
+    return HttpResponse::Unauthorized().body("Login required");
+  };
+
+  let rx = state.sse_sender.subscribe();
+
+  let stream = tokio_stream::wrappers::BroadcastStream::new(rx)
+    .filter_map(move |res| async move {
+      let event = res.ok()?;
+      if event.target_uid == session_uid {
+        let json_data = serde_json::to_string(&event).unwrap_or_default();
+        let sse_data = format!("data: {}\n\n", json_data);
+        Some(Ok::<_, actix_web::Error>(actix_web::web::Bytes::from(sse_data)))
+      } else {
+        None
+      }
+    });
+
+  HttpResponse::Ok()
+    .insert_header(("Content-Type", "text/event-stream"))
+    .insert_header(("Cache-Control", "no-cache"))
+    .insert_header(("Connection", "keep-alive"))
+    .streaming(stream)
 }
 
 #[get("/v1/admin/ads")]
@@ -9168,6 +9209,12 @@ async fn send_direct_message(
 
   match insert_result {
     Ok(_) => {
+      let _ = state.sse_sender.send(SseEvent {
+        target_uid,
+        event_type: "dm".to_string(),
+        message: "You have a new direct message.".to_string(),
+      });
+
       if wants_json {
         HttpResponse::Ok().json(DMSendResponse {
           success: true,
@@ -9660,12 +9707,15 @@ async fn main() -> std::io::Result<()> {
     .await
     .expect("Failed to backfill post tags");
 
+  let (sse_sender, _) = tokio::sync::broadcast::channel(1000);
+
   let app_state = AppState {
     db_pool,
     github_client_id: std::env::var("GITHUB_CLIENT_ID")
       .expect("Missing GITHUB_CLIENT_ID in environment file or shell"),
     github_client_secret: std::env::var("GITHUB_CLIENT_SECRET")
       .expect("Missing GITHUB_CLIENT_SECRET in environment file or shell"),
+    sse_sender,
   };
 
   let http_server = HttpServer::new(|| {
@@ -9742,6 +9792,7 @@ async fn main() -> std::io::Result<()> {
       })
       .app_data(web::Data::new(app_state.clone()))
       .service(hello)
+      .service(events_endpoint)
       .service(create_post)
       .service(create_reply)
       .service(show_post)

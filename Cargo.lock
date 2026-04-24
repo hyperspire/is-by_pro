@@ -1623,6 +1623,7 @@ dependencies = [
  "sqlx",
  "tera",
  "tokio",
+ "tokio-stream",
  "uuid",
 ]
 
@@ -3108,6 +3109,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

@@ -22,6 +22,7 @@ function attachEventListeners() {
     attachPostsInfiniteScrollEventListener,
     attachFollowersInfiniteScrollEventListener,
     attachDMContactsInfiniteScrollEventListener,
+    attachSSEListener,
   ];
 
   listeners.forEach((setup) => {
@@ -961,4 +962,59 @@ function attachDMContactsInfiniteScrollEventListener() {
   }, { rootMargin: '300px' });
 
   observer.observe(sentinel);
+}
+
+function attachSSEListener() {
+  if (window.ibSSEConnection) {
+    return;
+  }
+
+  const ibUID = getCurrentIBUID();
+  if (Number.isNaN(ibUID)) {
+    return;
+  }
+
+  window.ibSSEConnection = new EventSource('/v1/events');
+
+  window.ibSSEConnection.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.event_type === 'dm') {
+        showToast(data.message, 'toast-dm');
+        updateUnreadDMCount();
+      } else if (data.event_type === 'reinforcement') {
+        showToast(data.message, 'toast-reinforcement');
+      } else {
+        showToast(data.message, '');
+      }
+    } catch (error) {
+      console.error('Error parsing SSE event:', error);
+    }
+  };
+
+  window.ibSSEConnection.onerror = (error) => {
+    console.error('SSE connection error', error);
+  };
+}
+
+function showToast(message, className) {
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement('div');
+  toast.className = `toast ${className}`;
+  toast.innerHTML = `<span>${escapeHTML(message)}</span>`;
+
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add('toast-fade-out');
+    toast.addEventListener('animationend', () => {
+      toast.remove();
+    });
+  }, 5000);
 }

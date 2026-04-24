@@ -1,6 +1,6 @@
 pub const DOMAIN: &str = "is-by.pro";
-pub const HTTP_PORT: u16 = 80;
-pub const HTTPS_PORT: u16 = 443;
+pub const HTTP_PORT: u16 = 8000;
+pub const HTTPS_PORT: u16 = 8443;
 pub const IB_CA_KEY: &str = "ssl/is-by.pro.key";
 pub const IB_CA_CERT: &str = "ssl/is-by.pro.crt";
 pub const IB_ENV: &str = ".env";
