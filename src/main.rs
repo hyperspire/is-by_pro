@@ -1092,7 +1092,7 @@ async fn render_related_userlist_html(
   };
 
   if interests.is_empty() {
-    return "<br><p><em>:[[ :no-related-users: ]]:</em></p>".to_string();
+    return ":[[ :no-related-users: ]]:".to_string();
   }
 
   let regex_terms: Vec<String> = interests
@@ -1236,7 +1236,7 @@ async fn render_related_userlist_html(
   }
 
   if related_html.is_empty() {
-    "<br><p><em>:[[ :no-related-users: ]]:</em></p>".to_string()
+    ":[[ :no-related-users: ]]:".to_string()
   } else {
     related_html
   }
@@ -1432,7 +1432,7 @@ async fn render_github_identity_html(state: &AppState, ib_user: &str) -> String 
 }
 
 async fn related_users(state: &AppState, session_uid: Option<i64>) -> String {
-  let empty_result = "<p>:[[ :no-related-users: ]]:</p>".to_string();
+  let empty_result = ":[[ :no-related-users: ]]:".to_string();
 
   let uid = match session_uid {
     Some(id) => id,
@@ -3474,6 +3474,7 @@ async fn render_search_posts_html(
   raw_tag: &str,
   session_uid: Option<i64>,
 ) -> Result<String, String> {
+  let mut context = Context::new();
   let advert_html = render_advert_html(state).await;
 
   let normalized_tag = normalize_hashtag(raw_tag);
@@ -3495,12 +3496,12 @@ async fn render_search_posts_html(
     if rows.is_empty() {
       "<p><em>:[[ :search-posts: is-by: no: is-with: results: ]]:</em></p>".to_string()
     } else {
-      let mut html = String::new();
+      let mut post_html = String::new();
       let row_post_ids: Vec<String> = rows.iter().map(|row| row.postid.clone()).collect();
       let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &row_post_ids).await;
 
       for row in rows {
-        html += &format!(
+        post_html += &format!(
           r#"<div class="post" data-postid="{post_id}" data-timestamp="{post_timestamp}">
             {post_meta}
             <p>{post_body}</p>
@@ -3530,7 +3531,7 @@ async fn render_search_posts_html(
         );
       }
 
-      html
+      post_html
     }
   } else {
     "<p><em>:[[ :search-posts: invalid-tag: ]]:</em></p>".to_string()
@@ -3579,55 +3580,27 @@ async fn render_search_posts_html(
     String::new()
   };
 
-  let mut html = format!(
-    r#"<!DOCTYPE html>
-<html lang="en-US">
+  let mut github_identity_html = String::new();
+  let mut rank_name = String::new();
+  let mut rank_level = 0;
+  let mut ib_ibp_escaped = String::new();
+  let mut ib_pro_str = String::new();
+  let mut ib_services_escaped = String::new();
+  let mut ib_location_escaped = String::new();
+  let mut ib_website_escaped = String::new();
+  let mut edit_profile_link = String::new();
+  let follow_section_html = String::new();
+  let mut related_users_html = String::new();
+  let mut trending_tags_html = String::new();
+  let mut sidebar_login_html = String::new();
 
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
-  <script src="/js/is-by_user.js?v=2" type="text/javascript"></script>
-  <title>:[[ :search-posts: {ib_user}: ]]:</title>
-</head>
-
-<body>
-  <form id="select-user-form" action="/" method="GET">
-    <input type="hidden" name="ib_uid" value="{ib_uid}">
-    <input type="hidden" name="ib_user" value="{ib_user}">
-  </form>
-  <form id="select-post-form" action="https://{DOMAIN}/v1/showpost" method="POST">
-    <input type="hidden" name="ib_uid" value="{ib_uid}">
-    <input type="hidden" name="ib_user" value="{ib_user}">
-  </form>
-  <form id="edit-profile-form" action="https://{DOMAIN}/v1/editprofile" method="GET">
-    <input type="hidden" name="ib_uid" value="{ib_uid}">
-    <input type="hidden" name="ib_user" value="{ib_user}">
-  </form>
-  <div id="main-section">
-    <div id="media-section">
-      <div>
-        {advert_html}
+  if session_uid.is_none() {
+    sidebar_login_html = r#"<div id="actions-section">
+      <div class="login-section">
+        <p><a href="/v1/auth/github">Login with GitHub</a></p>
       </div>
-      <div id="navigation-section">
-        {navigation_links}
-      </div>
-      <div id="selected-user-posts-section" class="post-section">
-        <div class="notice"><p><em>:[[ :search-posts-for-tag: #{tag}: ]]:</em></p></div>
-        {search_results_html}
-      </div>
-    </div>"#,
-    ib_uid = ib_uid,
-    ib_user = escape_html(ib_user),
-    advert_html = advert_html,
-    navigation_links = navigation_links,
-    tag = escape_html(
-      normalized_tag
-        .as_deref()
-        .unwrap_or(raw_tag.trim_start_matches('#'))
-    ),
-    search_results_html = search_results_html
-  );
+    </div>"#.to_string();
+  }
 
   let ib_pro_result = sqlx::query_as::<_, ProRow>(
       "SELECT ibp, pro, location, services, website, github FROM pro WHERE ib_uid = ?"
@@ -3637,6 +3610,12 @@ async fn render_search_posts_html(
     .await;
 
   if let Ok(ib_pro) = ib_pro_result {
+    ib_ibp_escaped = escape_html(&ib_pro.ibp);
+    ib_pro_str = escape_html(&ib_pro.pro);
+    ib_services_escaped = escape_html(&ib_pro.services);
+    ib_location_escaped = escape_html(&ib_pro.location);
+    ib_website_escaped = escape_html(&ib_pro.website);
+
     let source_uid = session_uid.unwrap_or(ib_uid);
     let source_profile_terms = if let Some(uid) = session_uid {
       lookup_profile_terms_by_uid(state, uid)
@@ -3645,84 +3624,60 @@ async fn render_search_posts_html(
     } else {
       format!("{} {}", ib_pro.pro, ib_pro.ibp)
     };
-    let related_userlist_html =
+    related_users_html =
       render_related_userlist_html(state, session_uid, source_uid, &source_profile_terms).await;
-    let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
-    let github_identity_html = render_github_identity_html(state, ib_user).await;
-    let sidebar_login_html = if session_uid.is_none() {
-      r#"<div id="actions-section">
-      <div class="login-section">
-        <p><a href="/v1/auth/github">Login with GitHub</a></p>
-      </div>
-    </div>"#
-        .to_string()
-    } else {
-      String::new()
-    };
+    trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
+    github_identity_html = render_github_identity_html(state, ib_user).await;
 
-    html += &format!(r#"
-  <div id="profile-section">
-    {sidebar_login_html}
-    <p><strong>{github_identity_html}</strong></p>
-    <p class="paragraph"><em>{ib_ibp}</em></p>
-    <p class="description">{ib_pro}</p>
-    <p class="description">{ib_services}</p>
-    <p class="description">{ib_location}</p>
-    <p><a target="_blank" rel="noopener" href="{ib_website}">{ib_website}</a></p>
-    <div id="userlist-section">
-      <p><strong>:[[ :userlist: ]]:</strong></p><br>
-      <div id="userlist-container">
-        {related_userlist_html}
-      </div>
-    </div><br>
-    <div id="trending-tags-section">
-      <p><strong>:[[ :trending-tags-24h: ]]:</strong></p>
-      <div id="trending-tags-container">
-        {trending_tags_html}
-      </div>
-    </div><br>
-    <div id="user-search-section">
-      <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
-        <input type="hidden" name="ib_uid" value="{ib_uid}">
-        <input type="hidden" name="ib_user" value="{ib_user}">
-        <input type="text" name="query" placeholder="Search Users" required>
-        <input type="submit" value="Search">
-      </form>
-      <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
-        <input type="hidden" name="ib_uid" value="{ib_uid}">
-        <input type="hidden" name="ib_user" value="{ib_user}">
-        <input type="text" name="query" placeholder="Search Projects" required>
-        <input type="submit" value="Search Projects">
-      </form>
-    </div><br>
-    <div id="sidebar-footer">
-      <p><a target="_blank" rel="noopener" href="https://{DOMAIN}/advertise.html">Advertise</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/privacy.html">Privacy</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/tos.html">ToS</a> | @ {COPYRIGHT} HyperSpire Foundation</p>
-    </div>
-  </div>
-</div>
-</body>
+    let total_acks = sqlx::query_scalar::<_, i64>("SELECT total_acknowledgments FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ?")
+      .bind(ib_uid.to_string())
+      .fetch_optional(&state.db_pool)
+      .await
+      .unwrap_or(Some(0))
+      .unwrap_or(0);
+    let rank_info = get_rank_info(total_acks);
+    rank_name = rank_info.name.to_string();
+    rank_level = rank_info.level;
 
-</html>"#,
-      ib_uid = ib_uid,
-      // ib_github = escape_html(&ib_pro.github),
-      ib_user = escape_html(ib_user),
-      ib_ibp = escape_html(&ib_pro.ibp),
-      ib_pro = escape_html(&ib_pro.pro),
-      ib_services = escape_html(&ib_pro.services),
-      ib_location = escape_html(&ib_pro.location),
-      ib_website = escape_html(&ib_pro.website),
-      sidebar_login_html = sidebar_login_html,
-      related_userlist_html = related_userlist_html,
-      trending_tags_html = trending_tags_html
-    );
-  } else {
-    html += &format!(r#"
-  </div>
-</div>
-</body>
-
-</html>"#);
+    if session_uid == Some(ib_uid) {
+        edit_profile_link = r#"<p><a class="edit-profile" href="javascript:void(0);">:[[ :edit-profile: ]]:</a></p>"#.to_string();
+    }
   }
+
+  context.insert("search_results_html", &search_results_html);
+  context.insert("navigation_links", &navigation_links);
+  context.insert("ib_uid", &ib_uid);
+  context.insert("ib_user", &ib_user);
+  context.insert("tag", raw_tag);
+  context.insert("advert_html", &advert_html);
+  context.insert("sidebar_login_html", &sidebar_login_html);
+  context.insert("related_users", &related_users_html);
+  context.insert("trending_tags", &trending_tags_html);
+  context.insert("ib_pro", &ib_pro_str);
+  context.insert("ib_services", &ib_services_escaped);
+  context.insert("ib_location", &ib_location_escaped);
+  context.insert("ib_website", &ib_website_escaped);
+  context.insert("ib_ibp", &ib_ibp_escaped);
+  context.insert("github_identity_html", &github_identity_html);
+  context.insert("rank_name", &rank_name);
+  context.insert("rank_level", &rank_level);
+  context.insert("edit_profile_link", &edit_profile_link);
+  context.insert("follow_section_html", &follow_section_html);
+  context.insert("domain", &DOMAIN);
+  context.insert("viewed_ib_uid", &ib_uid);
+  context.insert("viewed_ib_user", &ib_user);
+
+  let html = TEMPLATES.render("search_posts.html", &context)
+    .map_err(|e| {
+        use std::error::Error;
+        let mut err_msg = format!("Template error: {}", e);
+        let mut cause = e.source();
+        while let Some(err) = cause {
+            err_msg.push_str(&format!("\nCaused by: {}", err));
+            cause = err.source();
+        }
+        err_msg
+    })?;
 
   Ok(html)
 }
@@ -3760,7 +3715,7 @@ async fn render_projects_html(
     .map_err(|e| format!("Projects query failed: {}", e))?;
 
   let projects_html = if rows.is_empty() {
-    r#"<p class="notice"><em>:[[ :no-projects-yet: ]]:</em></p>"#.to_string()
+    r#"<br><div class="notice"><p><em>:[[ :no-projects-yet: ]]:</em></p></div>"#.to_string()
   } else {
     let reinforcement_names: HashSet<String> = rows
       .iter()
@@ -3786,7 +3741,7 @@ async fn render_projects_html(
 
         if can_edit {
           format!(
-            r#"<div class="post">
+            r#"<br><div class="post">
               <div class="post-meta">{owner_link}<span class="post-timestamp">{updated_at}</span></div>
               <form class="edit-project-form" action="https://{DOMAIN}/v1/projects/edit" method="POST">
                 <input type="hidden" name="ib_uid" value="{ib_uid}">
@@ -3878,7 +3833,7 @@ async fn render_projects_html(
             String::new()
           };
           format!(
-            r#"<div class="post">
+            r#"<br><div class="post">
               <div class="post-meta">{owner_link}<span class="post-timestamp">{updated_at}</span></div>
               <p><strong>Project:</strong> {project}</p>
               <p><strong>Description:</strong> {description}</p>
@@ -3947,7 +3902,8 @@ async fn render_projects_html(
 
   let add_project_form_html = if session_uid == Some(ib_uid) {
     format!(
-      r#"<div class="post">
+      r#"<div class="notice"><p><strong>:[[ :add-project: ]]:</strong></p></div>
+        <br><div class="post">
           <form id="add-project-form" action="https://{DOMAIN}/v1/projects" method="POST">
             <input type="hidden" name="ib_uid" value="{ib_uid}">
             <input type="hidden" name="ib_user" value="{ib_user}">
@@ -4170,7 +4126,7 @@ async fn render_projects_mobile_html(
     .map_err(|e| format!("Projects query failed: {}", e))?;
 
   let projects_html = if rows.is_empty() {
-    "<p class=\"notice\"><em>:[[ :no-projects-yet: ]]:</em></p>".to_string()
+    r#"<br><div class="notice"><p><em>:[[ :no-projects-yet: ]]:</em></p></div>"#.to_string()
   } else {
     let reinforcement_names: HashSet<String> = rows
       .iter()

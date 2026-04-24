@@ -41,12 +41,10 @@
                     <input class="post-submit" type="submit" value="Post">
                 </form>
             </div>
-            <div class="glass-card">
-                <div class="notice">
-                    <p><em>:[[ :search-posts: for-the: #{{ tag }}: ]]:</em></p>
-                </div>
-                {{ post_html | safe }}
+            <div class="notice">
+                <p><em>:[[ :search-posts-for-tag: #{{ tag }}: ]]:</em></p>
             </div>
+            {{ search_results_html | safe }}
         </div>
         <div id="profile-section">
             {{ sidebar_login_html | safe }}
