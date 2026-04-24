@@ -3191,7 +3191,7 @@ async fn render_search_users_mobile_html(
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <link rel="stylesheet" type="text/css" href="/css/is-by.css?v=2">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css?v=3">
   <link rel="stylesheet" type="text/css" href="/css/is-by_mobile.css">
   <script src="/js/is-by_user.js?v=3" type="text/javascript"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -4657,7 +4657,7 @@ async fn render_search_projects_html(
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" type="text/css" href="/css/is-by.css?v=2">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css?v=3">
   <script src="/js/is-by_user.js?v=3" type="text/javascript"></script>
   <title>:[[ :search-projects: {ib_user}: ]]:</title>
 </head>
@@ -4977,7 +4977,7 @@ async fn render_search_projects_mobile_html(
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <link rel="stylesheet" type="text/css" href="/css/is-by.css?v=2">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css?v=3">
   <link rel="stylesheet" type="text/css" href="/css/is-by_mobile.css">
   <script src="/js/is-by_user.js?v=3" type="text/javascript"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -5920,7 +5920,7 @@ async fn render_inbox_html(
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" type="text/css" href="/css/is-by.css?v=2">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css?v=3">
   <script src="/js/is-by_user.js?v=3" type="text/javascript"></script>
   <title>:[[ :dm-inbox: {ib_user}: ]]:</title>
 </head>

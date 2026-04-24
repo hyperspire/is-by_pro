@@ -768,7 +768,8 @@ a:hover {
 }
 
 /* Keep the primary post form controls aligned in one row across pages (including DM inbox). */
-#post-form {
+#post-form,
+#reply-form {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -778,12 +779,14 @@ a:hover {
 
 #post-form #post-message,
 #post-form #post-character-count,
-#post-form .post {
+#post-form .post,
+#reply-form .post {
     flex: 0 0 100%;
 }
 
 #post-form .post-cancel,
-#post-form .post-submit {
+#post-form .post-submit,
+#reply-form .post-submit {
     left: 0;
 }
 
