@@ -1,4 +1,4 @@
-const SHELL_CACHE = 'is-by-mobile-shell-v4';
+const SHELL_CACHE = 'is-by-mobile-shell-v5';
 const SHELL_ASSETS = [
   '/mobile.html',
   '/css/is-by_mobile.css?v=mobile-shell-v4',
@@ -39,6 +39,11 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) {
+    return;
+  }
+
+  // Do not aggressively cache API routes
+  if (url.pathname.startsWith('/v1/') || url.pathname.startsWith('/api/')) {
     return;
   }
 

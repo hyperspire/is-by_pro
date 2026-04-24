@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
+  <script src="/js/is-by_user.js" type="text/javascript"></script>
+  <title>:[[ :is-by: pro: {{ ib_user }}: ]]:</title>
+</head>
+
+<body>
+  <form id="select-user-form" action="/" method="GET">
+    <input type="hidden" name="ib_uid" value="{{ ib_uid }}">
+    <input type="hidden" name="ib_user" value="{{ ib_user }}">
+  </form>
+  <form id="select-post-form" action="https://is-by.pro/v1/showpost" method="POST">
+    <input type="hidden" name="ib_uid" value="{{ ib_uid }}">
+    <input type="hidden" name="ib_user" value="{{ ib_user }}">
+  </form>
+  <form id="edit-profile-form" action="https://is-by.pro/v1/editprofile" method="GET">
+    <input type="hidden" name="ib_uid" value="{{ ib_uid }}">
+    <input type="hidden" name="ib_user" value="{{ ib_user }}">
+  </form>
+  <div id="main-section">
+    <div id="media-section">
+      <div class="sponsor-content">
+        {{ advert_html | safe }}
+      </div>
+      <div id="navigation-section">
+        {{ navigation_links | safe }}
+      </div>
+      <div id="post-form-section">
+        <form id="post-form" action="https://is-by.pro/v1/post" method="POST">
+          <div id="post-message"></div>
+          <div id="post-character-count"></div>
+          <input type="hidden" name="ib_uid" value="{{ ib_uid }}">
+          <input type="hidden" name="ib_user" value="{{ ib_user }}">
+          <input class="post" type="text" name="post" autocomplete="off" maxlength="1024" required>
+          <input id="post-cancel" class="post-cancel" type="button" value="Cancel">
+          <input class="post-submit" type="submit" value="Post">
+        </form>
+      </div>
+      {{ selected_user_posts_section | safe }}
+    </div>
+    <div id="profile-section">
+      {{ sidebar_login_html | safe }}
+      <p><strong>{{ github_identity_html | safe }}</strong></p>
+      <p class="description">{{ rank_name }} - {{ rank_level }}</p>
+      <p class="paragraph"><em>{{ ib_ibp }}</em></p>
+      <p class="description">{{ ib_pro }}</p>
+      <p class="description">{{ ib_services }}</p>
+      <p class="description">{{ ib_location }}</p>
+      <p><a target="_blank" rel="noopener" href="{{ ib_website }}">{{ ib_website }}</a></p><br>
+      {{ edit_profile_link | safe }}
+      <p><a class="projects-display"
+          href="https://{{ domain }}/v1/projects?ib_uid={{ viewed_ib_uid }}&ib_user={{ viewed_ib_user }}">:[[ :projects:
+          ]]:</a>
+      </p>
+      {{ follow_section_html | safe }}
+      <div id="userlist-section">
+        <p><strong>:[[ :related-users: ]]:</strong></p><br>
+        <div id="userlist-container">
+          <br>
+          <p><em>{{ related_users | safe }}</em></p>
+        </div>
+      </div><br>
+      <div id="trending-tags-section">
+        <p><strong>:[[ :trending-tags: 24h: ]]:</strong></p>
+        <div id="trending-tags-container">
+          <p><em>{{ trending_tags | safe }}</em></p>
+        </div>
+      </div><br>
+      <div id="user-search-section">
+        <form id="user-search-form" action="https://is-by.pro/v1/searchusers" method="GET">
+          <input type="hidden" name="ib_uid" value="{{ ib_uid }}">
+          <input type="hidden" name="ib_user" value="{{ ib_user }}">
+          <input type="text" name="query" placeholder="Search Users" required>
+          <input type="submit" value="Search">
+        </form>
+        <form id="project-search-form" action="https://is-by.pro/v1/searchprojects" method="GET">
+          <input type="hidden" name="ib_uid" value="{{ ib_uid }}">
+          <input type="hidden" name="ib_user" value="{{ ib_user }}">
+          <input type="text" name="query" placeholder="Search Projects" required>
+          <input type="submit" value="Search Projects">
+        </form>
+      </div><br>
+      <div id="sidebar-footer">
+        <p><a target="_blank" rel="noopener" href="https://is-by.pro/advertise.html">Advertise</a> | <a target="_blank"
+            rel="noopener" href="https://is-by.pro/privacy.html">Privacy</a> | <a target="_blank" rel="noopener"
+            href="https://is-by.pro/tos.html">ToS</a> | @ 2026 HyperSpire Foundation</p>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>

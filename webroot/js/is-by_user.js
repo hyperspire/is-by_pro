@@ -1,4 +1,3 @@
-const domain = 'is-by.pro';
 
 document.addEventListener('DOMContentLoaded', (event) => {
   attachEventListeners();
@@ -161,7 +160,7 @@ async function showUsernameHoverCard(anchor, username, hoverCard) {
   positionHoverCard(anchor, hoverCard);
 
   try {
-    const response = await fetch(`https://${domain}/v1/user/hover/${encodeURIComponent(username)}`, {
+    const response = await fetch(`/v1/user/hover/${encodeURIComponent(username)}`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -184,7 +183,7 @@ async function showUsernameHoverCard(anchor, username, hoverCard) {
     let actionsHTML = '';
     if (data.show_follow === true) {
       actionsHTML += `
-        <form class="user-hover-action-form" action="https://${domain}/v1/follow" method="POST">
+        <form class="user-hover-action-form" action="/v1/follow" method="POST">
           <input type="hidden" name="target_user" value="${escapeHTML(data.username)}">
           <input class="user-hover-action user-hover-follow" type="submit" value="Follow">
         </form>`;
@@ -192,7 +191,7 @@ async function showUsernameHoverCard(anchor, username, hoverCard) {
 
     if (data.show_unfollow === true) {
       actionsHTML += `
-        <form class="user-hover-action-form" action="https://${domain}/v1/unfollow" method="POST">
+        <form class="user-hover-action-form" action="/v1/unfollow" method="POST">
           <input type="hidden" name="target_user" value="${escapeHTML(data.username)}">
           <input class="user-hover-action user-hover-unfollow" type="submit" value="Unfollow">
         </form>`;
@@ -355,18 +354,17 @@ function attachDMOpenButtons(buttons, dmPanel, dmTargetLabel, dmTargetInput) {
 
 async function updateUnreadDMCount() {
   const unreadCountNode = document.getElementById('dm-unread-count');
-  const ibUID = getCurrentIBUID();
 
-  if (!unreadCountNode || Number.isNaN(ibUID)) {
+  if (!unreadCountNode) {
     return;
   }
 
   try {
-    const response = await fetch(`https://${domain}/v1/dm/unreadcount`, {
+    const response = await fetch(`/v1/dm/unreadcount`, {
       method: 'GET',
+      cache: 'no-store',
       headers: {
         'Accept': 'application/json',
-        'ib-uid': String(ibUID),
       },
     });
 
@@ -390,7 +388,7 @@ async function loadDMThread(targetUser) {
 
   try {
     const params = new URLSearchParams({ target_user: targetUser });
-    const response = await fetch(`https://${domain}/v1/dm/messages?${params.toString()}`, {
+    const response = await fetch(`/v1/dm/messages?${params.toString()}`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -414,7 +412,7 @@ async function loadDMThread(targetUser) {
       // First escape the entire message
       let processedMessage = escapeHTML(message.message);
       // Then replace escaped marker patterns with actual links
-      processedMessage = processedMessage.replace(/\|\|\|LINK\|\|\|([^|]*)\|\|\|([^|]*)\|\|\|/g, 
+      processedMessage = processedMessage.replace(/\|\|\|LINK\|\|\|([^|]*)\|\|\|([^|]*)\|\|\|/g,
         (match, url, text) => `<a href="${url}" target="_blank">${text}</a>`
       );
       return `
@@ -480,7 +478,7 @@ function attachSelectUserEventListener() {
     link.addEventListener('click', async (event) => {
       event.preventDefault();
       const path = getLastPathSegment(link.href);
-  
+
       const headers = {
         'Content-Type': 'application/json',
         'Accept': 'text/html',
@@ -488,19 +486,19 @@ function attachSelectUserEventListener() {
         'ib-authtoken': ibAuthToken,
         'ib-selecteduser': path
       };
-  
+
       try {
         const params = new URLSearchParams({
           'ibuid': ibUID,
           'ibauthtoken': ibAuthToken,
           'ibselecteduser': path
         });
-      
+
         const response = await fetch(`${selectUserForm.action}?${params.toString()}`, {
           method: 'GET',
           headers: headers
         });
-      
+
         const data = await response.text();
         generateIBFormSuccess(data);
       } catch (error) {
@@ -613,7 +611,7 @@ function attachProHomeEventListener() {
     link.addEventListener('click', async (event) => {
       event.preventDefault();
       const path = getLastPathSegment(link.href);
-  
+
       const headers = {
         'Content-Type': 'application/json',
         'Accept': 'text/html',
@@ -621,22 +619,22 @@ function attachProHomeEventListener() {
         'ib-authtoken': ibAuthToken,
         'ib-selecteduser': path
       };
-  
+
       try {
         const params = new URLSearchParams({
           'ibuid': ibUID,
           'ibauthtoken': ibAuthToken,
           'ibselecteduser': path
         });
-      
+
         const response = await fetch(`${selectUserForm.action}?${params.toString()}`, {
           method: 'GET',
           headers: headers
         });
-      
+
         const data = await response.text();
         generateIBFormSuccess(data);
-      
+
       } catch (error) {
         generateIBFormMessageFailure('edit-pro-message', error);
         console.error('Error:', error);
@@ -765,17 +763,17 @@ function generateIBPostFormSuccess(ibUser, ibUID) {
   const headers = new Headers();
   headers.append('ib-uid', ibUID);
 
-  fetch(`https://${domain}/v1/profile/${ibUser}`, {
+  fetch(`/v1/profile/${ibUser}`, {
     method: 'GET',
     headers: headers
   })
-  .then(response => response.text())
-  .then(data => {
-    generateIBFormSuccess(data);
-  })
-  .catch(error => {
-    console.error('Error:', error);
-  });
+    .then(response => response.text())
+    .then(data => {
+      generateIBFormSuccess(data);
+    })
+    .catch(error => {
+      console.error('Error:', error);
+    });
   attachEventListeners();
 }
 
@@ -813,7 +811,7 @@ function attachPostsInfiniteScrollEventListener() {
           offset: section.dataset.warRoomOffset || '0',
           limit: '20'
         });
-        const resp = await fetch(`https://${domain}/api/v1/warroom/posts?${params}`);
+        const resp = await fetch(`/api/v1/warroom/posts?${params}`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         data = await resp.json();
         if (typeof data.next_offset === 'number') {
@@ -825,7 +823,7 @@ function attachPostsInfiniteScrollEventListener() {
         const beforeTimestamp = lastPost ? lastPost.dataset.timestamp : '';
         const params = new URLSearchParams({ ib_uid: ibUID, ib_user: ibUser });
         if (beforeTimestamp) params.set('before_timestamp', beforeTimestamp);
-        const resp = await fetch(`https://${domain}/api/v1/posts?${params}`);
+        const resp = await fetch(`/api/v1/posts?${params}`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         data = await resp.json();
       }
@@ -874,7 +872,7 @@ function attachFollowersInfiniteScrollEventListener() {
         limit: '20'
       });
 
-      const resp = await fetch(`https://${domain}/api/v1/followers?${params}`);
+      const resp = await fetch(`/api/v1/followers?${params}`);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
 
@@ -931,7 +929,7 @@ function attachDMContactsInfiniteScrollEventListener() {
         limit: '20'
       });
 
-      const resp = await fetch(`https://${domain}/api/v1/inbox/contacts?${params}`);
+      const resp = await fetch(`/api/v1/inbox/contacts?${params}`);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
 

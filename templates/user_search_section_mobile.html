@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <link rel="stylesheet" type="text/css" href="/css/is-by.css">
+    <link rel="stylesheet" type="text/css" href="/css/is-by_mobile.css">
+    <script src="/js/is-by_user.js" type="text/javascript"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <title>:[[ :is-by: pro: search: users: projects: ]]:</title>
+    <meta name="description" content=":[[ :is-by: pro: search: users: projects: ]]:">
+</head>
+
+<body>
+
+    <div class="content">
+        <form id="select-user-form" action="/" method="GET">
+            <input type="hidden" name="ib_uid" value="{{ ib_uid }}">
+            <input type="hidden" name="ib_user" value="{{ ib_user }}">
+        </form>
+        <form id="select-post-form" action="https://{{ domain }}/v1/showpost" method="POST">
+            <input type="hidden" name="ib_uid" value="{{ ib_uid }}">
+            <input type="hidden" name="ib_user" value="{{ ib_user }}">
+        </form>
+        <form id="edit-profile-form" action="https://{{ domain }}/v1/editprofile" method="GET">
+            <input type="hidden" name="ib_uid" value="{{ ib_uid }}">
+            <input type="hidden" name="ib_user" value="{{ ib_user }}">
+        </form>
+        {{ advert_html | safe }}
+        <div id="post-form-section">
+            <form id="post-form" action="https://{{ domain }}/v1/post" method="POST">
+                <div id="post-message"></div>
+                <div id="post-character-count"></div>
+                <input type="hidden" name="ib_uid" value="{{ ib_uid }}">
+                <input type="hidden" name="ib_user" value="{{ ib_user }}">
+                <input class="post" type="text" name="post" autocomplete="off" maxlength="1024" required>
+                <input id="post-cancel" class="post-cancel" type="button" value="Cancel">
+                <input class="post-submit" type="submit" value="Post">
+            </form>
+        </div>
+        {{ search_section_html | safe }}
+    </div>
+    {{ navigation_links | safe }}
+</body>
+
+</html>

@@ -1,6 +1,6 @@
 const APP_PANELS = ['home', 'mission', 'access'];
-const SHELL_CACHE_NAME = 'is-by-mobile-shell-v4';
-const SHELL_VERSION = 'mobile-shell-v4';
+const SHELL_CACHE_NAME = 'is-by-mobile-shell-v5';
+const SHELL_VERSION = 'mobile-shell-v5';
 const UPDATE_BANNER_SUPPRESS_KEY = 'is-by-mobile-update-banner-suppressed';
 const UPDATE_BANNER_SUPPRESS_VERSION_KEY = 'is-by-mobile-update-banner-suppressed-version';
 
@@ -153,11 +153,11 @@ function showUpdateBanner(registration) {
   }
 
   updateBanner.hidden = false;
-  
+
   // Remove any existing listeners
   const newButton = updateButton.cloneNode(true);
   updateButton.parentNode.replaceChild(newButton, updateButton);
-  
+
   // Attach fresh listener
   const freshButton = document.getElementById('update-banner-action');
   if (freshButton) {

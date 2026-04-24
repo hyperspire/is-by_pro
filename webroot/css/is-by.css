@@ -34,6 +34,29 @@ body {
     position: relative;
 }
 
+.sponsor-content {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    margin: 10px 0 20px 0;
+}
+
+.sponsor-content a,
+.sponsor-content a:visited,
+.sponsor-content a:active,
+.sponsor-content a:hover {
+    height: auto;
+    width: auto;
+    padding: 0;
+    margin: 0;
+}
+
+.sponsor-content img {
+    max-width: 100%;
+    height: auto;
+}
+
 .for-the {
     display: inline-block;
     width: 422px;
