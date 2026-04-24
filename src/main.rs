@@ -8381,6 +8381,7 @@ async fn events_endpoint(req: HttpRequest, state: web::Data<AppState>) -> impl R
     .insert_header(("Content-Type", "text/event-stream"))
     .insert_header(("Cache-Control", "no-cache"))
     .insert_header(("Connection", "keep-alive"))
+    .insert_header(("X-Accel-Buffering", "no"))
     .streaming(stream)
 }
 
