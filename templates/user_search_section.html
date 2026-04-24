@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" type="text/css" href="/css/is-by.css?v=2">
     <script src="/js/is-by_user.js?v=3" type="text/javascript"></script>
-    <title>:[[ :is-by: pro: {{ ib_user }}: war-room: ]]:</title>
+    <title>:[[ :is-by: pro: {{ ib_user }}: ]]:</title>
 </head>
 
 <body>
@@ -41,17 +41,24 @@
                     <input class="post-submit" type="submit" value="Post">
                 </form>
             </div>
-            {{ war_room_html | safe }}
+            {{ search_section_html | safe }}
         </div>
         <div id="profile-section">
             {{ sidebar_login_html | safe }}
             <p><strong>{{ github_identity_html | safe }}</strong></p>
+            <p class="description">{{ rank_name }} - {{ rank_level }}</p>
             <p class="paragraph"><em>{{ ib_ibp }}</em></p>
             <p class="description">{{ ib_pro }}</p>
             <p class="description">{{ ib_services }}</p>
             <p class="description">{{ ib_location }}</p>
             <p><a target="_blank" rel="noopener" href="{{ ib_website }}">{{ ib_website }}</a></p><br>
             {{ edit_profile_link | safe }}
+            <p><a class="projects-display"
+                    href="https://{{ domain }}/v1/projects?ib_uid={{ viewed_ib_uid }}&ib_user={{ viewed_ib_user }}">:[[
+                    :projects:
+                    ]]:</a>
+            </p>
+            {{ follow_section_html | safe }}
             <div id="userlist-section">
                 <p><strong>:[[ :related-users: ]]:</strong></p><br>
                 <div id="userlist-container">

@@ -2816,6 +2816,7 @@ async fn render_search_users_html(
   raw_query: &str,
   session_uid: Option<i64>,
 ) -> Result<String, String> {
+  let mut context = Context::new();
   let advert_html = render_advert_html(state).await;
 
   let search_terms: Vec<String> = raw_query
@@ -2925,48 +2926,11 @@ async fn render_search_users_html(
     String::new()
   };
 
-  let mut html = format!(
-    r#"<!DOCTYPE html>
-<html lang="en-US">
-
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
-  <script src="/js/is-by_user.js?v=2" type="text/javascript"></script>
-  <title>:[[ :search-users: {ib_user}: ]]:</title>
-</head>
-
-<body>
-  <form id="select-user-form" action="/" method="GET">
-    <input type="hidden" name="ib_uid" value="{ib_uid}">
-    <input type="hidden" name="ib_user" value="{ib_user}">
-  </form>
-  <form id="select-post-form" action="https://{DOMAIN}/v1/showpost" method="POST">
-    <input type="hidden" name="ib_uid" value="{ib_uid}">
-    <input type="hidden" name="ib_user" value="{ib_user}">
-  </form>
-  <form id="edit-profile-form" action="https://{DOMAIN}/v1/editprofile" method="GET">
-    <input type="hidden" name="ib_uid" value="{ib_uid}">
-    <input type="hidden" name="ib_user" value="{ib_user}">
-  </form>
-  <div id="main-section">
-    <div id="media-section">
-      <div>
-        {advert_html}
-      </div>
-      <div id="navigation-section">
-        {navigation_links}
-      </div>
-      <div id="selected-user-posts-section" class="post-section">
+  let search_section_html = format!(
+    r#"<div id="selected-user-posts-section" class="post-section">
         <div class="notice"><p><em>:[[ :search-users-for: {raw_query}: ]]:</em></p></div>
         {search_results_html}
-      </div>
-    </div>"#,
-    ib_uid = ib_uid,
-    ib_user = escape_html(ib_user),
-    advert_html = advert_html,
-    navigation_links = navigation_links,
+      </div>"#,
     raw_query = escape_html(raw_query),
     search_results_html = search_results_html
   );
@@ -2978,93 +2942,153 @@ async fn render_search_users_html(
     .fetch_one(&state.db_pool)
     .await;
 
-  if let Ok(ib_pro) = ib_pro_result {
-    let source_uid = session_uid.unwrap_or(ib_uid);
-    let source_profile_terms = if let Some(uid) = session_uid {
-      lookup_profile_terms_by_uid(state, uid)
-        .await
-        .unwrap_or_else(|| format!("{} {}", ib_pro.pro, ib_pro.ibp))
-    } else {
-      format!("{} {}", ib_pro.pro, ib_pro.ibp)
-    };
-    let related_userlist_html =
-      render_related_userlist_html(state, session_uid, source_uid, &source_profile_terms).await;
-    let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
-    let github_identity_html = render_github_identity_html(state, ib_user).await;
-    let sidebar_login_html = if session_uid.is_none() {
-      r#"<div id="actions-section">
-      <div class="login-section">
-        <p><a href="/v1/auth/github">Login with GitHub</a></p>
-      </div>
-    </div>"#
-        .to_string()
-    } else {
-      String::new()
-    };
-
-    html += &format!(r#"
-  <div id="profile-section">
-    {sidebar_login_html}
-    <p><strong>{github_identity_html}</strong></p>
-    <p class="paragraph"><em>{ib_ibp}</em></p>
-    <p class="description">{ib_pro}</p>
-    <p class="description">{ib_services}</p>
-    <p class="description">{ib_location}</p>
-    <p><a target="_blank" rel="noopener" href="{ib_website}">{ib_website}</a></p>
-    <div id="userlist-section">
-      <p><strong>:[[ :userlist: ]]:</strong></p><br>
-      <div id="userlist-container">
-        {related_userlist_html}
-      </div>
-    </div><br>
-    <div id="trending-tags-section">
-      <p><strong>:[[ :trending-tags-24h: ]]:</strong></p>
-      <div id="trending-tags-container">
-        {trending_tags_html}
-      </div>
-    </div><br>
-    <div id="user-search-section">
-      <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
-        <input type="hidden" name="ib_uid" value="{ib_uid}">
-        <input type="hidden" name="ib_user" value="{ib_user}">
-        <input type="text" name="query" placeholder="Search Users" required>
-        <input type="submit" value="Search">
-      </form>
-      <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
-        <input type="hidden" name="ib_uid" value="{ib_uid}">
-        <input type="hidden" name="ib_user" value="{ib_user}">
-        <input type="text" name="query" placeholder="Search Projects" required>
-        <input type="submit" value="Search Projects">
-      </form>
-    </div><br>
-    <div id="sidebar-footer">
-      <p><a target="_blank" rel="noopener" href="https://{DOMAIN}/advertise.html">Advertise</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/privacy.html">Privacy</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/tos.html">ToS</a> | @ {COPYRIGHT} HyperSpire Foundation</p>
+  let ib_pro = ib_pro_result.unwrap_or_else(|_| ProRow {
+    ibp: String::new(),
+    pro: String::new(),
+    location: String::new(),
+    services: String::new(),
+    website: String::new(),
+  });
+  
+  let github_identity_html = render_github_identity_html(state, ib_user).await;
+  let sidebar_login_html = if session_uid.is_none() {
+    r#"<div id="actions-section">
+    <div class="login-section">
+      <p><a href="/v1/auth/github">Login with GitHub</a></p>
     </div>
-  </div>
-</div>
-</body>
-
-</html>"#,
-      ib_uid = ib_uid,
-      // ib_github = escape_html(&ib_pro.github),
-      ib_user = escape_html(ib_user),
-      ib_ibp = escape_html(&ib_pro.ibp),
-      ib_pro = escape_html(&ib_pro.pro),
-      ib_services = escape_html(&ib_pro.services),
-      ib_location = escape_html(&ib_pro.location),
-      ib_website = escape_html(&ib_pro.website),
-      sidebar_login_html = sidebar_login_html,
-      related_userlist_html = related_userlist_html,
-      trending_tags_html = trending_tags_html
-    );
+  </div>"#
+      .to_string()
   } else {
-    html += &format!(r#"
-  </div>
-</div>
-</body>
+    String::new()
+  };
 
-</html>"#);
+  let viewed_user_row = match sqlx::query_as::<_, UserHoverLookupRow>(
+    "SELECT CONVERT(ib_uid USING utf8mb4) AS ib_uid, username, COALESCE(followers, '') AS followers, COALESCE(total_acknowledgments, 0) AS total_acknowledgments FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1",
+  )
+  .bind(ib_user)
+  .fetch_optional(&state.db_pool)
+  .await
+  {
+    Ok(Some(row)) => Some(row),
+    _ => None,
+  };
+  
+  let total_acks = viewed_user_row.as_ref().map(|row| row.total_acknowledgments).unwrap_or(0);
+  let (rank_level, rank_name) = rank_from_unique_acknowledgments(total_acks);
+
+
+  let mut follower_list: Vec<String> = Vec::new();
+  if let Some(row) = &viewed_user_row {
+    follower_list = row
+      .followers
+      .split(',')
+      .map(|s| s.trim().to_string())
+      .filter(|s| !s.is_empty())
+      .collect();
   }
+
+  let show_unfollow = session_username
+    .as_ref()
+    .map(|username| {
+      follower_list
+        .iter()
+        .any(|follower| follower.eq_ignore_ascii_case(username))
+    })
+    .unwrap_or(false);
+
+  let show_follow = session_username
+    .as_ref()
+    .map(|username| !show_unfollow && !username.eq_ignore_ascii_case(ib_user))
+    .unwrap_or(false);
+
+  let follow_form_html = if show_follow {
+    format!(
+      r#"<form id="follow-form" action="https://{DOMAIN}/v1/follow" method="POST">
+        <input type="hidden" name="target_user" value="{target_user}">
+        <input type="submit" value="Follow">
+      </form>"#,
+      target_user = escape_html(ib_user)
+    )
+  } else {
+    String::new()
+  };
+
+  let unfollow_form_html = if show_unfollow {
+    format!(
+      r#"<form id="unfollow-form" action="https://{DOMAIN}/v1/unfollow" method="POST">
+        <input type="hidden" name="target_user" value="{target_user}">
+        <input type="submit" value="Unfollow">
+      </form>"#,
+      target_user = escape_html(ib_user)
+    )
+  } else {
+    String::new()
+  };
+  
+  let follow_section_html = &format!(
+      r#"<div id="follow-section">
+      {follow_form_html}
+      {unfollow_form_html}
+    </div>"#,
+      follow_form_html = follow_form_html,
+      unfollow_form_html = unfollow_form_html
+    );
+
+  let show_edit_profile_link = session_username
+    .as_ref()
+    .map(|u| u.eq_ignore_ascii_case(ib_user))
+    .unwrap_or(false);
+
+  let edit_profile_link = if show_edit_profile_link {
+    format!(r#"<p><a href="https://{DOMAIN}/v1/editprofile?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :edit-profile: ]]:</a></p><br>"#, ib_uid = ib_uid, ib_user = escape_html(ib_user))
+  } else {
+    String::new()
+  };
+
+  let viewed_ib_uid = ib_uid;
+  let viewed_ib_user = escape_html(ib_user);
+  let ib_user_escaped = escape_html(ib_user);
+  let ib_ibp_escaped = escape_html(&ib_pro.ibp);
+  let ib_pro_escaped = escape_html(&ib_pro.pro);
+  let ib_services_escaped = escape_html(&ib_pro.services);
+  let ib_location_escaped = escape_html(&ib_pro.location);
+  let ib_website_escaped = escape_html(&ib_pro.website);
+  let related_users_html = related_users(state, session_uid).await;
+  let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
+  
+  context.insert("ib_user", &ib_user_escaped);
+  context.insert("ib_uid", &ib_uid);
+  context.insert("viewed_ib_uid", &viewed_ib_uid);
+  context.insert("viewed_ib_user", &viewed_ib_user);
+  context.insert("domain", &DOMAIN);
+  context.insert("navigation_links", &navigation_links);
+  context.insert("github_identity_html", &github_identity_html);
+  context.insert("sidebar_login_html", &sidebar_login_html);
+  context.insert("advert_html", &advert_html);
+  context.insert("rank_name", &rank_name);
+  context.insert("rank_level", &rank_level);
+  context.insert("ib_ibp", &ib_ibp_escaped);
+  context.insert("ib_pro", &ib_pro_escaped);
+  context.insert("ib_services", &ib_services_escaped);
+  context.insert("ib_location", &ib_location_escaped);
+  context.insert("ib_website", &ib_website_escaped);
+  context.insert("follow_section_html", &follow_section_html);
+  context.insert("edit_profile_link", &edit_profile_link);
+  context.insert("search_section_html", &search_section_html);
+  context.insert("related_users", &related_users_html);
+  context.insert("trending_tags", &trending_tags_html);
+  
+  let html = TEMPLATES.render("user_search_section.html", &context)
+  .map_err(|e| {
+      use std::error::Error;
+      let mut err_msg = format!("Template error: {}", e);
+      let mut cause = e.source();
+      while let Some(err) = cause {
+          err_msg.push_str(&format!("\nCaused by: {}", err));
+          cause = err.source();
+      }
+      err_msg
+  })?;
 
   Ok(html)
 }
@@ -3167,9 +3191,9 @@ async fn render_search_users_mobile_html(
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css?v=2">
   <link rel="stylesheet" type="text/css" href="/css/is-by_mobile.css">
-  <script src="/js/is-by_user.js?v=2" type="text/javascript"></script>
+  <script src="/js/is-by_user.js?v=3" type="text/javascript"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
@@ -4633,8 +4657,8 @@ async fn render_search_projects_html(
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
-  <script src="/js/is-by_user.js?v=2" type="text/javascript"></script>
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css?v=2">
+  <script src="/js/is-by_user.js?v=3" type="text/javascript"></script>
   <title>:[[ :search-projects: {ib_user}: ]]:</title>
 </head>
 
@@ -4953,9 +4977,9 @@ async fn render_search_projects_mobile_html(
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css?v=2">
   <link rel="stylesheet" type="text/css" href="/css/is-by_mobile.css">
-  <script src="/js/is-by_user.js?v=2" type="text/javascript"></script>
+  <script src="/js/is-by_user.js?v=3" type="text/javascript"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
@@ -5896,8 +5920,8 @@ async fn render_inbox_html(
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
-  <script src="/js/is-by_user.js?v=2" type="text/javascript"></script>
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css?v=2">
+  <script src="/js/is-by_user.js?v=3" type="text/javascript"></script>
   <title>:[[ :dm-inbox: {ib_user}: ]]:</title>
 </head>
 
@@ -7432,7 +7456,7 @@ async fn edit_profile(
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" type="text/css" href="/css/is-by.css" />
-  <script src="/js/is-by_user.js?v=2" type="text/javascript"></script>
+  <script src="/js/is-by_user.js?v=3" type="text/javascript"></script>
   <title>:[[ :edit-profile: {ib_user}: ]]:</title>
 </head>
 <body>
