@@ -29,10 +29,11 @@ window.addEventListener('beforeinstallprompt', (event) => {
   }
 });
 
+function isFirefox() {
+  return /firefox/i.test(window.navigator.userAgent || '');
+}
+
 function isIosDevice() {
-  function isFirefox() {
-    return /firefox/i.test(window.navigator.userAgent || '');
-  }
   return /iphone|ipad|ipod/i.test(window.navigator.userAgent || '');
 }
 
