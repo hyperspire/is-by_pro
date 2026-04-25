@@ -12,7 +12,7 @@ nav.pwa-nav.force-horizontal-nav,
   gap: 0 !important;
   z-index: 10000 !important;
   background: #161b22 !important;
-  border-top: 2px solid #ff7b72 !important;
+  /* border-top: 2px solid #ff7b72 !important; */
   padding: 0 !important;
 }
 
