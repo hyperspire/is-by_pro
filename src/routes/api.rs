@@ -2,6 +2,7 @@ use crate::{models::*, db::*, utils::*, auth::*, render::*, crypto::*, paypal::*
 use actix_web::{get, post, web, HttpRequest, HttpResponse, Responder, Either, cookie::Cookie};
 use serde_json::{Value, json};
 use actix_multipart::Multipart;
+use tera::Context;
 use futures_util::StreamExt;
 use uuid::Uuid;
 use std::fs::{self};
@@ -782,10 +783,13 @@ pub async fn edit_post(
   state: web::Data<AppState>,
   query: web::Query<EditPostRequest>,
 ) -> impl Responder {
+  let mut context = Context::new();
   let session_uid = match get_session_uid(&req) {
     Some(uid) => uid,
     None => return HttpResponse::Unauthorized().body("Login required"),
   };
+
+  let ib_user = query.ib_user.clone();
 
   let owner_uid = query.post_owner_uid.unwrap_or(query.ib_uid);
   if session_uid != owner_uid {
@@ -806,7 +810,7 @@ pub async fn edit_post(
       return HttpResponse::NotFound()
         .content_type("text/html; charset=utf-8")
         .body(format!(
-          "<!DOCTYPE html><html lang=\"en-US\"><head><meta charset=\"UTF-8\"><title>Post Not Found</title></head><body><p>Post not found: {}</p></body></html>",
+          r#"<!DOCTYPE html><html lang="en-US"><head><meta charset="UTF-8"><title>Post Not Found</title></head><body><p>Post not found: {}</p></body></html>"#,
           escape_html(&query.pid)
         ));
     }
@@ -829,22 +833,8 @@ pub async fn edit_post(
     )
   }).unwrap_or_default();
 
-  let html = format!(
-    r#"<!DOCTYPE html>
-<html lang="en-US">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" type="text/css" href="/css/is-by.css" />
-  <title>:[[ :edit-post: ]]:</title>
-</head>
-<body>
-  <div id="main-section">
-    <div id="media-section">
-      <div id="navigation-section">
-        <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
-      </div>
-      <div id="post-form-section" style="display:block;">
+  let post_edit_html = format!(
+    r#"<div id="post-form-section" style="display:block;">
         <form id="editpost" action="https://{DOMAIN}/v1/editpost" method="POST">
           <div id="edit-post-message"></div>
           <input type="hidden" name="ib_uid" value="{ib_uid}">
@@ -856,11 +846,7 @@ pub async fn edit_post(
           <br>
           <input class="post-submit" type="submit" value="Save">
         </form>
-      </div>
-    </div>
-  </div>
-</body>
-</html>"#,
+      </div>"#,
     ib_uid = query.ib_uid,
     ib_user = escape_html(&query.ib_user),
     pid = escape_html(&query.pid),
@@ -868,6 +854,24 @@ pub async fn edit_post(
     post_owner_uid_field = post_owner_uid_field,
     post = escape_html(&row.post)
   );
+
+  context.insert("post_edit_html", &post_edit_html);
+  context.insert("domain", &DOMAIN);
+  context.insert("ib_user", &ib_user);
+
+  let html = match TEMPLATES.render("edit_post.html", &context) {
+        Ok(rendered) => rendered,
+        Err(e) => {
+            use std::error::Error;
+            let mut err_msg = format!("Template error: {}", e);
+            let mut cause = e.source();
+            while let Some(err) = cause {
+                err_msg.push_str(&format!("\nCaused by: {}", err));
+                cause = err.source();
+            }
+            return HttpResponse::InternalServerError().body(err_msg);
+        }
+  };
 
   HttpResponse::Ok()
     .content_type("text/html; charset=utf-8")
