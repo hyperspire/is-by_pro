@@ -10,8 +10,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-    <title>:[[ :projects: {ib_user}: ]]:</title>
-    <meta name="description" content=":[[ :projects: ]]:">
+    <title>:[[ :edit-post: {{ ib_user }} :]] :</title>
+    <meta name="description" content=":[[ :edit-post: {{ ib_user }} :]] :">
 </head>
 
 <body>
@@ -41,7 +41,9 @@
                 <input class="post-submit" type="submit" value="Post">
             </form>
         </div>
-        <a class="pro-home-display" href="https://{{ domain }}/v1/profile/{{ ib_user }}">:[[ :profile-home: ]]:</a>
+        <div id="navigation-section">
+            <a class="pro-home-display" href="https://{{ domain }}/v1/profile/{{ ib_user }}">:[[ :profile-home: ]]:</a>
+        </div>
         {{ post_edit_html | safe }}
     </div>
 </body>

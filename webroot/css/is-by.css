@@ -742,12 +742,13 @@ a:hover {
     border: 1px solid #3F3F3F !important;
     border-radius: 4px;
     padding: 6px 6px 6px 6px;
-    margin: 6px 6px 6px 6px;
+    display: block;
     width: 133px;
     height: 33px;
+    margin: 10px auto;
     position: relative;
     top: 0px;
-    left: 188px;
+    left: 0px;
 }
 
 /* Keep the primary post form controls aligned in one row across pages (including DM inbox). */
