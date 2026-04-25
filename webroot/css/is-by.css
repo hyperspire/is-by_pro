@@ -589,7 +589,9 @@ a:hover {
 
 .reply-post {
     margin-left: 28px;
-    width: 340px !important;
+    width: 332px !important;
+    max-width: calc(100% - 28px) !important;
+    box-sizing: border-box;
 }
 
 .post-section {

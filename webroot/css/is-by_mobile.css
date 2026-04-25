@@ -761,7 +761,6 @@ body {
   /* Overrides for dynamic width on containers */
   .notice,
   .post,
-  .reply-post,
   .for-the,
   .is-by,
   .is-with,
@@ -770,6 +769,12 @@ body {
   #post-form-section {
     width: 100% !important;
     max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .reply-post {
+    width: calc(100% - 28px) !important;
+    max-width: calc(100% - 28px) !important;
     box-sizing: border-box !important;
   }
 
