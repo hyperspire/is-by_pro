@@ -113,14 +113,16 @@ body {
 .notice {
     display: block;
     width: 422px;
-    align-items: left;
+    max-width: 100%;
+    box-sizing: border-box;
+    align-items: center;
     justify-content: center;
     text-align: center;
     text-wrap: wrap;
     word-wrap: break-word;
     text-overflow: inherit;
-    padding: 0px 0px 0px 0px;
-    margin: 3px 3px 3px 3px;
+    padding: 6px;
+    margin: 6px auto;
     background-color: #1e1e1e;
     position: relative;
     top: 0;
