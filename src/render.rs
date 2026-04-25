@@ -4486,28 +4486,26 @@ pub async fn render_single_post_html(
   };
 
   let single_post_html = format!(
-    r#"<div class="glass-card">
-        <div id="selected-user-posts-section" class="post-section">
-          <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
-            {post_meta}
-            <p>{post_body}</p>
-            <div class="post-actions">
-              {ack_controls}
-              <p><a href="javascript:void(0);" class="copy-link">:[[ :copy-link: ]]:</a></p>
-            </div>
-            <p class="acknowledged-count">Acknowleged {ib_post_acknowledged_count} times.</p>
+    r#"<div id="selected-user-posts-section" class="post-section">
+        <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
+          {post_meta}
+          <p>{post_body}</p>
+          <div class="post-actions">
+            {ack_controls}
+            <p><a href="javascript:void(0);" class="copy-link">:[[ :copy-link: ]]:</a></p>
           </div>
-          {replies_html}
-          <div id="post-form-section" style="display:block;">
-            <form id="reply-form" action="https://{DOMAIN}/v1/reply" method="POST">
-              <input type="hidden" name="ib_uid" value="{ib_uid}">
-              <input type="hidden" name="ib_user" value="{ib_user}">
-              <input type="hidden" name="pid" value="{ib_post_id}">
-              <input type="text" class="post" name="post" maxlength="1024" required>
-              <br>
-              <input class="post-submit" type="submit" value="Reply">
-            </form>
-          </div>
+          <p class="acknowledged-count">Acknowleged {ib_post_acknowledged_count} times.</p>
+        </div>
+        {replies_html}
+        <div id="post-form-section" style="display:block;">
+          <form id="reply-form" action="https://{DOMAIN}/v1/reply" method="POST">
+            <input type="hidden" name="ib_uid" value="{ib_uid}">
+            <input type="hidden" name="ib_user" value="{ib_user}">
+            <input type="hidden" name="pid" value="{ib_post_id}">
+            <input type="text" class="post" name="post" maxlength="1024" required>
+            <br>
+            <input class="post-submit" type="submit" value="Reply">
+          </form>
         </div>
       </div>"#,
     ib_uid = ib_uid,
@@ -4752,26 +4750,28 @@ pub async fn render_single_post_mobile_html(
   let session_nav_user = session_username.as_deref().unwrap_or(ib_user);
 
   let single_post_html = format!(
-    r#"<div id="selected-user-posts-section">
-      <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
-        {post_meta}
-        <p>{post_body}</p>
-        <div class="post-actions">
-          {ack_controls}
-          <p><a href="javascript:void(0);" class="copy-link">:[[ :copy-link: ]]:</a></p>
+    r#"<div class="glass-card">
+      <div id="selected-user-posts-section">
+        <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
+          {post_meta}
+          <p>{post_body}</p>
+          <div class="post-actions">
+            {ack_controls}
+            <p><a href="javascript:void(0);" class="copy-link">:[[ :copy-link: ]]:</a></p>
+          </div>
+          <p class="acknowledged-count">Acknowleged {ib_post_acknowledged_count} times.</p>
         </div>
-        <p class="acknowledged-count">Acknowleged {ib_post_acknowledged_count} times.</p>
-      </div>
-      {replies_html}
-      <div id="post-form-section" style="display:block;">
-        <form id="reply-form" action="https://{DOMAIN}/v1/reply" method="POST">
-          <input type="hidden" name="ib_uid" value="{ib_uid}">
-          <input type="hidden" name="ib_user" value="{ib_user}">
-          <input type="hidden" name="pid" value="{ib_post_id}">
-          <input type="text" class="post" name="post" maxlength="1024" required>
-          <br>
-          <input class="post-submit" type="submit" value="Reply">
-        </form>
+        {replies_html}
+        <div id="post-form-section" style="display:block;">
+          <form id="reply-form" action="https://{DOMAIN}/v1/reply" method="POST">
+            <input type="hidden" name="ib_uid" value="{ib_uid}">
+            <input type="hidden" name="ib_user" value="{ib_user}">
+            <input type="hidden" name="pid" value="{ib_post_id}">
+            <input type="text" class="post" name="post" maxlength="1024" required>
+            <br>
+            <input class="post-submit" type="submit" value="Reply">
+          </form>
+        </div>
       </div>
     </div>"#,
     ib_user = escape_html(ib_user),
