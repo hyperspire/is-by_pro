@@ -846,9 +846,14 @@ pub async fn render_profile_mobile_html(
     <p><a target="_blank" rel="noopener" href="{ib_website}">{ib_website}</a></p><br>
     {edit_profile_link}
     <p><a class="projects-display" href="https://{DOMAIN}/v1/projects?ib_uid={viewed_ib_uid}&ib_user={viewed_ib_user}">:[[ :projects: ]]:</a></p><br>
-    {related_userlist_html}
+    <div id="related-userlist-section">
+      {related_userlist_html}
+    </div>
     <p>&nbsp;</p>
-    <br>{trending_tags_html}"#,
+    <div id="trending-tags-section">
+      {trending_tags_html}
+    </div>
+    <p>&nbsp;</p>"#,
     ib_ibp = ib_ibp,
     ib_pro = ib_pro_text,
     ib_services = ib_services,
