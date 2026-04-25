@@ -7,6 +7,28 @@ const UPDATE_BANNER_SUPPRESS_VERSION_KEY = 'is-by-mobile-update-banner-suppresse
 let deferredInstallPrompt = null;
 let refreshingForUpdate = false;
 
+window.addEventListener('beforeinstallprompt', (event) => {
+  console.log('beforeinstallprompt event triggered');
+  event.preventDefault();
+  deferredInstallPrompt = event;
+
+  const installButton = document.getElementById('install-app-button');
+  if (installButton) {
+    installButton.hidden = false;
+    installButton.textContent = 'Install App';
+
+    const installStatus = document.getElementById('install-status');
+    if (installStatus) installStatus.textContent = 'Install is-by.pro for faster access and offline shell support.';
+
+    const installGuide = document.getElementById('install-guide');
+    const installGuideText = document.getElementById('install-guide-text');
+    if (installGuide && installGuideText) {
+      installGuideText.textContent = 'Tap Install App to add is-by.pro to your home screen.';
+      installGuide.hidden = false;
+    }
+  }
+});
+
 function isIosDevice() {
   function isFirefox() {
     return /firefox/i.test(window.navigator.userAgent || '');
@@ -339,16 +361,11 @@ function bindInstallPrompt() {
     setInstallGuide('If no install prompt appears, open the browser menu and choose Install App or Add to Home Screen.', true);
   }
 
-  if (!isFirefox()) {
-    window.addEventListener('beforeinstallprompt', (event) => {
-      console.log('beforeinstallprompt event triggered');
-      event.preventDefault();
-      deferredInstallPrompt = event;
-      installButton.hidden = false;
-      installButton.textContent = 'Install App';
-      setInstallStatus('Install is-by.pro for faster access and offline shell support.');
-      setInstallGuide('Tap Install App to add is-by.pro to your home screen.', true);
-    });
+  if (!isFirefox() && deferredInstallPrompt) {
+    installButton.hidden = false;
+    installButton.textContent = 'Install App';
+    setInstallStatus('Install is-by.pro for faster access and offline shell support.');
+    setInstallGuide('Tap Install App to add is-by.pro to your home screen.', true);
   }
 
   window.addEventListener('appinstalled', () => {
