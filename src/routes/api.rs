@@ -784,6 +784,7 @@ pub async fn edit_post(
   query: web::Query<EditPostRequest>,
 ) -> impl Responder {
   let mut context = Context::new();
+  let advert_html = render_advert_html(&state).await;
   let session_uid = match get_session_uid(&req) {
     Some(uid) => uid,
     None => return HttpResponse::Unauthorized().body("Login required"),
@@ -856,6 +857,7 @@ pub async fn edit_post(
     post = escape_html(&row.post)
   );
 
+  context.insert("advert_html", &advert_html);
   context.insert("post_edit_html", &post_edit_html);
   context.insert("domain", &DOMAIN);
   context.insert("ib_uid", &ib_uid);
