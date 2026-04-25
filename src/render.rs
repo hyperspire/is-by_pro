@@ -976,8 +976,6 @@ pub async fn render_profile_mobile_html(
   </nav>"#,
       session_ib_uid = session_nav_uid,
       session_ib_user = escape_html(session_nav_user),
-      viewed_ib_uid = ib_uid,
-      viewed_ib_user = escape_html(ib_user),
     )
   } else {
       r#"<div id="actions-section">
