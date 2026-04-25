@@ -587,6 +587,7 @@ pub async fn edit_profile(
   state: web::Data<AppState>,
   query: web::Query<EditProfileRequest>,
 ) -> impl Responder {
+  let mut context = Context::new();
   let session_uid = match get_session_uid(&req) {
     Some(uid) => uid,
     None => return HttpResponse::Unauthorized().body("Login required"),
@@ -596,10 +597,13 @@ pub async fn edit_profile(
     return HttpResponse::Forbidden().body("You can only edit your own profile");
   }
 
+  let ib_uid = query.ib_uid.clone();
+  let ib_user = query.ib_user.clone();
+
   let row = match sqlx::query_as::<_, EditProfileRow>(
     "SELECT github AS ib_github, ibp AS ib_ibp, pro AS ib_pro, services AS ib_services, location AS ib_location, website AS ib_website FROM pro WHERE ib_uid = ? LIMIT 1",
   )
-  .bind(query.ib_uid)
+  .bind(ib_uid)
   .fetch_optional(&state.db_pool)
   .await
   {
@@ -618,26 +622,8 @@ pub async fn edit_profile(
 
   let advert_html = render_advert_html(&state).await;
 
-  let html = format!(
-    r#"<!DOCTYPE html>
-<html lang="en-US">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" type="text/css" href="/css/is-by.css" />
-  <script src="/js/is-by_user.js?v=3" type="text/javascript"></script>
-  <title>:[[ :edit-profile: {ib_user}: ]]:</title>
-</head>
-<body>
-  <div id="main-section">
-    <div id="media-section">
-      <div>
-        {advert_html}
-      </div>
-      <div id="navigation-section">
-        <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
-      </div>
-      <div id="post-form-section" style="display:block;">
+  let edit_profile_html = format!(
+    r#"<div id="post-form-section" style="display:block;">
         <form id="edit-profile-form" action="https://{DOMAIN}/v1/editprofile" method="POST">
           <input type="hidden" name="ib_uid" value="{ib_uid}">
           <input type="hidden" name="ib_user" value="{ib_user}">
@@ -649,14 +635,9 @@ pub async fn edit_profile(
           Website: <input class="post" type="text" name="ib_website" value="{ib_website}" placeholder="{ib_website}" autocomplete="off"><br>
           <input class="post-submit" type="submit" value="Save">
         </form>
-      </div>
-    </div>
-  </div>
-</body>
-</html>"#,
+      </div>"#,
     ib_uid = query.ib_uid,
     ib_user = escape_html(&query.ib_user),
-    advert_html = advert_html,
     ib_ibp = escape_html(&row.ib_ibp),
     ib_pro = escape_html(&row.ib_pro),
     ib_services = escape_html(&row.ib_services),
@@ -664,10 +645,31 @@ pub async fn edit_profile(
     ib_website = escape_html(&row.ib_website)
   );
 
+  context.insert("advert_html", &advert_html);
+  context.insert("edit_profile_html", &edit_profile_html);
+  context.insert("domain", &DOMAIN);
+  context.insert("ib_uid", &ib_uid);
+  context.insert("ib_user", &ib_user);
+
+  let html = match TEMPLATES.render("edit_profile.html", &context) {
+        Ok(rendered) => rendered,
+        Err(e) => {
+            use std::error::Error;
+            let mut err_msg = format!("Template error: {}", e);
+            let mut cause = e.source();
+            while let Some(err) = cause {
+                err_msg.push_str(&format!("\nCaused by: {}", err));
+                cause = err.source();
+            }
+            return HttpResponse::InternalServerError().body(err_msg);
+        }
+  };
+
   HttpResponse::Ok()
     .content_type("text/html; charset=utf-8")
     .body(html)
 }
+
 #[post("/v1/editprofile")]
 pub async fn update_profile(
   req: HttpRequest,
@@ -777,6 +779,7 @@ pub async fn delete_post(
       .body(format!("Failed to delete post: {}", err)),
   }
 }
+
 #[get("/v1/editpost")]
 pub async fn edit_post(
   req: HttpRequest,
@@ -881,6 +884,7 @@ pub async fn edit_post(
     .content_type("text/html; charset=utf-8")
     .body(html)
 }
+
 #[post("/v1/editpost")]
 pub async fn update_post(
   req: HttpRequest,
@@ -940,6 +944,7 @@ pub async fn update_post(
       .body(format!("Failed to update post: {}", err)),
   }
 }
+
 #[post("/v1/ackpost")]
 pub async fn acknowledge_post(
   state: web::Data<AppState>,
@@ -1009,6 +1014,7 @@ pub async fn acknowledge_post(
     .insert_header(("Location", location))
     .finish()
 }
+
 #[get("/api/v1/posts")]
 pub async fn get_posts_page(
   req: HttpRequest,
@@ -1111,6 +1117,7 @@ pub async fn get_posts_page(
 
   HttpResponse::Ok().json(PostsPageResponse { posts_html, has_more })
 }
+
 #[get("/api/v1/warroom/posts")]
 pub async fn get_war_room_posts_page(
   req: HttpRequest,
@@ -1141,6 +1148,7 @@ pub async fn get_war_room_posts_page(
     })),
   }
 }
+
 #[get("/api/v1/followers")]
 pub async fn get_followers_page(
   state: web::Data<AppState>,
@@ -1170,6 +1178,7 @@ pub async fn get_followers_page(
     })),
   }
 }
+
 #[post("/v1/projects")]
 pub async fn create_project_profile(
   req: HttpRequest,
@@ -1208,6 +1217,7 @@ pub async fn create_project_profile(
     Err(err) => HttpResponse::InternalServerError().body(format!("Failed to create project: {}", err)),
   }
 }
+
 #[post("/v1/projects/edit")]
 pub async fn update_project_profile(
   req: HttpRequest,
@@ -1247,6 +1257,7 @@ pub async fn update_project_profile(
     Err(err) => HttpResponse::InternalServerError().body(format!("Failed to update project: {}", err)),
   }
 }
+
 #[post("/v1/projects/reinforce")]
 pub async fn quick_response_force_project(
   req: HttpRequest,
@@ -1356,6 +1367,7 @@ pub async fn quick_response_force_project(
     .insert_header(("Location", location))
     .finish()
 }
+
 #[post("/v1/admin/ads/create")]
 pub async fn ads_admin_create(
   req: HttpRequest,
@@ -1390,6 +1402,7 @@ pub async fn ads_admin_create(
     Err(err) => HttpResponse::InternalServerError().body(format!("Failed to create ad: {}", err)),
   }
 }
+
 #[post("/v1/admin/ads/update")]
 pub async fn ads_admin_update(
   req: HttpRequest,
@@ -1425,6 +1438,7 @@ pub async fn ads_admin_update(
     Err(err) => HttpResponse::InternalServerError().body(format!("Failed to update ad: {}", err)),
   }
 }
+
 #[post("/v1/admin/ads/delete")]
 pub async fn ads_admin_delete(
   req: HttpRequest,
@@ -1452,6 +1466,7 @@ pub async fn ads_admin_delete(
     Err(err) => HttpResponse::InternalServerError().body(format!("Failed to delete ad: {}", err)),
   }
 }
+
 #[post("/v1/ads/create")]
 pub async fn ads_user_create(
   req: HttpRequest,
@@ -1564,6 +1579,7 @@ pub async fn ads_user_create(
     Err(err) => HttpResponse::InternalServerError().body(format!("Ad created but PayPal subscription failed: {}", err)),
   }
 }
+
 #[post("/v1/ads/pay/{imageid}")]
 pub async fn ads_user_pay(
   req: HttpRequest,
@@ -1596,6 +1612,7 @@ pub async fn ads_user_pay(
     Err(err) => HttpResponse::InternalServerError().body(format!("PayPal subscription failed: {}", err)),
   }
 }
+
 #[get("/v1/ads/paypal/return")]
 pub async fn ads_paypal_return(
   req: HttpRequest,
@@ -1703,6 +1720,7 @@ pub async fn ads_paypal_return(
     Err(err) => HttpResponse::InternalServerError().body(format!("Failed to mark ad as paid: {}", err)),
   }
 }
+
 #[get("/v1/ads/paypal/cancel")]
 pub async fn ads_paypal_cancel(
   req: HttpRequest,
@@ -1716,6 +1734,7 @@ pub async fn ads_paypal_cancel(
     .insert_header(("Location", "/v1/ads"))
     .finish()
 }
+
 #[post("/v1/ads/update")]
 pub async fn ads_user_update(
   req: HttpRequest,
@@ -1746,6 +1765,7 @@ pub async fn ads_user_update(
     Err(err) => HttpResponse::InternalServerError().body(format!("Failed to update ad: {}", err)),
   }
 }
+
 #[post("/v1/ads/delete")]
 pub async fn ads_user_delete(
   req: HttpRequest,
@@ -1789,6 +1809,7 @@ pub async fn ads_user_delete(
     .insert_header(("Location", "/v1/ads"))
     .finish()
 }
+
 #[get("/api/v1/inbox/contacts")]
 pub async fn get_inbox_contacts_page(
   req: HttpRequest,
@@ -1837,6 +1858,7 @@ pub async fn get_inbox_contacts_page(
     })),
   }
 }
+
 #[post("/v1/dm/send")]
 pub async fn send_direct_message(
   req: HttpRequest,
@@ -1965,6 +1987,7 @@ pub async fn send_direct_message(
     }
   }
 }
+
 #[get("/v1/ad/click/{imageid}")]
 pub async fn ad_click(
   state: web::Data<AppState>,
@@ -1996,6 +2019,7 @@ pub async fn ad_click(
     .insert_header(("Location", ad_row.url))
     .finish()
 }
+
 #[get("/v1/dm/messages")]
 pub async fn direct_messages(
   req: HttpRequest,
@@ -2116,6 +2140,7 @@ pub async fn direct_messages(
     has_more,
   })
 }
+
 #[get("/v1/dm/unreadcount")]
 pub async fn direct_message_unread_count(
   req: HttpRequest,
@@ -2182,6 +2207,7 @@ pub async fn github_auth_start_impl(req: HttpRequest, state: web::Data<AppState>
     )
     .finish()
 }
+
 #[get("/v1/auth/github")]
 pub async fn github_auth_start_v1(req: HttpRequest, state: web::Data<AppState>) -> impl Responder {
   github_auth_start_impl(req, state).await
@@ -2312,6 +2338,7 @@ pub async fn github_auth_callback_impl(
       .body(err),
   }
 }
+
 #[get("/v1/auth/github/callback")]
 pub async fn github_auth_callback_v1(
   req: HttpRequest,
