@@ -789,9 +789,10 @@ pub async fn edit_post(
     None => return HttpResponse::Unauthorized().body("Login required"),
   };
 
+  let ib_uid = query.ib_uid.clone();
   let ib_user = query.ib_user.clone();
 
-  let owner_uid = query.post_owner_uid.unwrap_or(query.ib_uid);
+  let owner_uid = query.post_owner_uid.unwrap_or(ib_uid);
   if session_uid != owner_uid {
     return HttpResponse::Forbidden().body("You can only edit your own posts");
   }
@@ -857,6 +858,7 @@ pub async fn edit_post(
 
   context.insert("post_edit_html", &post_edit_html);
   context.insert("domain", &DOMAIN);
+  context.insert("ib_uid", &ib_uid);
   context.insert("ib_user", &ib_user);
 
   let html = match TEMPLATES.render("edit_post.html", &context) {
