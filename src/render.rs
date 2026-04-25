@@ -1839,6 +1839,7 @@ pub async fn render_search_posts_html(
   context.insert("ib_user", &ib_user);
   context.insert("tag", raw_tag);
   context.insert("advert_html", &advert_html);
+  context.insert("navigation_links", &navigation_links);
   context.insert("sidebar_login_html", &sidebar_login_html);
   context.insert("related_users", &related_users_html);
   context.insert("trending_tags", &trending_tags_html);
