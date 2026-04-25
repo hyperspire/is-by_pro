@@ -195,6 +195,7 @@ pub async fn render_related_userlist_html(
   crate::utils::set_cache(&state.redis_pool, &cache_key, &html, 300).await;
   html
 }
+
 pub async fn render_github_identity_html(state: &AppState, ib_user: &str) -> String {
   let total_acks = match sqlx::query_as::<_, UserHoverLookupRow>(
     "SELECT CONVERT(ib_uid USING utf8mb4) AS ib_uid, username, COALESCE(followers, '') AS followers, COALESCE(total_acknowledgments, 0) AS total_acknowledgments FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1",
@@ -224,6 +225,7 @@ pub async fn render_github_identity_html(state: &AppState, ib_user: &str) -> Str
     glow_style = glow_style,
   )
 }
+
 pub async fn render_advert_html(state: &AppState) -> String {
   const FALLBACK_IMAGE: &str = "/images/advert/Death_Angel-Ad-400x111.png";
   const FALLBACK_URL: &str = "https://is-by.pro/advertise.html";
@@ -255,6 +257,7 @@ pub async fn render_advert_html(state: &AppState) -> String {
     imagepath = escape_html(&ad_row.imagepath),
   )
 }
+
 pub async fn render_trending_tags_html(state: &AppState, ib_uid: i64, ib_user: &str) -> String {
   let cache_key = format!("cache:trending_tags:{}:{}", ib_uid, ib_user);
   if let Some(cached_html) = crate::utils::get_cache(&state.redis_pool, &cache_key).await {
@@ -294,6 +297,7 @@ pub async fn render_trending_tags_html(state: &AppState, ib_uid: i64, ib_user: &
   crate::utils::set_cache(&state.redis_pool, &cache_key, &html, 300).await;
   html
 }
+
 pub async fn render_profile_html(
   state: &AppState,
   ib_uid: i64,
@@ -611,12 +615,12 @@ pub async fn render_profile_html(
 
     Ok(html)
   }
-  // Close the if let Ok(ib_pro) block
+
   else {
-    // Handle the error case if needed, or return an error
     Err("ib_pro_result failed".to_string())
   }
-} // Close the function render_profile_html
+}
+
 pub async fn render_profile_mobile_html(
   state: &AppState,
   ib_uid: i64,
@@ -951,7 +955,7 @@ pub async fn render_profile_mobile_html(
       </div>
     </a>
     <a class="projects-display"
-      href="https://{DOMAIN}/v1/projects?ib_uid={viewed_ib_uid}&amp;ib_user={viewed_ib_user}">
+      href="https://{DOMAIN}/v1/projects?ib_uid={session_ib_uid}&amp;ib_user={session_ib_user}">
       <div class="nav-icon">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1008,6 +1012,7 @@ pub async fn render_profile_mobile_html(
 
   Ok(html)
 }
+
 pub async fn render_search_users_html(
   state: &AppState,
   ib_uid: i64,
@@ -1271,6 +1276,7 @@ pub async fn render_search_users_html(
 
   Ok(html)
 }
+
 pub async fn render_search_users_mobile_html(
   state: &AppState,
   ib_uid: i64,
@@ -1460,6 +1466,7 @@ pub async fn render_search_users_mobile_html(
 
   Ok(html)
 }
+
 pub async fn render_search_posts_mobile_html(
   state: &AppState,
   ib_uid: i64,
@@ -1649,6 +1656,7 @@ pub async fn render_search_posts_mobile_html(
 
   Ok(html)
 }
+
 pub async fn render_search_posts_html(
   state: &AppState,
   ib_uid: i64,
@@ -1858,6 +1866,7 @@ pub async fn render_search_posts_html(
 
   Ok(html)
 }
+
 pub async fn render_projects_html(
   state: &AppState,
   ib_uid: i64,
@@ -2268,6 +2277,7 @@ pub async fn render_projects_html(
 
   Ok(html)
 }
+
 pub async fn render_projects_mobile_html(
   state: &AppState,
   ib_uid: i64,
@@ -2591,6 +2601,7 @@ pub async fn render_projects_mobile_html(
 
   Ok(html)
 }
+
 pub async fn render_search_projects_html(
   state: &AppState,
   ib_uid: i64,
@@ -2935,6 +2946,7 @@ pub async fn render_search_projects_html(
 
   Ok(html)
 }
+
 pub async fn render_search_projects_mobile_html(
   state: &AppState,
   ib_uid: i64,
@@ -3229,6 +3241,7 @@ pub async fn render_search_projects_mobile_html(
 
   Ok(html)
 }
+
 pub async fn render_user_search_section_html(
   state: &AppState,
   ib_uid: i64,
@@ -3384,6 +3397,7 @@ pub async fn render_user_search_section_html(
 
   Ok(html)
 }
+
 pub async fn render_war_room_posts_chunk(
   state: &AppState,
   ib_uid: i64,
@@ -3490,6 +3504,7 @@ pub async fn render_war_room_posts_chunk(
     total_followers,
   })
 }
+
 pub async fn render_profile_followers_chunk(
   state: &AppState,
   ib_uid: i64,
@@ -3556,6 +3571,7 @@ pub async fn render_profile_followers_chunk(
     total_followers,
   })
 }
+
 pub async fn render_war_room_html(
   state: &AppState,
   ib_uid: i64,
@@ -3754,6 +3770,7 @@ pub async fn render_war_room_html(
 
   Ok(html)
 }
+
 pub async fn render_war_room_mobile_html(
   state: &AppState,
   ib_uid: i64,
@@ -3909,6 +3926,7 @@ pub async fn render_war_room_mobile_html(
 
   Ok(html)
 }
+
 pub async fn render_inbox_html(
   state: &AppState,
   ib_uid: i64,
@@ -4149,6 +4167,7 @@ pub async fn render_inbox_html(
 
   Ok(html)
 }
+
 pub async fn render_inbox_mobile_html(
   state: &AppState,
   ib_uid: i64,
@@ -4329,6 +4348,7 @@ pub async fn render_inbox_mobile_html(
 
   Ok(html)
 }
+
 pub async fn render_single_post_html(
   state: &AppState,
   ib_uid: i64,
@@ -4617,6 +4637,7 @@ pub async fn render_single_post_html(
 
   Ok(html)
 }
+
 pub async fn render_single_post_mobile_html(
   state: &AppState,
   ib_uid: i64,
@@ -4875,6 +4896,7 @@ pub async fn render_single_post_mobile_html(
 
   Ok(html)
 }
+
 pub async fn render_show_post_response(
   req: &HttpRequest,
   state: &AppState,
@@ -5012,6 +5034,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
 
   rendered
 }
+
 pub fn render_post_meta(ib_uid: &str, username: &str, timestamp: &str, user_total_acks: i64) -> String {
   let profile_target = if username.trim().is_empty() {
     ib_uid
@@ -5036,6 +5059,7 @@ pub fn render_post_meta(ib_uid: &str, username: &str, timestamp: &str, user_tota
     glow_style = glow_style
   )
 }
+
 pub fn render_project_profile_link(username: &str, user_total_acks: i64) -> String {
   let rank_info = get_rank_info(user_total_acks);
   let glow_style = if rank_info.level >= 11 {
@@ -5051,6 +5075,7 @@ pub fn render_project_profile_link(username: &str, user_total_acks: i64) -> Stri
     glow_style = glow_style,
   )
 }
+
 pub fn render_ack_controls(page_ib_uid: i64, page_ib_user: &str, post_id: &str) -> String {
   if page_ib_uid <= 0 {
     return String::from(r#"<span class="ack-post-disabled">:[[ACK]]:</span>"#);
@@ -5068,9 +5093,11 @@ pub fn render_ack_controls(page_ib_uid: i64, page_ib_user: &str, post_id: &str) 
     post_id = escape_html(post_id)
   )
 }
+
 pub fn render_ack_disabled() -> String {
   String::from(r#"<span class="ack-post-disabled">:[[ACK]]:</span>"#)
 }
+
 pub fn render_inbox_contacts_html(inbox_users: &[String]) -> String {
   if inbox_users.is_empty() {
     return "<p><em>:[[ :no-direct-message-contacts: ]]:</em></p>".to_string();
