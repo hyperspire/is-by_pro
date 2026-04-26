@@ -1332,7 +1332,9 @@ pub async fn render_search_users_mobile_html(
       let profile_link = render_project_profile_link(&row.username, row.total_acknowledgments);
 
       html += &format!(
-        r#"<p>{profile_link}<br><small>{ibp}</small></p>"#,
+        r#"<div class="user-search-result-section">
+          <p>{profile_link}<br><small>{ibp}</small></p>
+        </div>"#,
         profile_link = profile_link,
         ibp = highlight_terms(&row.ibp, &search_terms)
       );
@@ -1363,9 +1365,7 @@ pub async fn render_search_users_mobile_html(
   search_results_section_html += &format!(
     r#"<div class="glass-card">
       <div class="notice"><p><em>:[[ :search-users-for: {raw_query}: ]]:</em></p></div>
-      <div class="user-search-result-section">
-        {search_results_html}
-      </div>
+      {search_results_html}
     </div>"#,
     raw_query = escape_html(raw_query),
     search_results_html = search_results_html,
