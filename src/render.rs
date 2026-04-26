@@ -43,7 +43,7 @@ pub async fn render_related_userlist_html(
   };
 
   if interests.is_empty() {
-    return ":[[ :no-related-users: ]]:".to_string();
+    return ":[[ :is-by: no: for-the: related-users: ]]:".to_string();
   }
 
   let regex_terms: Vec<String> = interests
@@ -187,7 +187,7 @@ pub async fn render_related_userlist_html(
   }
 
   let html = if related_html.is_empty() {
-    ":[[ :no-related-users: ]]:".to_string()
+    ":[[ :is-by: no: for-the: related-users: ]]:".to_string()
   } else {
     related_html
   };
@@ -5083,7 +5083,7 @@ pub fn render_inbox_contacts_html(inbox_users: &[String]) -> String {
 }
 
 pub async fn related_users(state: &AppState, session_uid: Option<i64>) -> String {
-  let empty_result = ":[[ :no-related-users: ]]:".to_string();
+  let empty_result = ":[[ :is-by: no: for-the: related-users: ]]:".to_string();
 
   let uid = match session_uid {
     Some(id) => id,
