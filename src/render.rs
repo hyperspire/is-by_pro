@@ -412,8 +412,9 @@ pub async fn render_profile_html(
       "SELECT ibp, pro, location, services, website, github FROM pro WHERE ib_uid = ?"
     )
     .bind(ib_uid)
-    .fetch_one(&state.db_pool)
-    .await;
+    .fetch_optional(&state.db_pool)
+    .await
+    .map(|opt| opt.unwrap_or_default());
 
   let total_acks = match sqlx::query_as::<_, UserHoverLookupRow>(
     "SELECT CONVERT(ib_uid USING utf8mb4) AS ib_uid, username, COALESCE(followers, '') AS followers, COALESCE(total_acknowledgments, 0) AS total_acknowledgments FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1",
@@ -699,8 +700,9 @@ pub async fn render_profile_mobile_html(
       "SELECT ibp, pro, location, services, website, github FROM pro WHERE ib_uid = ?"
     )
     .bind(ib_uid)
-    .fetch_one(&state.db_pool)
-    .await;
+    .fetch_optional(&state.db_pool)
+    .await
+    .map(|opt| opt.unwrap_or_default());
 
   let total_acks = match sqlx::query_as::<_, UserHoverLookupRow>(
     "SELECT CONVERT(ib_uid USING utf8mb4) AS ib_uid, username, COALESCE(followers, '') AS followers, COALESCE(total_acknowledgments, 0) AS total_acknowledgments FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1",
@@ -1061,7 +1063,9 @@ pub async fn render_search_users_html(
       let profile_link = render_project_profile_link(&row.username, row.total_acknowledgments);
 
       html += &format!(
-        r#"<p>{profile_link}<br><small>{ibp}</small></p>"#,
+        r#"<div class="post-section">
+          <p>{profile_link}<br><small>{ibp}</small></p>
+        </div>"#,
         profile_link = profile_link,
         ibp = highlight_terms(&row.ibp, &search_terms)
       );
@@ -1119,7 +1123,7 @@ pub async fn render_search_users_html(
 
   let search_section_html = format!(
     r#"<div id="selected-user-posts-section" class="post-section">
-        <div class="notice"><p><em>:[[ :search-users-for: {raw_query}: ]]:</em></p></div>
+        <div class="notice"><p><em>:[[ :search-users: for-the: {raw_query}: ]]:</em></p></div>
         {search_results_html}
       </div>"#,
     raw_query = escape_html(raw_query),
@@ -1130,8 +1134,9 @@ pub async fn render_search_users_html(
       "SELECT ibp, pro, location, services, website, github FROM pro WHERE ib_uid = ?"
     )
     .bind(ib_uid)
-    .fetch_one(&state.db_pool)
-    .await;
+    .fetch_optional(&state.db_pool)
+    .await
+    .map(|opt| opt.unwrap_or_default());
 
   let ib_pro = ib_pro_result.unwrap_or_else(|_| ProRow {
     ibp: String::new(),
@@ -1798,8 +1803,9 @@ pub async fn render_search_posts_html(
       "SELECT ibp, pro, location, services, website, github FROM pro WHERE ib_uid = ?"
     )
     .bind(ib_uid)
-    .fetch_one(&state.db_pool)
-    .await;
+    .fetch_optional(&state.db_pool)
+    .await
+    .map(|opt| opt.unwrap_or_default());
 
   if let Ok(ib_pro) = ib_pro_result {
     ib_ibp_escaped = escape_html(&ib_pro.ibp);
@@ -2120,8 +2126,9 @@ pub async fn render_projects_html(
       "SELECT ibp, pro, location, services, website, github FROM pro WHERE ib_uid = ?"
     )
     .bind(ib_uid)
-    .fetch_one(&state.db_pool)
-    .await;
+    .fetch_optional(&state.db_pool)
+    .await
+    .map(|opt| opt.unwrap_or_default());
 
   if let Ok(ib_pro) = ib_pro_result {
     let source_uid = session_uid.unwrap_or(ib_uid);
@@ -2829,21 +2836,21 @@ pub async fn render_search_projects_html(
     .bind(ib_uid)
     .fetch_optional(&state.db_pool)
     .await
-    .unwrap_or(None);
+    .map(|opt| opt.unwrap_or_default());
 
   let source_uid = session_uid.unwrap_or(ib_uid);
   let source_profile_terms = if let Some(uid) = session_uid {
     lookup_profile_terms_by_uid(state, uid)
       .await
       .unwrap_or_else(|| {
-        if let Some(ref pro) = ib_pro_result {
+        if let Ok(ref pro) = ib_pro_result {
           format!("{} {}", pro.pro, pro.ibp)
         } else {
           String::new()
         }
       })
   } else {
-    if let Some(ref pro) = ib_pro_result {
+    if let Ok(ref pro) = ib_pro_result {
       format!("{} {}", pro.pro, pro.ibp)
     } else {
       String::new()
@@ -3652,9 +3659,10 @@ pub async fn render_war_room_html(
       "SELECT ibp, pro, location, services, website, github FROM pro WHERE ib_uid = ?"
     )
     .bind(ib_uid)
-    .fetch_one(&state.db_pool)
+    .fetch_optional(&state.db_pool)
     .await
-    .map_err(|e| format!("Failed to load profile details: {}", e))?;
+    .map_err(|e| format!("Failed to load profile details: {}", e))
+    .map(|opt| opt.unwrap_or_default())?;
 
   let total_acks = match sqlx::query_as::<_, UserHoverLookupRow>(
     "SELECT CONVERT(ib_uid USING utf8mb4) AS ib_uid, username, COALESCE(followers, '') AS followers, COALESCE(total_acknowledgments, 0) AS total_acknowledgments FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1",
@@ -4023,21 +4031,21 @@ pub async fn render_inbox_html(
     .bind(ib_uid)
     .fetch_optional(&state.db_pool)
     .await
-    .unwrap_or(None);
+    .map(|opt| opt.unwrap_or_default());
 
   let source_uid = session_uid.unwrap_or(ib_uid);
   let source_profile_terms = if let Some(uid) = session_uid {
     lookup_profile_terms_by_uid(state, uid)
       .await
       .unwrap_or_else(|| {
-        if let Some(ref pro) = ib_pro_result {
+        if let Ok(ref pro) = ib_pro_result {
           format!("{} {}", pro.pro, pro.ibp)
         } else {
           String::new()
         }
       })
   } else {
-    if let Some(ref pro) = ib_pro_result {
+    if let Ok(ref pro) = ib_pro_result {
       format!("{} {}", pro.pro, pro.ibp)
     } else {
       String::new()
@@ -4493,9 +4501,10 @@ pub async fn render_single_post_html(
       "SELECT ibp, pro, location, services, website, github FROM pro WHERE ib_uid = ?"
     )
     .bind(ib_uid)
-    .fetch_one(&state.db_pool)
+    .fetch_optional(&state.db_pool)
     .await
-    .map_err(|e| format!("Failed to load profile details: {}", e))?;
+    .map_err(|e| format!("Failed to load profile details: {}", e))
+    .map(|opt| opt.unwrap_or_default())?;
 
   let source_uid = session_uid.unwrap_or(ib_uid);
   let source_profile_terms = if let Some(uid) = session_uid {
@@ -5094,10 +5103,10 @@ pub async fn related_users(state: &AppState, session_uid: Option<i64>) -> String
     .bind(uid)
     .fetch_optional(&state.db_pool)
     .await
-    .unwrap_or(None);
+    .map(|opt| opt.unwrap_or_default());
 
   let pro_value = match user_pro_row {
-    Some(p) if !p.trim().is_empty() => p,
+    Ok(p) if !p.trim().is_empty() => p,
     _ => return empty_result,
   };
 

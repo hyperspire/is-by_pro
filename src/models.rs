@@ -30,7 +30,7 @@ pub struct PostRow {
   pub user_total_acks: i64,
 }
 
-#[derive(sqlx::FromRow)]
+#[derive(sqlx::FromRow, Default)]
 pub struct ProRow {
   pub ibp: String,
   pub pro: String,

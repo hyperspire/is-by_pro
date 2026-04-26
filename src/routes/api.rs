@@ -24,14 +24,7 @@ pub async fn ensure_legacy_user_from_github(
     .execute(&state.db_pool)
     .await?;
 
-  // Ensure the profile lookup table has at least a minimal row for GitHub-authenticated users.
-  sqlx::query(
-    "INSERT INTO pro (ib_uid, github, ibp, pro, services, location, website) VALUES (?, ?, '', '', '', '', '') ON DUPLICATE KEY UPDATE github = VALUES(github)",
-  )
-    .bind(github_id as i64)
-    .bind(github_username)
-    .execute(&state.db_pool)
-    .await?;
+
 
   Ok(())
 }
