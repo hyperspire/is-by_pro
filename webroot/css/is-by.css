@@ -723,12 +723,12 @@ a:hover {
     border: 1px solid #3F3F3F !important;
     border-radius: 4px;
     padding: 6px 6px 6px 6px;
-    margin: 6px 6px 6px 6px;
+    margin: 10px 0;
     width: 133px;
     height: 33px;
     position: relative;
     top: 0px;
-    left: 88px;
+    left: 0px;
 }
 
 .post-submit,
@@ -746,7 +746,7 @@ a:hover {
     display: block !important;
     width: 133px !important;
     height: 33px !important;
-    margin: 10px auto !important;
+    margin: 10px 0 !important;
     position: relative;
     top: 0px;
     left: 0px !important;
@@ -760,6 +760,7 @@ a:hover {
     align-items: center;
     justify-content: center;
     max-width: 560px;
+    gap: 8px 16px;
 }
 
 #post-form #post-message,
