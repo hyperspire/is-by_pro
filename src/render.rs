@@ -472,7 +472,7 @@ pub async fn render_profile_html(
             <input type="hidden" name="ib_user" value="{ib_user}">
             <input type="hidden" name="pid" value="{ib_post_id}">
           </form>
-          <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a><a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>"#,
+          <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;"#,
         ib_uid = ib_uid,
         ib_user = escape_html(ib_user),
         ib_post_id = escape_html(&row.postid),
@@ -4384,7 +4384,7 @@ pub async fn render_single_post_html(
               <input type="hidden" name="root_pid" value="{root_pid}">
               <input type="hidden" name="post_owner_uid" value="{reply_owner_uid}">
             </form>
-            <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a><a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>"#,
+            <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;"#,
           page_ib_uid = ib_uid,
           page_ib_user = escape_html(ib_user),
           root_pid = escape_html(pid),
@@ -4659,7 +4659,7 @@ pub async fn render_single_post_mobile_html(
               <input type="hidden" name="root_pid" value="{root_pid}">
               <input type="hidden" name="post_owner_uid" value="{reply_owner_uid}">
             </form>
-            <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a><a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>"#,
+            <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;"#,
           page_ib_uid = ib_uid,
           page_ib_user = escape_html(ib_user),
           root_pid = escape_html(pid),
