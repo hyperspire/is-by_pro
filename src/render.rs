@@ -238,7 +238,9 @@ pub async fn render_advert_html(state: &AppState) -> String {
 
   let Some(ad_row) = ad_row.ok().flatten() else {
     return format!(
-      r#"<a href="{url}" target="_blank" rel="noopener noreferrer"><img src="{imagepath}" width="400" height="111" alt="fallback"></a>"#,
+      r#"<div class="sponsor-content">
+        <a href="{url}" target="_blank" rel="noopener noreferrer"><img src="{imagepath}" width="400" height="111" alt="fallback"></a>
+      </div>"#,
       url = FALLBACK_URL,
       imagepath = FALLBACK_IMAGE,
     );
