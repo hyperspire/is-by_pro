@@ -1100,3 +1100,12 @@ a:hover {
         transform: translateY(-10px);
     }
 }
+
+.user-search-result-section {
+    display: flex;
+    align-items: left;
+    justify-content: left;
+    width: 100%;
+    max-width: 360px;
+    margin: 6px auto;
+}

@@ -1063,7 +1063,7 @@ pub async fn render_search_users_html(
       let profile_link = render_project_profile_link(&row.username, row.total_acknowledgments);
 
       html += &format!(
-        r#"<div class="post-section">
+        r#"<div class="user-search-result-section">
           <p>{profile_link}<br><small>{ibp}</small></p>
         </div>"#,
         profile_link = profile_link,
