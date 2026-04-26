@@ -746,7 +746,7 @@ a:hover {
     display: block !important;
     width: 133px !important;
     height: 33px !important;
-    margin: 10px 0 !important;
+    margin: 10px auto !important;
     position: relative;
     top: 0px;
     left: 0px !important;
@@ -774,6 +774,7 @@ a:hover {
 #post-form .post-submit,
 #reply-form .post-submit {
     left: 0;
+    margin: 10px 0 !important;
 }
 
 /* Projects page form/card polish without affecting post/reply forms. */
