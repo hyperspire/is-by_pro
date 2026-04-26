@@ -2661,7 +2661,8 @@ pub async fn render_search_projects_html(
       .map_err(|e| format!("Search projects query failed: {}", e))?;
 
     if rows.is_empty() {
-      "<p><em>:[[ :search-projects: is-by: no: is-with: results: ]]:</em></p>".to_string()
+      r#"<div class="notice"><p><em>:[[ :search-projects: is-by: no: is-with: results: ]]:</em></p></div>"#
+        .to_string()
     } else {
       let reinforcement_names: HashSet<String> = rows
         .iter()
