@@ -1363,7 +1363,9 @@ pub async fn render_search_users_mobile_html(
   search_results_section_html += &format!(
     r#"<div class="glass-card">
       <div class="notice"><p><em>:[[ :search-users-for: {raw_query}: ]]:</em></p></div>
-      {search_results_html}
+      <div class="user-search-result-section">
+        {search_results_html}
+      </div>
     </div>"#,
     raw_query = escape_html(raw_query),
     search_results_html = search_results_html,
