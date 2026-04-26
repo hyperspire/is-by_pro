@@ -4901,6 +4901,22 @@ pub async fn render_show_post_response(
   }
 }
 
+fn extract_youtube_video_id(url: &str) -> Option<String> {
+  if let Some(pos) = url.find("youtube.com/watch?v=") {
+    let start = pos + "youtube.com/watch?v=".len();
+    let rest = &url[start..];
+    let end = rest.find('&').unwrap_or(rest.len());
+    Some(rest[..end].to_string())
+  } else if let Some(pos) = url.find("youtu.be/") {
+    let start = pos + "youtu.be/".len();
+    let rest = &url[start..];
+    let end = rest.find('?').unwrap_or(rest.len());
+    Some(rest[..end].to_string())
+  } else {
+    None
+  }
+}
+
 pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> String {
   let mut rendered = String::new();
   let chars: Vec<(usize, char)> = raw_text.char_indices().collect();
@@ -4937,11 +4953,18 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
         trimmed_url.to_string()
       };
 
-      rendered.push_str(&format!(
-        r#"<a class="post-link" href="{href}" target="_blank" rel="noopener">{label}</a>"#,
-        href = escape_html(&href),
-        label = escape_html(trimmed_url)
-      ));
+      if let Some(video_id) = extract_youtube_video_id(&href) {
+        rendered.push_str(&format!(
+          r#"<div class="youtube-preview-container"><iframe src="https://www.youtube.com/embed/{video_id}" title="YouTube video player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>"#,
+          video_id = escape_html(&video_id)
+        ));
+      } else {
+        rendered.push_str(&format!(
+          r#"<a class="post-link" href="{href}" target="_blank" rel="noopener">{label}</a>"#,
+          href = escape_html(&href),
+          label = escape_html(trimmed_url)
+        ));
+      }
       rendered.push_str(&escape_html(trailing_punctuation));
 
       cursor = url_end_byte;
