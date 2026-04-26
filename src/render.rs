@@ -600,6 +600,7 @@ pub async fn render_profile_html(
   context.insert("selected_user_posts_section", selected_user_posts_section);
   context.insert("related_users", &related_users_html);
   context.insert("trending_tags", &trending_tags_html);
+  context.insert("copyright", &COPYRIGHT);
   
   let html = TEMPLATES.render("profile.html", &context)
         .map_err(|e| {
@@ -1065,7 +1066,7 @@ pub async fn render_search_users_html(
     }
 
     if html.is_empty() {
-      "<p><em>:[[ :search-users: is-by: no: is-with: results: ]]:</em></p>".to_string()
+      r#"<div class="notice"><p><em>:[[ :search-users: is-by: no: is-with: results: ]]:</em></p></div>"#.to_string()
     } else {
       html
     }
@@ -1265,6 +1266,7 @@ pub async fn render_search_users_html(
   context.insert("search_section_html", &search_section_html);
   context.insert("related_users", &related_users_html);
   context.insert("trending_tags", &trending_tags_html);
+  context.insert("copyright", &COPYRIGHT);
   
   let html = TEMPLATES.render("user_search_section.html", &context)
   .map_err(|e| {
@@ -1288,8 +1290,10 @@ pub async fn render_search_users_mobile_html(
   raw_query: &str,
   session_uid: Option<i64>,
 ) -> Result<String, String> {
+  let mut context = Context::new();
   let advert_html = render_advert_html(state).await;
 
+  let mut search_results_section_html = String::new();
   let search_terms: Vec<String> = raw_query
     .split_whitespace()
     .map(|term| term.trim().to_lowercase())
@@ -1328,7 +1332,7 @@ pub async fn render_search_users_mobile_html(
     }
 
     if html.is_empty() {
-      "<p><em>:[[ :search-users: is-by: no: is-with: results: ]]:</em></p>".to_string()
+      r#"<div class="notice"><p><em>:[[ :search-users: is-by: no: is-with: results: ]]:</em></p></div>"#.to_string()
     } else {
       html
     }
@@ -1349,124 +1353,121 @@ pub async fn render_search_users_mobile_html(
     None
   };
 
-  let session_nav_uid = session_uid.unwrap_or(ib_uid);
-  let session_nav_user = session_username.as_deref().unwrap_or(ib_user);
-
-  let html = format!(
-    r#"<!DOCTYPE html>
-<html lang="en-US">
-
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <link rel="stylesheet" type="text/css" href="/css/is-by.css?v=3">
-  <link rel="stylesheet" type="text/css" href="/css/is-by_mobile.css">
-  <script src="/js/is-by_user.js?v=3" type="text/javascript"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-  <title>:[[ :search-users: {ib_user}: ]]:</title>
-</head>
-
-<body>
-  <form id="select-user-form" action="/" method="GET">
-    <input type="hidden" name="ib_uid" value="{ib_uid}">
-    <input type="hidden" name="ib_user" value="{ib_user}">
-  </form>
-  <form id="select-post-form" action="https://{DOMAIN}/v1/showpost" method="POST">
-    <input type="hidden" name="ib_uid" value="{ib_uid}">
-    <input type="hidden" name="ib_user" value="{ib_user}">
-  </form>
-  <div class="content">
-    <div>
-      {advert_html}
-    </div>
-    <div id="post-form-section">
-      <form id="post-form" action="https://{DOMAIN}/v1/post" method="POST">
-        <div id="post-message"></div>
-        <div id="post-character-count"></div>
-        <input type="hidden" name="ib_uid" value="{session_nav_uid}">
-        <input type="hidden" name="ib_user" value="{session_nav_user}">
-        <input class="post" type="text" name="post" autocomplete="off" maxlength="1024" required>
-        <input id="post-cancel" class="post-cancel" type="button" value="Cancel">
-        <input class="post-submit" type="submit" value="Post">
-      </form>
-    </div>
-    <div class="glass-card">
+  search_results_section_html += &format!(
+    r#"<div class="glass-card">
       <div class="notice"><p><em>:[[ :search-users-for: {raw_query}: ]]:</em></p></div>
       {search_results_html}
-    </div>
-    <nav class="pwa-nav force-horizontal-nav">
-      <a class="post-form-display" href="javascript:void(0);">
-        <div class="nav-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-          </svg>
-        </div>
-      </a>
-      <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{session_nav_user}">
-        <div class="nav-icon">
-          <img src="https://github.com/{session_nav_user}.png?size=64" alt="Profile"
-            style="width: 32px; height: 32px; border-radius: 50%;">
-        </div>
-      </a>
-      <a class="war-room-display"
-        href="https://{DOMAIN}/v1/warroom?ib_uid={session_nav_uid}&amp;ib_user={session_nav_user}">
-        <div class="nav-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <circle cx="12" cy="12" r="4"></circle>
-            <line x1="12" y1="2" x2="12" y2="8"></line>
-            <line x1="12" y1="16" x2="12" y2="22"></line>
-            <line x1="2" y1="12" x2="8" y2="12"></line>
-            <line x1="16" y1="12" x2="22" y2="12"></line>
-          </svg>
-        </div>
-      </a>
-      <a class="search-display"
-        href="https://{DOMAIN}/v1/search-section?ib_uid={session_nav_uid}&amp;ib_user={session_nav_user}">
-        <div class="nav-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-        </div>
-      </a>
-      <a class="projects-display"
-        href="https://{DOMAIN}/v1/projects?ib_uid={session_nav_uid}&amp;ib_user={session_nav_user}">
-        <div class="nav-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-          </svg>
-        </div>
-      </a>
-      <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={session_nav_uid}&ib_user={session_nav_user}">
-        <div class="nav-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-            style="vertical-align: middle; margin-right: 4px;">
-            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-            <polyline points="22,6 12,13 2,6"></polyline>
-          </svg> <span id="dm-unread-count">0</span>
-        </div>
-      </a>
-    </nav>
-  </div>
-</body>
-</html>"#,
-    ib_uid = ib_uid,
-    ib_user = escape_html(ib_user),
-    advert_html = advert_html,
+    </div>"#,
     raw_query = escape_html(raw_query),
     search_results_html = search_results_html,
-    session_nav_uid = session_nav_uid,
-    session_nav_user = escape_html(session_nav_user),
   );
+
+  let unread_dm_count = if let Some(uid) = session_uid {
+    sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM dm WHERE recipient_uid = ? AND read_at IS NULL")
+      .bind(uid)
+      .fetch_one(&state.db_pool)
+      .await
+      .unwrap_or(0)
+  } else {
+    0
+  };
+
+  let session_nav_uid = session_uid.unwrap_or(ib_uid);
+  let session_nav_user = session_username.as_deref().unwrap_or(ib_user);
+  let navigation_links = &if session_uid.is_some() {
+    format!(
+      r#"<nav class="bottom-nav pwa-nav force-horizontal-nav">
+    <a class="post-form-display" href="javascript:void(0);">
+      <div class="nav-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+        </svg>
+      </div>
+    </a>
+    <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{session_ib_user}">
+      <div class="nav-icon">
+        <img src="https://github.com/{session_ib_user}.png?size=64" alt="Profile"
+          style="width: 32px; height: 32px; border-radius: 50%;">
+      </div>
+    </a>
+    <a class="search-display"
+      href="https://{DOMAIN}/v1/search-section?ib_uid={session_ib_uid}&amp;ib_user={session_ib_user}">
+      <div class="nav-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+      </div>
+    </a>
+    <a class="war-room-display"
+      href="https://{DOMAIN}/v1/warroom?ib_uid={session_ib_uid}&amp;ib_user={session_ib_user}">
+      <div class="nav-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <circle cx="12" cy="12" r="4"></circle>
+          <line x1="12" y1="2" x2="12" y2="8"></line>
+          <line x1="12" y1="16" x2="12" y2="22"></line>
+          <line x1="2" y1="12" x2="8" y2="12"></line>
+          <line x1="16" y1="12" x2="22" y2="12"></line>
+        </svg>
+      </div>
+    </a>
+    <a class="projects-display"
+      href="https://{DOMAIN}/v1/projects?ib_uid={viewed_ib_uid}&amp;ib_user={viewed_ib_user}">
+      <div class="nav-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        </svg>
+      </div>
+    </a>
+    <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={session_ib_uid}&ib_user={session_ib_user}">
+      <div class="nav-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+          style="vertical-align: middle; margin-right: 4px;">
+          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+          <polyline points="22,6 12,13 2,6"></polyline>
+        </svg> <span id="dm-unread-count">{unread_dm_count}</span>
+      </div>
+    </a>
+  </nav>"#,
+      session_ib_uid = session_nav_uid,
+      session_ib_user = escape_html(session_nav_user),
+      viewed_ib_uid = ib_uid,
+      viewed_ib_user = escape_html(ib_user),
+    )
+  } else {
+      r#"<div id="actions-section">
+      <div class="login-section">
+        <p><a href="/v1/auth/github">Login with GitHub</a></p>
+      </div>
+    </div>"#
+        .to_string()
+  };
+
+  context.insert("ib_uid", &ib_uid);
+  context.insert("ib_user", &ib_user);
+  context.insert("domain", &DOMAIN);
+  context.insert("advert_html", &advert_html);
+  context.insert("search_results_section_html", &search_results_section_html);
+  context.insert("navigation_links", &navigation_links);
+  
+  let html = TEMPLATES.render("user_search_results_mobile.html", &context)
+    .map_err(|e| {
+        use std::error::Error;
+        let mut err_msg = format!("Template error: {}", e);
+        let mut cause = e.source();
+        while let Some(err) = cause {
+            err_msg.push_str(&format!("\nCaused by: {}", err));
+            cause = err.source();
+        }
+        err_msg
+    })?;
 
   Ok(html)
 }
@@ -1855,6 +1856,7 @@ pub async fn render_search_posts_html(
   context.insert("domain", &DOMAIN);
   context.insert("viewed_ib_uid", &ib_uid);
   context.insert("viewed_ib_user", &ib_user);
+  context.insert("copyright", &COPYRIGHT);
 
   let html = TEMPLATES.render("search_posts.html", &context)
     .map_err(|e| {
@@ -2265,6 +2267,7 @@ pub async fn render_projects_html(
   context.insert("edit_profile_link", &edit_profile_link);
   context.insert("related_users", &related_userlist_html);
   context.insert("trending_tags", &trending_tags_html);
+  context.insert("copyright", &COPYRIGHT);
   }
 
   let html = TEMPLATES.render("projects.html", &context)
@@ -2613,6 +2616,7 @@ pub async fn render_search_projects_html(
   raw_query: &str,
   session_uid: Option<i64>,
 ) -> Result<String, String> {
+  let mut context = Context::new();
   let advert_html = render_advert_html(state).await;
 
   let session_username = if let Some(uid) = session_uid {
@@ -2807,48 +2811,11 @@ pub async fn render_search_projects_html(
     String::new()
   };
 
-  let mut html = format!(
-    r#"<!DOCTYPE html>
-<html lang="en-US">
-
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" type="text/css" href="/css/is-by.css?v=3">
-  <script src="/js/is-by_user.js?v=3" type="text/javascript"></script>
-  <title>:[[ :search-projects: {ib_user}: ]]:</title>
-</head>
-
-<body>
-  <form id="select-user-form" action="/" method="GET">
-    <input type="hidden" name="ib_uid" value="{ib_uid}">
-    <input type="hidden" name="ib_user" value="{ib_user}">
-  </form>
-  <form id="select-post-form" action="https://{DOMAIN}/v1/showpost" method="POST">
-    <input type="hidden" name="ib_uid" value="{ib_uid}">
-    <input type="hidden" name="ib_user" value="{ib_user}">
-  </form>
-  <form id="edit-profile-form" action="https://{DOMAIN}/v1/editprofile" method="GET">
-    <input type="hidden" name="ib_uid" value="{ib_uid}">
-    <input type="hidden" name="ib_user" value="{ib_user}">
-  </form>
-  <div id="main-section">
-    <div id="media-section">
-      <div>
-        {advert_html}
-      </div>
-      <div id="navigation-section">
-        {navigation_links}
-      </div>
-      <div id="selected-user-posts-section" class="post-section">
+  let projects_search_section_html = format!(
+    r#"<div id="selected-user-posts-section" class="post-section">
         <div class="notice"><p><em>:[[ :search-project-languages: for-the: {raw_query}: ]]:</em></p></div>
         {search_results_html}
-      </div>
-    </div>"#,
-    ib_uid = ib_uid,
-    ib_user = escape_html(ib_user),
-    advert_html = advert_html,
-    navigation_links = navigation_links,
+      </div>"#,
     raw_query = escape_html(raw_query),
     search_results_html = search_results_html,
   );
@@ -2857,96 +2824,114 @@ pub async fn render_search_projects_html(
       "SELECT ibp, pro, location, services, website, github FROM pro WHERE ib_uid = ?"
     )
     .bind(ib_uid)
-    .fetch_one(&state.db_pool)
-    .await;
+    .fetch_optional(&state.db_pool)
+    .await
+    .unwrap_or(None);
 
-  if let Ok(ib_pro) = ib_pro_result {
-    let source_uid = session_uid.unwrap_or(ib_uid);
-    let source_profile_terms = if let Some(uid) = session_uid {
-      lookup_profile_terms_by_uid(state, uid)
-        .await
-        .unwrap_or_else(|| format!("{} {}", ib_pro.pro, ib_pro.ibp))
-    } else {
-      format!("{} {}", ib_pro.pro, ib_pro.ibp)
-    };
-    let related_userlist_html =
-      render_related_userlist_html(state, session_uid, source_uid, &source_profile_terms).await;
-    let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
-    let github_identity_html = render_github_identity_html(state, ib_user).await;
-    let sidebar_login_html = if session_uid.is_none() {
-      r#"<div id="actions-section">
-      <div class="login-section">
-        <p><a href="/v1/auth/github">Login with GitHub</a></p>
-      </div>
-    </div>"#
-        .to_string()
+  let source_uid = session_uid.unwrap_or(ib_uid);
+  let source_profile_terms = if let Some(uid) = session_uid {
+    lookup_profile_terms_by_uid(state, uid)
+      .await
+      .unwrap_or_else(|| {
+        if let Some(ref pro) = ib_pro_result {
+          format!("{} {}", pro.pro, pro.ibp)
+        } else {
+          String::new()
+        }
+      })
+  } else {
+    if let Some(ref pro) = ib_pro_result {
+      format!("{} {}", pro.pro, pro.ibp)
     } else {
       String::new()
-    };
-
-    html += &format!(r#"
-  <div id="profile-section">
-    {sidebar_login_html}
-    <p><strong>{github_identity_html}</strong></p>
-    <p class="paragraph"><em>{ib_ibp}</em></p>
-    <p class="description">{ib_pro}</p>
-    <p class="description">{ib_services}</p>
-    <p class="description">{ib_location}</p>
-    <p><a target="_blank" rel="noopener" href="{ib_website}">{ib_website}</a></p>
-    <div id="userlist-section">
-      <p><strong>:[[ :userlist: ]]:</strong></p><br>
-      <div id="userlist-container">
-        {related_userlist_html}
-      </div>
-    </div><br>
-    <div id="trending-tags-section">
-      <p><strong>:[[ :trending-tags-24h: ]]:</strong></p>
-      <div id="trending-tags-container">
-        {trending_tags_html}
-      </div>
-    </div><br>
-    <div id="user-search-section">
-      <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
-        <input type="hidden" name="ib_uid" value="{ib_uid}">
-        <input type="hidden" name="ib_user" value="{ib_user}">
-        <input type="text" name="query" placeholder="Search Users" required>
-        <input type="submit" value="Search">
-      </form>
-      <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
-        <input type="hidden" name="ib_uid" value="{ib_uid}">
-        <input type="hidden" name="ib_user" value="{ib_user}">
-        <input type="text" name="query" placeholder="Search Projects" required>
-        <input type="submit" value="Search Projects">
-      </form>
-    </div><br>
-    <div id="sidebar-footer">
-      <p><a target="_blank" rel="noopener" href="https://{DOMAIN}/advertise.html">Advertise</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/privacy.html">Privacy</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/tos.html">ToS</a> | @ {COPYRIGHT} HyperSpire Foundation</p>
+    }
+  };
+  
+  let related_userlist_html =
+    render_related_userlist_html(state, session_uid, source_uid, &source_profile_terms).await;
+  let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
+  let github_identity_html = render_github_identity_html(state, ib_user).await;
+  let sidebar_login_html = if session_uid.is_none() {
+    r#"<div id="actions-section">
+    <div class="login-section">
+      <p><a href="/v1/auth/github">Login with GitHub</a></p>
     </div>
-  </div>
-</div>
-</body>
-
-</html>"#,
-      ib_uid = ib_uid,
-      // ib_github = escape_html(&ib_pro.github),
-      ib_user = escape_html(ib_user),
-      ib_ibp = escape_html(&ib_pro.ibp),
-      ib_pro = escape_html(&ib_pro.pro),
-      ib_services = escape_html(&ib_pro.services),
-      ib_location = escape_html(&ib_pro.location),
-      ib_website = escape_html(&ib_pro.website),
-      sidebar_login_html = sidebar_login_html,
-      related_userlist_html = related_userlist_html,
-      trending_tags_html = trending_tags_html
-    );
+  </div>"#
+      .to_string()
   } else {
-    html += &format!(r#"
-  </div>
-</div>
-</body>
+    String::new()
+  };
+  let follow_section_html = String::new();
 
-</html>"#);
-  }
+
+
+  let show_edit_profile_link = session_username
+    .as_ref()
+    .map(|u| u.eq_ignore_ascii_case(ib_user))
+    .unwrap_or(false);
+
+  let edit_profile_link = if show_edit_profile_link {
+    format!(r#"<p><a href="https://{DOMAIN}/v1/editprofile?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :edit-profile: ]]:</a></p><br>"#, ib_uid = ib_uid, ib_user = escape_html(ib_user))
+  } else {
+    String::new()
+  };
+
+  let total_acks = match sqlx::query_as::<_, UserHoverLookupRow>(
+    "SELECT CONVERT(ib_uid USING utf8mb4) AS ib_uid, username, COALESCE(followers, '') AS followers, COALESCE(total_acknowledgments, 0) AS total_acknowledgments FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1",
+  )
+  .bind(ib_user)
+  .fetch_optional(&state.db_pool)
+  .await
+  {
+    Ok(Some(row)) => row.total_acknowledgments,
+    _ => 0,
+  };
+  let (rank_level, rank_name) = rank_from_unique_acknowledgments(total_acks);
+
+  let viewed_ib_uid = ib_uid;
+  let viewed_ib_user = escape_html(ib_user);
+  let ib_user_escaped = escape_html(ib_user);
+  let ib_ibp_escaped = ib_pro_result.as_ref().map(|p| escape_html(&p.ibp)).unwrap_or_default();
+  let ib_pro_escaped = ib_pro_result.as_ref().map(|p| escape_html(&p.pro)).unwrap_or_default();
+  let ib_services_escaped = ib_pro_result.as_ref().map(|p| escape_html(&p.services)).unwrap_or_default();
+  let ib_location_escaped = ib_pro_result.as_ref().map(|p| escape_html(&p.location)).unwrap_or_default();
+  let ib_website_escaped = ib_pro_result.as_ref().map(|p| escape_html(&p.website)).unwrap_or_default();
+  let related_users_html = related_userlist_html;
+  
+  context.insert("ib_user", &ib_user_escaped);
+  context.insert("ib_uid", &ib_uid);
+  context.insert("viewed_ib_uid", &viewed_ib_uid);
+  context.insert("viewed_ib_user", &viewed_ib_user);
+  context.insert("domain", &DOMAIN);
+  context.insert("navigation_links", &navigation_links);
+  context.insert("github_identity_html", &github_identity_html);
+  context.insert("sidebar_login_html", &sidebar_login_html);
+  context.insert("advert_html", &advert_html);
+  context.insert("rank_name", &rank_name);
+  context.insert("rank_level", &rank_level);
+  context.insert("ib_ibp", &ib_ibp_escaped);
+  context.insert("ib_pro", &ib_pro_escaped);
+  context.insert("ib_services", &ib_services_escaped);
+  context.insert("ib_location", &ib_location_escaped);
+  context.insert("ib_website", &ib_website_escaped);
+  context.insert("follow_section_html", &follow_section_html);
+  context.insert("edit_profile_link", &edit_profile_link);
+  context.insert("projects_search_section_html", &projects_search_section_html);
+  context.insert("related_users", &related_users_html);
+  context.insert("trending_tags", &trending_tags_html);
+  context.insert("copyright", &COPYRIGHT);
+
+  let html = TEMPLATES.render("project_search_results.html", &context)
+    .map_err(|e| {
+        use std::error::Error;
+        let mut err_msg = format!("Template error: {}", e);
+        let mut cause = e.source();
+        while let Some(err) = cause {
+            err_msg.push_str(&format!("\nCaused by: {}", err));
+            cause = err.source();
+        }
+        err_msg
+    })?;
 
   Ok(html)
 }
@@ -2958,6 +2943,7 @@ pub async fn render_search_projects_mobile_html(
   raw_query: &str,
   session_uid: Option<i64>,
 ) -> Result<String, String> {
+  let mut context = Context::new();
   let advert_html = render_advert_html(state).await;
 
   let session_username = if let Some(uid) = session_uid {
@@ -3127,121 +3113,119 @@ pub async fn render_search_projects_mobile_html(
   let session_nav_uid = session_uid.unwrap_or(ib_uid);
   let session_nav_user = session_username.as_deref().unwrap_or(ib_user);
 
-  let html = format!(
-    r#"<!DOCTYPE html>
-<html lang="en-US">
-
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <link rel="stylesheet" type="text/css" href="/css/is-by.css?v=3">
-  <link rel="stylesheet" type="text/css" href="/css/is-by_mobile.css">
-  <script src="/js/is-by_user.js?v=3" type="text/javascript"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-  <title>:[[ :search-projects: {ib_user}: ]]:</title>
-</head>
-
-<body>
-  <form id="select-user-form" action="/" method="GET">
-    <input type="hidden" name="ib_uid" value="{ib_uid}">
-    <input type="hidden" name="ib_user" value="{ib_user}">
-  </form>
-  <form id="select-post-form" action="https://{DOMAIN}/v1/showpost" method="POST">
-    <input type="hidden" name="ib_uid" value="{ib_uid}">
-    <input type="hidden" name="ib_user" value="{ib_user}">
-  </form>
-  <div class="content">
-    <div>
-      {advert_html}
-    </div>
-    <div id="post-form-section">
-      <form id="post-form" action="https://{DOMAIN}/v1/post" method="POST">
-        <div id="post-message"></div>
-        <div id="post-character-count"></div>
-        <input type="hidden" name="ib_uid" value="{session_nav_uid}">
-        <input type="hidden" name="ib_user" value="{session_nav_user}">
-        <input class="post" type="text" name="post" autocomplete="off" maxlength="1024" required>
-        <input id="post-cancel" class="post-cancel" type="button" value="Cancel">
-        <input class="post-submit" type="submit" value="Post">
-      </form>
-    </div>
-    <div class="glass-card">
+  let search_results_section_html = format!(
+    r#"<div class="glass-card">
       <div class="notice"><p><em>:[[ :search-project-languages-for: {raw_query}: ]]:</em></p></div>
       {search_results_html}
-    </div>
-    <nav class="pwa-nav force-horizontal-nav">
-      <a class="post-form-display" href="javascript:void(0);">
-        <div class="nav-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-          </svg>
-        </div>
-      </a>
-      <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{session_nav_user}">
-        <div class="nav-icon">
-          <img src="https://github.com/{session_nav_user}.png?size=64" alt="Profile"
-            style="width: 32px; height: 32px; border-radius: 50%;">
-        </div>
-      </a>
-      <a class="war-room-display"
-        href="https://{DOMAIN}/v1/warroom?ib_uid={session_nav_uid}&amp;ib_user={session_nav_user}">
-        <div class="nav-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <circle cx="12" cy="12" r="4"></circle>
-            <line x1="12" y1="2" x2="12" y2="8"></line>
-            <line x1="12" y1="16" x2="12" y2="22"></line>
-            <line x1="2" y1="12" x2="8" y2="12"></line>
-            <line x1="16" y1="12" x2="22" y2="12"></line>
-          </svg>
-        </div>
-      </a>
-      <a class="search-display"
-        href="https://{DOMAIN}/v1/search-section?ib_uid={session_nav_uid}&amp;ib_user={session_nav_user}">
-        <div class="nav-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-        </div>
-      </a>
-      <a class="projects-display"
-        href="https://{DOMAIN}/v1/projects?ib_uid={session_nav_uid}&amp;ib_user={session_nav_user}">
-        <div class="nav-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-          </svg>
-        </div>
-      </a>
-      <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={session_nav_uid}&ib_user={session_nav_user}">
-        <div class="nav-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-            style="vertical-align: middle; margin-right: 4px;">
-            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-            <polyline points="22,6 12,13 2,6"></polyline>
-          </svg> <span id="dm-unread-count">0</span>
-        </div>
-      </a>
-    </nav>
-  </div>
-</body>
-</html>"#,
-    ib_uid = ib_uid,
-    ib_user = escape_html(ib_user),
-    advert_html = advert_html,
+    </div>"#,
     raw_query = escape_html(raw_query),
     search_results_html = search_results_html,
-    session_nav_uid = session_nav_uid,
-    session_nav_user = escape_html(session_nav_user),
   );
+
+  let unread_dm_count = if let Some(uid) = session_uid {
+    sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM dm WHERE recipient_uid = ? AND read_at IS NULL")
+      .bind(uid)
+      .fetch_one(&state.db_pool)
+      .await
+      .unwrap_or(0)
+  } else {
+    0
+  };
+
+  let navigation_links = &if session_uid.is_some() {
+    format!(
+      r#"<nav class="bottom-nav pwa-nav force-horizontal-nav">
+    <a class="post-form-display" href="javascript:void(0);">
+      <div class="nav-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+        </svg>
+      </div>
+    </a>
+    <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{session_ib_user}">
+      <div class="nav-icon">
+        <img src="https://github.com/{session_ib_user}.png?size=64" alt="Profile"
+          style="width: 32px; height: 32px; border-radius: 50%;">
+      </div>
+    </a>
+    <a class="search-display"
+      href="https://{DOMAIN}/v1/search-section?ib_uid={session_ib_uid}&amp;ib_user={session_ib_user}">
+      <div class="nav-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+      </div>
+    </a>
+    <a class="war-room-display"
+      href="https://{DOMAIN}/v1/warroom?ib_uid={session_ib_uid}&amp;ib_user={session_ib_user}">
+      <div class="nav-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <circle cx="12" cy="12" r="4"></circle>
+          <line x1="12" y1="2" x2="12" y2="8"></line>
+          <line x1="12" y1="16" x2="12" y2="22"></line>
+          <line x1="2" y1="12" x2="8" y2="12"></line>
+          <line x1="16" y1="12" x2="22" y2="12"></line>
+        </svg>
+      </div>
+    </a>
+    <a class="projects-display"
+      href="https://{DOMAIN}/v1/projects?ib_uid={viewed_ib_uid}&amp;ib_user={viewed_ib_user}">
+      <div class="nav-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        </svg>
+      </div>
+    </a>
+    <a class="dm-inbox-display" href="https://{DOMAIN}/v1/inbox?ib_uid={session_ib_uid}&ib_user={session_ib_user}">
+      <div class="nav-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+          style="vertical-align: middle; margin-right: 4px;">
+          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+          <polyline points="22,6 12,13 2,6"></polyline>
+        </svg> <span id="dm-unread-count">{unread_dm_count}</span>
+      </div>
+    </a>
+  </nav>"#,
+      session_ib_uid = session_nav_uid,
+      session_ib_user = escape_html(session_nav_user),
+      viewed_ib_uid = ib_uid,
+      viewed_ib_user = escape_html(ib_user),
+    )
+  } else {
+      r#"<div id="actions-section">
+      <div class="login-section">
+        <p><a href="/v1/auth/github">Login with GitHub</a></p>
+      </div>
+    </div>"#
+        .to_string()
+  };
+
+  context.insert("ib_uid", &ib_uid);
+  context.insert("ib_user", &ib_user);
+  context.insert("domain", &DOMAIN);
+  context.insert("advert_html", &advert_html);
+  context.insert("search_results_section_html", &search_results_section_html);
+  context.insert("navigation_links", &navigation_links);
+  
+  let html = TEMPLATES.render("user_search_results_mobile.html", &context)
+    .map_err(|e| {
+        use std::error::Error;
+        let mut err_msg = format!("Template error: {}", e);
+        let mut cause = e.source();
+        while let Some(err) = cause {
+            err_msg.push_str(&format!("\nCaused by: {}", err));
+            cause = err.source();
+        }
+        err_msg
+    })?;
 
   Ok(html)
 }
@@ -3759,6 +3743,7 @@ pub async fn render_war_room_html(
   context.insert("edit_profile_link", &edit_profile_link);
   context.insert("related_users", &related_users_html);
   context.insert("trending_tags", &trending_tags_html);
+  context.insert("copyright", &COPYRIGHT);
   
   let html = TEMPLATES.render("war_room.html", &context)
     .map_err(|e| {
@@ -3938,6 +3923,7 @@ pub async fn render_inbox_html(
   session_uid: Option<i64>,
   requested_target_user: Option<&str>,
 ) -> Result<String, String> {
+  let mut context = Context::new();
   let advert_html = render_advert_html(state).await;
 
   let inbox_users = load_inbox_contacts(state, ib_uid, ib_user).await?;
@@ -4003,51 +3989,8 @@ pub async fn render_inbox_html(
     String::new()
   };
 
-  let mut html = format!(
-    r#"<!DOCTYPE html>
-<html lang="en-US">
-
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" type="text/css" href="/css/is-by.css?v=3">
-  <script src="/js/is-by_user.js?v=3" type="text/javascript"></script>
-  <title>:[[ :dm-inbox: {ib_user}: ]]:</title>
-</head>
-
-<body>
-  <form id="select-user-form" action="/" method="GET">
-    <input type="hidden" name="ib_uid" value="{ib_uid}">
-    <input type="hidden" name="ib_user" value="{ib_user}">
-  </form>
-  <form id="select-post-form" action="https://{DOMAIN}/v1/showpost" method="POST">
-    <input type="hidden" name="ib_uid" value="{ib_uid}">
-    <input type="hidden" name="ib_user" value="{ib_user}">
-  </form>
-  <form id="edit-profile-form" action="https://{DOMAIN}/v1/editprofile" method="GET">
-    <input type="hidden" name="ib_uid" value="{ib_uid}">
-    <input type="hidden" name="ib_user" value="{ib_user}">
-  </form>
-  <div id="main-section">
-    <div id="media-section">
-      <div>
-        {advert_html}
-      </div>
-      <div id="navigation-section">
-        {navigation_links}
-      </div>
-      <div id="post-form-section">
-        <form id="post-form" action="https://{DOMAIN}/v1/post" method="POST">
-          <div id="post-message"></div>
-          <div id="post-character-count"></div>
-          <input type="hidden" name="ib_uid" value="{ib_uid}">
-          <input type="hidden" name="ib_user" value="{ib_user}">
-          <input class="post" type="text" name="post" autocomplete="off" maxlength="1024" required>
-          <input id="post-cancel" class="post-cancel" type="button" value="Cancel">
-          <input class="post-submit" type="submit" value="Post">
-        </form>
-      </div>
-      <div id="selected-user-posts-section" class="post-section">
+  let dm_inbox_html = format!(
+    r#"<div id="selected-user-posts-section" class="post-section">
         <div class="notice"><p><em>:[[ :direct-message-inbox: ]]:</em></p></div>
         <div id="dm-inbox-layout">
           <div id="dm-contact-list" data-ib-uid="{ib_uid}" data-ib-user="{ib_user}" data-contacts-offset="{contacts_next_offset}">{contact_list_html}{contacts_sentinel_html}</div>
@@ -4062,12 +4005,9 @@ pub async fn render_inbox_html(
             </form>
           </div>
         </div>
-      </div>
-    </div>"#,
+      </div>"#,
     ib_uid = ib_uid,
     ib_user = escape_html(ib_user),
-    advert_html = advert_html,
-    navigation_links = navigation_links,
     contacts_next_offset = contacts_next_offset,
     contact_list_html = contact_list_html,
     contacts_sentinel_html = contacts_sentinel_html,
@@ -4078,96 +4018,113 @@ pub async fn render_inbox_html(
       "SELECT ibp, pro, location, services, website, github FROM pro WHERE ib_uid = ?"
     )
     .bind(ib_uid)
-    .fetch_one(&state.db_pool)
-    .await;
+    .fetch_optional(&state.db_pool)
+    .await
+    .unwrap_or(None);
 
-  if let Ok(ib_pro) = ib_pro_result {
-    let source_uid = session_uid.unwrap_or(ib_uid);
-    let source_profile_terms = if let Some(uid) = session_uid {
-      lookup_profile_terms_by_uid(state, uid)
-        .await
-        .unwrap_or_else(|| format!("{} {}", ib_pro.pro, ib_pro.ibp))
-    } else {
-      format!("{} {}", ib_pro.pro, ib_pro.ibp)
-    };
-    let related_userlist_html =
-      render_related_userlist_html(state, session_uid, source_uid, &source_profile_terms).await;
-    let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
-    let github_identity_html = render_github_identity_html(state, ib_user).await;
-    let sidebar_login_html = if session_uid.is_none() {
-      r#"<div id="actions-section">
-      <div class="login-section">
-        <p><a href="/v1/auth/github">Login with GitHub</a></p>
-      </div>
-    </div>"#
-        .to_string()
+  let source_uid = session_uid.unwrap_or(ib_uid);
+  let source_profile_terms = if let Some(uid) = session_uid {
+    lookup_profile_terms_by_uid(state, uid)
+      .await
+      .unwrap_or_else(|| {
+        if let Some(ref pro) = ib_pro_result {
+          format!("{} {}", pro.pro, pro.ibp)
+        } else {
+          String::new()
+        }
+      })
+  } else {
+    if let Some(ref pro) = ib_pro_result {
+      format!("{} {}", pro.pro, pro.ibp)
     } else {
       String::new()
-    };
-
-    html += &format!(r#"
-  <div id="profile-section">
-    {sidebar_login_html}
-    <p><strong>{github_identity_html}</strong></p>
-    <p class="paragraph"><em>{ib_ibp}</em></p>
-    <p class="description">{ib_pro}</p>
-    <p class="description">{ib_services}</p>
-    <p class="description">{ib_location}</p>
-    <p><a target="_blank" rel="noopener" href="{ib_website}">{ib_website}</a></p>
-    <div id="userlist-section">
-      <p><strong>:[[ :userlist: ]]:</strong></p><br>
-      <div id="userlist-container">
-        {related_userlist_html}
-      </div>
-    </div><br>
-    <div id="trending-tags-section">
-      <p><strong>:[[ :trending-tags-24h: ]]:</strong></p>
-      <div id="trending-tags-container">
-        {trending_tags_html}
-      </div>
-    </div><br>
-    <div id="user-search-section">
-      <form id="user-search-form" action="https://{DOMAIN}/v1/searchusers" method="GET">
-        <input type="hidden" name="ib_uid" value="{ib_uid}">
-        <input type="hidden" name="ib_user" value="{ib_user}">
-        <input type="text" name="query" placeholder="Search Users" required>
-        <input type="submit" value="Search">
-      </form>
-      <form id="project-search-form" action="https://{DOMAIN}/v1/searchprojects" method="GET">
-        <input type="hidden" name="ib_uid" value="{ib_uid}">
-        <input type="hidden" name="ib_user" value="{ib_user}">
-        <input type="text" name="query" placeholder="Search Projects" required>
-        <input type="submit" value="Search Projects">
-      </form>
-    </div><br>
-    <div id="sidebar-footer">
-      <p><a target="_blank" rel="noopener" href="https://{DOMAIN}/advertise.html">Advertise</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/privacy.html">Privacy</a> | <a target="_blank" rel="noopener" href="https://{DOMAIN}/tos.html">ToS</a> | @ {COPYRIGHT} HyperSpire Foundation</p>
+    }
+  };
+  
+  let related_userlist_html =
+    render_related_userlist_html(state, session_uid, source_uid, &source_profile_terms).await;
+  let trending_tags_html = render_trending_tags_html(state, ib_uid, ib_user).await;
+  let github_identity_html = render_github_identity_html(state, ib_user).await;
+  let sidebar_login_html = if session_uid.is_none() {
+    r#"<div id="actions-section">
+    <div class="login-section">
+      <p><a href="/v1/auth/github">Login with GitHub</a></p>
     </div>
-  </div>
-</div>
-</body>
-
-</html>"#,
-      ib_uid = ib_uid,
-      // ib_github = escape_html(&ib_pro.github),
-      ib_user = escape_html(ib_user),
-      ib_ibp = escape_html(&ib_pro.ibp),
-      ib_pro = escape_html(&ib_pro.pro),
-      ib_services = escape_html(&ib_pro.services),
-      ib_location = escape_html(&ib_pro.location),
-      ib_website = escape_html(&ib_pro.website),
-      sidebar_login_html = sidebar_login_html,
-      related_userlist_html = related_userlist_html,
-      trending_tags_html = trending_tags_html
-    );
+  </div>"#
+      .to_string()
   } else {
-    html += &format!(r#"
-  </div>
-</div>
-</body>
+    String::new()
+  };
 
-</html>"#);
-  }
+  let total_acks = match sqlx::query_as::<_, UserHoverLookupRow>(
+    "SELECT CONVERT(ib_uid USING utf8mb4) AS ib_uid, username, COALESCE(followers, '') AS followers, COALESCE(total_acknowledgments, 0) AS total_acknowledgments FROM user WHERE LOWER(username) = LOWER(?) LIMIT 1",
+  )
+  .bind(ib_user)
+  .fetch_optional(&state.db_pool)
+  .await
+  {
+    Ok(Some(row)) => row.total_acknowledgments,
+    _ => 0,
+  };
+  let (rank_level, rank_name) = rank_from_unique_acknowledgments(total_acks);
+
+  let follow_section_html = String::new();
+
+  let show_edit_profile_link = session_username
+    .as_ref()
+    .map(|username| username.eq_ignore_ascii_case(ib_user))
+    .unwrap_or(false);
+
+  let edit_profile_link = if show_edit_profile_link {
+    format!(r#"<p><a href="https://{DOMAIN}/v1/editprofile?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :edit-profile: ]]:</a></p><br>"#, ib_uid = ib_uid, ib_user = escape_html(ib_user))
+  } else {
+    String::new()
+  };
+
+  let viewed_ib_uid = ib_uid;
+  let viewed_ib_user = escape_html(ib_user);
+  let ib_user_escaped = escape_html(ib_user);
+  let ib_ibp_escaped = ib_pro_result.as_ref().map(|p| escape_html(&p.ibp)).unwrap_or_default();
+  let ib_pro_escaped = ib_pro_result.as_ref().map(|p| escape_html(&p.pro)).unwrap_or_default();
+  let ib_services_escaped = ib_pro_result.as_ref().map(|p| escape_html(&p.services)).unwrap_or_default();
+  let ib_location_escaped = ib_pro_result.as_ref().map(|p| escape_html(&p.location)).unwrap_or_default();
+  let ib_website_escaped = ib_pro_result.as_ref().map(|p| escape_html(&p.website)).unwrap_or_default();
+  let related_users_html = related_userlist_html;
+  
+  context.insert("ib_user", &ib_user_escaped);
+  context.insert("ib_uid", &ib_uid);
+  context.insert("viewed_ib_uid", &viewed_ib_uid);
+  context.insert("viewed_ib_user", &viewed_ib_user);
+  context.insert("domain", &DOMAIN);
+  context.insert("navigation_links", &navigation_links);
+  context.insert("github_identity_html", &github_identity_html);
+  context.insert("sidebar_login_html", &sidebar_login_html);
+  context.insert("advert_html", &advert_html);
+  context.insert("rank_name", &rank_name);
+  context.insert("rank_level", &rank_level);
+  context.insert("ib_ibp", &ib_ibp_escaped);
+  context.insert("ib_pro", &ib_pro_escaped);
+  context.insert("ib_services", &ib_services_escaped);
+  context.insert("ib_location", &ib_location_escaped);
+  context.insert("ib_website", &ib_website_escaped);
+  context.insert("follow_section_html", &follow_section_html);
+  context.insert("edit_profile_link", &edit_profile_link);
+  context.insert("dm_inbox_html", &dm_inbox_html);
+  context.insert("related_users", &related_users_html);
+  context.insert("trending_tags", &trending_tags_html);
+  context.insert("copyright", &COPYRIGHT);
+  
+  let html = TEMPLATES.render("dm_inbox.html", &context)
+    .map_err(|e| {
+        use std::error::Error;
+        let mut err_msg = format!("Template error: {}", e);
+        let mut cause = e.source();
+        while let Some(err) = cause {
+            err_msg.push_str(&format!("\nCaused by: {}", err));
+            cause = err.source();
+        }
+        err_msg
+    })?;
 
   Ok(html)
 }
@@ -4626,6 +4583,7 @@ pub async fn render_single_post_html(
   context.insert("edit_profile_link", &edit_profile_link);
   context.insert("related_users", &related_users_html);
   context.insert("trending_tags", &trending_tags_html);
+  context.insert("copyright", &COPYRIGHT);
   
   let html = TEMPLATES.render("single_post.html", &context)
     .map_err(|e| {

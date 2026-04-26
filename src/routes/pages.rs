@@ -73,7 +73,7 @@ pub async fn view_profile(
       return HttpResponse::NotFound()
         .content_type("text/html; charset=utf-8")
         .body(format!(
-          "<!DOCTYPE html><html lang=\"en-US\"><head><meta charset=\"UTF-8\"><title>Profile Not Found</title></head><body><p>Profile not found: {}</p></body></html>",
+          r#"<!DOCTYPE html><html lang="en-US"><head><meta charset="UTF-8"><title>Profile Not Found</title></head><body><p>Profile not found: {}</p></body></html>"#,
           escape_html(&ib_user)
         ));
     }
