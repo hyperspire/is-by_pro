@@ -488,7 +488,7 @@ pub async fn render_profile_html(
       r#"
       <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
         {post_meta}
-        <p>{post_body}</p>
+        <div class="post-content">{post_body}</div>
         <div class="post-actions">
           {ack_controls}
           {manage_actions}
@@ -775,7 +775,7 @@ pub async fn render_profile_mobile_html(
       r#"
       <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
         {post_meta}
-        <p>{post_body}</p>
+        <div class="post-content">{post_body}</div>
         <div class="post-actions">
           {ack_controls}
           {manage_actions}
@@ -1514,7 +1514,7 @@ pub async fn render_search_posts_mobile_html(
         post_html += &format!(
           r#"<div class="post" data-postid="{post_id}" data-timestamp="{post_timestamp}">
             {post_meta}
-            <p>{post_body}</p>
+            <div class="post-content">{post_body}</div>
             <div class="post-actions">
               {ack_controls}
               <form class="show-post-form" action="https://{DOMAIN}/v1/showpost" method="GET">
@@ -1701,7 +1701,7 @@ pub async fn render_search_posts_html(
         post_html += &format!(
           r#"<div class="post" data-postid="{post_id}" data-timestamp="{post_timestamp}">
             {post_meta}
-            <p>{post_body}</p>
+            <div class="post-content">{post_body}</div>
             <div class="post-actions">
               {ack_controls}
               <form class="show-post-form" action="https://{DOMAIN}/v1/showpost" method="GET">
@@ -3467,7 +3467,7 @@ pub async fn render_war_room_posts_chunk(
       r#"<div class="notice"><p><em>:[[ :war-room-selected-follower: {selected_follower}: ]]:</em></p></div>
       <div class="post" data-postid="{post_id}" data-timestamp="{post_timestamp}">
         {post_meta}
-        <p>{post_body}</p>
+        <div class="post-content">{post_body}</div>
         <div class="post-actions">
           {ack_controls}
           <form class="show-post-form" action="https://{DOMAIN}/v1/showpost" method="GET">
@@ -4409,7 +4409,7 @@ pub async fn render_single_post_html(
         r#"
         <div class="post reply-post" data-postid="{reply_post_id}" data-timestamp="{reply_post_timestamp}">
           {reply_post_meta}
-          <p>{reply_post_body}</p>
+          <div class="post-content">{reply_post_body}</div>
           <div class="post-actions">
             {reply_ack_controls}
             {reply_manage_actions}
@@ -4463,7 +4463,7 @@ pub async fn render_single_post_html(
     r#"<div id="selected-user-posts-section" class="post-section">
         <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
           {post_meta}
-          <p>{post_body}</p>
+          <div class="post-content">{post_body}</div>
           <div class="post-actions">
             {ack_controls}
             <p><a href="javascript:void(0);" class="copy-link">:[[ :copy-link: ]]:</a></p>
@@ -4685,7 +4685,7 @@ pub async fn render_single_post_mobile_html(
         r#"
         <div class="post reply-post" data-postid="{reply_post_id}" data-timestamp="{reply_post_timestamp}">
           {reply_post_meta}
-          <p>{reply_post_body}</p>
+          <div class="post-content">{reply_post_body}</div>
           <div class="post-actions">
             {reply_ack_controls}
             {reply_manage_actions}
@@ -4730,7 +4730,7 @@ pub async fn render_single_post_mobile_html(
       <div id="selected-user-posts-section">
         <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
           {post_meta}
-          <p>{post_body}</p>
+          <div class="post-content">{post_body}</div>
           <div class="post-actions">
             {ack_controls}
             <p><a href="javascript:void(0);" class="copy-link">:[[ :copy-link: ]]:</a></p>u
