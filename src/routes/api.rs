@@ -272,14 +272,17 @@ pub async fn pin_post(
   .fetch_one(&state.db_pool)
   .await {
     Ok(val) => val,
-    Err(_) => None,
+    Err(err) => { eprintln!("pin_post fetch error: {:?}", err); None },
   };
 
   // Toggle logic: if already pinned, unpin. Otherwise pin.
-  let new_pinned = if current_pinned.as_deref() == Some(payload.pid.as_str()) {
+  eprintln!("current_pinned: {:?}, payload.pid: {:?}", current_pinned, payload.pid);
+  let pid_trimmed = payload.pid.trim();
+  let current_pinned_trimmed = current_pinned.as_deref().map(|s| s.trim());
+  let new_pinned = if current_pinned_trimmed == Some(pid_trimmed) {
     None
   } else {
-    Some(&payload.pid)
+    Some(pid_trimmed)
   };
 
   let update_result = sqlx::query(
