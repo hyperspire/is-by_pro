@@ -4733,7 +4733,7 @@ pub async fn render_single_post_mobile_html(
           <div class="post-content">{post_body}</div>
           <div class="post-actions">
             {ack_controls}
-            <p><a href="javascript:void(0);" class="copy-link">:[[ :copy-link: ]]:</a></p>u
+            <p><a href="javascript:void(0);" class="copy-link">:[[ :copy-link: ]]:</a></p>
           </div>
           <p class="acknowledged-count">Acknowleged {ib_post_acknowledged_count} times.</p>
         </div>
