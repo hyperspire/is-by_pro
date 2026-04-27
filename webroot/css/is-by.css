@@ -569,9 +569,16 @@ a:hover {
     margin-top: 10px;
 }
 
+.youtube-preview-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    margin: 10px 0;
+}
+
 .youtube-preview-container {
     display: block !important;
-    margin: 10px auto !important;
     width: 100%;
     max-width: 560px;
     border-radius: 8px;

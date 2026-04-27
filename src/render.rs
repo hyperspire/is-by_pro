@@ -4733,7 +4733,7 @@ pub async fn render_single_post_mobile_html(
           <p>{post_body}</p>
           <div class="post-actions">
             {ack_controls}
-            <p><a href="javascript:void(0);" class="copy-link">:[[ :copy-link: ]]:</a></p>
+            <p><a href="javascript:void(0);" class="copy-link">:[[ :copy-link: ]]:</a></p>u
           </div>
           <p class="acknowledged-count">Acknowleged {ib_post_acknowledged_count} times.</p>
         </div>
@@ -4955,7 +4955,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
 
       if let Some(video_id) = extract_youtube_video_id(&href) {
         rendered.push_str(&format!(
-          r#"</p><div class="youtube-preview-container"><iframe src="https://www.youtube.com/embed/{video_id}" title="YouTube video player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div><p>"#,
+          r#"<div class="youtube-preview-wrapper"><div class="youtube-preview-container"><iframe src="https://www.youtube.com/embed/{video_id}" title="YouTube video player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div></div>"#,
           video_id = escape_html(&video_id)
         ));
       } else {
