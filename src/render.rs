@@ -4917,6 +4917,31 @@ fn extract_youtube_video_id(url: &str) -> Option<String> {
   }
 }
 
+fn extract_imgur_info(url: &str) -> Option<String> {
+  if let Some(pos) = url.find("i.imgur.com/") {
+    let rest = &url[pos + "i.imgur.com/".len()..];
+    let end = rest.find('?').unwrap_or(rest.len());
+    let path = &rest[..end];
+    return Some(format!(r#"<div class="imgur-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><img src="https://i.imgur.com/{}" style="max-width: 100%; max-height: 500px; border-radius: 8px;" alt="Imgur Preview"></div>"#, escape_html(path)));
+  } else if let Some(pos) = url.find("imgur.com/") {
+    let rest = &url[pos + "imgur.com/".len()..];
+    let end = rest.find('?').unwrap_or(rest.len());
+    let path = &rest[..end];
+    let path = path.trim_end_matches('/');
+    
+    if path.is_empty() {
+        return None;
+    }
+
+    if !path.starts_with("a/") && !path.starts_with("gallery/") {
+        return Some(format!(r#"<div class="imgur-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><img src="https://i.imgur.com/{}.jpg" style="max-width: 100%; max-height: 500px; border-radius: 8px;" alt="Imgur Preview"></div>"#, escape_html(path)));
+    } else {
+        return Some(format!(r#"<div class="imgur-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><iframe scrolling="no" src="https://imgur.com/{}/embed?pub=true" style="width: 100%; max-width: 560px; height: 500px; border: none; border-radius: 8px;" allowfullscreen="true"></iframe></div>"#, escape_html(path)));
+    }
+  }
+  None
+}
+
 pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> String {
   let mut rendered = String::new();
   let chars: Vec<(usize, char)> = raw_text.char_indices().collect();
@@ -4958,6 +4983,8 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
           r#"<div class="youtube-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><div class="youtube-preview-container" style="width:100%; max-width:560px; margin: 0 auto; display: block; position: relative; overflow: hidden; padding-bottom: 56.25%; height: 0; border-radius: 8px;"><iframe src="https://www.youtube.com/embed/{video_id}" title="YouTube video player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen width="100%" height="100%" style="border:0; position:absolute; top:0; left:0; width:100%; height:100%;"></iframe></div></div>"#,
           video_id = escape_html(&video_id)
         ));
+      } else if let Some(imgur_html) = extract_imgur_info(&href) {
+        rendered.push_str(&imgur_html);
       } else {
         rendered.push_str(&format!(
           r#"<a class="post-link" href="{href}" target="_blank" rel="noopener">{label}</a>"#,
