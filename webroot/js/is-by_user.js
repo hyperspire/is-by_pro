@@ -1024,6 +1024,9 @@ function attachPinPostEventListener() {
   const pinLinks = document.querySelectorAll('.pin-post-link');
 
   pinLinks.forEach((link) => {
+    if (link.dataset.pinBound === '1') return;
+    link.dataset.pinBound = '1';
+
     link.addEventListener('click', async (event) => {
       event.preventDefault();
 

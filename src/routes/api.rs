@@ -265,10 +265,10 @@ pub async fn pin_post(
   }
 
   // Get current pinned post
-  let current_pinned: Option<String> = match sqlx::query_scalar(
-    "SELECT pinned_postid FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIMIT 1"
+  let current_pinned: Option<String> = match sqlx::query_scalar::<_, Option<String>>(
+    "SELECT pinned_postid FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1"
   )
-  .bind(session_uid)
+  .bind(session_uid.to_string())
   .fetch_one(&state.db_pool)
   .await {
     Ok(val) => val,
@@ -286,10 +286,10 @@ pub async fn pin_post(
   };
 
   let update_result = sqlx::query(
-    "UPDATE user SET pinned_postid = ? WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci"
+    "UPDATE user SET pinned_postid = ? WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ?"
   )
   .bind(new_pinned)
-  .bind(session_uid)
+  .bind(session_uid.to_string())
   .execute(&state.db_pool)
   .await;
 
