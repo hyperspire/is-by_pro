@@ -1021,30 +1021,38 @@ function showToast(message, className) {
 }
 
 function attachPinPostEventListener() {
-  const pinLinks = document.querySelectorAll(".pin-post-link");
+  const pinLinks = document.querySelectorAll('.pin-post-link');
 
   pinLinks.forEach((link) => {
-    link.addEventListener("click", async (event) => {
+    link.addEventListener('click', async (event) => {
       event.preventDefault();
 
-      const postDiv = link.closest(".post");
-      const pid = postDiv?.getAttribute("data-postid");
-      const ibUID = getCurrentIBUID();
+      const postDiv = link.closest('.post');
+      const pid = postDiv?.getAttribute('data-postid');
 
-      const deleteForm = postDiv?.querySelector(".delete-post-form");
-      const ibUser = deleteForm?.querySelector("input[name="ib_user"]")?.value || "";
+      let ibUID = getCurrentIBUID();
+      if (Number.isNaN(ibUID)) {
+        ibUID = Number(document.querySelector('input[name="ibuid"]')?.value || document.querySelector('input[name="ib_uid"]')?.value);
+      }
+
+      const deleteForm = postDiv?.querySelector('.delete-post-form');
+      let ibUser = deleteForm?.querySelector('input[name="ib_user"]')?.value;
+      if (!ibUser) {
+        ibUser = document.querySelector('input[name="ib_user"]')?.value || document.querySelector('input[name="ibuser"]')?.value || "";
+      }
 
       if (!pid || Number.isNaN(ibUID)) {
+        console.error("Missing pid or ibUID");
         return;
       }
 
       try {
-        const response = await fetch("/v1/pinpost", {
-          method: "POST",
+        const response = await fetch('/v1/pinpost', {
+          method: 'POST',
           headers: {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "ib-uid": String(ibUID)
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'ib-uid': String(ibUID)
           },
           body: JSON.stringify({ ib_uid: ibUID, ib_user: ibUser, pid: pid })
         });
