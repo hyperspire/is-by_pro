@@ -1030,7 +1030,7 @@ function attachPinPostEventListener() {
       const postDiv = link.closest(".post");
       const pid = postDiv?.getAttribute("data-postid");
       const ibUID = getCurrentIBUID();
-      
+
       const deleteForm = postDiv?.querySelector(".delete-post-form");
       const ibUser = deleteForm?.querySelector("input[name="ib_user"]")?.value || "";
 
