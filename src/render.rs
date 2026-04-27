@@ -4969,15 +4969,6 @@ fn extract_rumble_info(url: &str) -> Option<String> {
         if !id.is_empty() {
             return Some(format!(r#"<div class="youtube-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><div class="youtube-preview-container" style="width:100%; max-width:560px; margin: 0 auto; display: block; position: relative; overflow: hidden; padding-bottom: 56.25%; height: 0; border-radius: 8px;"><iframe src="https://rumble.com/embed/{}/" title="Rumble video player" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen width="100%" height="100%" style="border:0; position:absolute; top:0; left:0; width:100%; height:100%;"></iframe></div></div>"#, escape_html(id)));
         }
-    } else if let Some(pos) = url.find("rumble.com/v") {
-        let start = pos + "rumble.com/".len();
-        let rest = &url[start..];
-        if let Some(hyphen_pos) = rest.find('-') {
-            let id = &rest[..hyphen_pos];
-            if !id.is_empty() {
-                return Some(format!(r#"<div class="youtube-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><div class="youtube-preview-container" style="width:100%; max-width:560px; margin: 0 auto; display: block; position: relative; overflow: hidden; padding-bottom: 56.25%; height: 0; border-radius: 8px;"><iframe src="https://rumble.com/embed/{}/" title="Rumble video player" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen width="100%" height="100%" style="border:0; position:absolute; top:0; left:0; width:100%; height:100%;"></iframe></div></div>"#, escape_html(id)));
-            }
-        }
     }
     None
 }
