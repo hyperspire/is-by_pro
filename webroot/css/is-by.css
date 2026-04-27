@@ -543,7 +543,7 @@ a:hover {
     text-align: left !important;
     font-size: 11px;
     background-color: #1C1C1C !important;
-    border: 1px solid #AFAFAF !important;
+    border: 1px solid #3E3E3E !important;
     border-radius: 4px;
     padding: 6px;
     margin: 10px auto 6px auto;
@@ -1017,7 +1017,7 @@ a:hover {
     min-width: 240px;
     max-width: 280px;
     background-color: #121212;
-    border: 1px solid #2f5f3f;
+    border: 1px solid #3E3E3E;
     border-radius: 8px;
     box-shadow: 0 8px 18px rgba(0, 0, 0, 0.45);
     padding: 10px;
