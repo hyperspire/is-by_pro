@@ -91,6 +91,18 @@ pub async fn ensure_database_schema(pool: &MySqlPool) -> Result<(), sqlx::Error>
     .execute(pool)
     .await;
 
+  let pinned_postid_exists = sqlx::query_scalar::<_, i64>(
+      "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user' AND COLUMN_NAME = 'pinned_postid'"
+    )
+    .fetch_one(pool)
+    .await?;
+
+  if pinned_postid_exists == 0 {
+    sqlx::query("ALTER TABLE user ADD COLUMN pinned_postid VARCHAR(64) NULL")
+      .execute(pool)
+      .await?;
+  }
+
   sqlx::query(
     "CREATE TABLE IF NOT EXISTS pro (ib_uid BIGINT PRIMARY KEY, github VARCHAR(255) NOT NULL, ibp TEXT NOT NULL, pro TEXT NOT NULL, services TEXT NOT NULL, location TEXT NOT NULL, website TEXT NOT NULL)",
   )

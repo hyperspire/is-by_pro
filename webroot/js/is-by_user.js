@@ -10,6 +10,7 @@ function attachEventListeners() {
     attachUsernameHoverCardEventListener,
     attachAcknowledgePostEventListener,
     attachCopyLinkEventListener,
+    attachPinPostEventListener,
     attachDeletePostEventListener,
     attachNewPostEventListener,
     attachSelectUserEventListener,
@@ -1017,4 +1018,46 @@ function showToast(message, className) {
       toast.remove();
     });
   }, 5000);
+}
+
+function attachPinPostEventListener() {
+  const pinLinks = document.querySelectorAll(".pin-post-link");
+
+  pinLinks.forEach((link) => {
+    link.addEventListener("click", async (event) => {
+      event.preventDefault();
+
+      const postDiv = link.closest(".post");
+      const pid = postDiv?.getAttribute("data-postid");
+      const ibUID = getCurrentIBUID();
+      
+      const deleteForm = postDiv?.querySelector(".delete-post-form");
+      const ibUser = deleteForm?.querySelector("input[name="ib_user"]")?.value || "";
+
+      if (!pid || Number.isNaN(ibUID)) {
+        return;
+      }
+
+      try {
+        const response = await fetch("/v1/pinpost", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "ib-uid": String(ibUID)
+          },
+          body: JSON.stringify({ ib_uid: ibUID, ib_user: ibUser, pid: pid })
+        });
+
+        const data = await response.json();
+        if (data.success === true) {
+          window.location.reload();
+        } else {
+          console.error("Failed to pin post: ", data.message);
+        }
+      } catch (error) {
+        console.error("Error pinning post: ", error);
+      }
+    });
+  });
 }

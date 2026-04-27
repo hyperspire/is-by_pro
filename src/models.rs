@@ -28,6 +28,7 @@ pub struct PostRow {
   pub timestamp: String,
   pub acknowledged_count: i64,
   pub user_total_acks: i64,
+  pub pinned_postid: Option<String>,
 }
 
 #[derive(sqlx::FromRow, Default)]
@@ -171,6 +172,13 @@ pub struct EditPostUpdateRequest {
 
 #[derive(Deserialize)]
 pub struct ShowPostRequest {
+  pub ib_uid: i64,
+  pub ib_user: String,
+  pub pid: String,
+}
+
+#[derive(Deserialize)]
+pub struct PinPostRequest {
   pub ib_uid: i64,
   pub ib_user: String,
   pub pid: String,

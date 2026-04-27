@@ -227,6 +227,7 @@ async fn main() -> std::io::Result<()> {
       .service(create_reply)
       .service(show_post)
       .service(show_post_get)
+      .service(pin_post)
       .service(embed_post_get)
       .service(edit_profile)
       .service(update_profile)

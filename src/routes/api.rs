@@ -240,6 +240,69 @@ pub async fn show_post_get(
   )
   .await
 }
+#[post("/v1/pinpost")]
+pub async fn pin_post(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  payload: web::Json<PinPostRequest>,
+) -> impl Responder {
+  let session_uid = match get_session_uid(&req) {
+    Some(uid) => uid,
+    None => return HttpResponse::Unauthorized().json(PostResponse {
+      success: false,
+      message: "Unauthorized".to_string(),
+      postid: None,
+    }),
+  };
+
+  // Ensure the post being pinned belongs to the user
+  if payload.ib_uid != session_uid {
+    return HttpResponse::Forbidden().json(PostResponse {
+      success: false,
+      message: "You can only pin your own posts".to_string(),
+      postid: None,
+    });
+  }
+
+  // Get current pinned post
+  let current_pinned: Option<String> = match sqlx::query_scalar(
+    "SELECT pinned_postid FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIMIT 1"
+  )
+  .bind(session_uid)
+  .fetch_one(&state.db_pool)
+  .await {
+    Ok(val) => val,
+    Err(_) => None,
+  };
+
+  // Toggle logic: if already pinned, unpin. Otherwise pin.
+  let new_pinned = if current_pinned.as_deref() == Some(payload.pid.as_str()) {
+    None
+  } else {
+    Some(&payload.pid)
+  };
+
+  let update_result = sqlx::query(
+    "UPDATE user SET pinned_postid = ? WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci"
+  )
+  .bind(new_pinned)
+  .bind(session_uid)
+  .execute(&state.db_pool)
+  .await;
+
+  match update_result {
+    Ok(_) => HttpResponse::Ok().json(PostResponse {
+      success: true,
+      message: if new_pinned.is_some() { "Post pinned".to_string() } else { "Post unpinned".to_string() },
+      postid: Some(payload.pid.clone()),
+    }),
+    Err(e) => HttpResponse::InternalServerError().json(PostResponse {
+      success: false,
+      message: format!("Failed to update pinned post: {}", e),
+      postid: None,
+    }),
+  }
+}
 #[get("/v1/embedpost")]
 pub async fn embed_post_get(
   state: web::Data<AppState>,

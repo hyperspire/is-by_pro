@@ -273,7 +273,7 @@ pub async fn render_trending_tags_html(state: &AppState, ib_uid: i64, ib_user: &
     .await;
 
   let html = match rows {
-    Ok(rows) if rows.is_empty() => "<p><em>:[[ :no-trending-tags: ]]:</em></p>".to_string(),
+    Ok(rows) if rows.is_empty() => "<p><em>:[[ :is-by: none: for-the: trending-tags: ]]:</em></p>".to_string(),
     Ok(rows) => rows
       .iter()
       .map(|row| {
@@ -439,7 +439,7 @@ pub async fn render_profile_html(
     .unwrap_or(0);
 
   let ib_post_results = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = \"\" OR post.parentid IS NULL) ORDER BY post.timestamp DESC LIMIT 21"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = \"\" OR post.parentid IS NULL) ORDER BY (post.postid = user.pinned_postid) DESC, post.timestamp DESC LIMIT 21"
     )
     .bind(ib_uid)
     .fetch_all(&state.db_pool)
@@ -475,7 +475,7 @@ pub async fn render_profile_html(
             <input type="hidden" name="ib_user" value="{ib_user}">
             <input type="hidden" name="pid" value="{ib_post_id}">
           </form>
-          <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;"#,
+          <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="javascript:void(0);" class="pin-post-link">:[[ :pin-post: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;"#,
         ib_uid = ib_uid,
         ib_user = escape_html(ib_user),
         ib_post_id = escape_html(&row.postid),
@@ -486,6 +486,7 @@ pub async fn render_profile_html(
 
     selected_user_posts_response_content += &format!(
       r#"
+      {pinned_label}
       <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
         {post_meta}
         <div class="post-content">{post_body}</div>
@@ -503,6 +504,7 @@ pub async fn render_profile_html(
       </div>"#,
       ib_post_id = escape_html(&row.postid),
       ib_post_timestamp = escape_html(&row.timestamp),
+      pinned_label = if row.pinned_postid.as_deref() == Some(&row.postid) { "<div class=\"pinned-label\" style=\"font-weight: bold; margin-bottom: -10px; color: #AFAFAF;\">📌 Pinned</div>" } else { "" },
       post_meta = render_post_meta(&row.ib_uid, &row.username, &row.timestamp, row.user_total_acks),
       manage_actions = manage_actions,
       ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&row.postid) {
@@ -726,7 +728,7 @@ pub async fn render_profile_mobile_html(
     .unwrap_or(0);
 
   let ib_post_results = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = \"\" OR post.parentid IS NULL) ORDER BY post.timestamp DESC LIMIT 21"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = \"\" OR post.parentid IS NULL) ORDER BY (post.postid = user.pinned_postid) DESC, post.timestamp DESC LIMIT 21"
     )
     .bind(ib_uid)
     .fetch_all(&state.db_pool)
@@ -762,7 +764,7 @@ pub async fn render_profile_mobile_html(
             <input type="hidden" name="ib_user" value="{ib_user}">
             <input type="hidden" name="pid" value="{ib_post_id}">
           </form>
-          <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;"#,
+          <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="javascript:void(0);" class="pin-post-link">:[[ :pin-post: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;"#,
         ib_uid = ib_uid,
         ib_user = escape_html(ib_user),
         ib_post_id = escape_html(&row.postid),
@@ -773,6 +775,7 @@ pub async fn render_profile_mobile_html(
 
     selected_user_posts_response_content += &format!(
       r#"
+      {pinned_label}
       <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
         {post_meta}
         <div class="post-content">{post_body}</div>
@@ -790,6 +793,7 @@ pub async fn render_profile_mobile_html(
       </div>"#,
       ib_post_id = escape_html(&row.postid),
       ib_post_timestamp = escape_html(&row.timestamp),
+      pinned_label = if row.pinned_postid.as_deref() == Some(&row.postid) { "<div class=\"pinned-label\" style=\"font-weight: bold; margin-bottom: -10px; color: #AFAFAF;\">📌 Pinned</div>" } else { "" },
       post_meta = render_post_meta(&row.ib_uid, &row.username, &row.timestamp, row.user_total_acks),
       manage_actions = manage_actions,
       ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&row.postid) {
@@ -1497,7 +1501,7 @@ pub async fn render_search_posts_mobile_html(
 
   if let Some(tag) = normalized_tag.clone() {
     let rows = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci JOIN post_tag pt ON pt.postid = post.postid WHERE pt.tag = ? ORDER BY post.timestamp DESC LIMIT 200"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci JOIN post_tag pt ON pt.postid = post.postid WHERE pt.tag = ? ORDER BY post.timestamp DESC LIMIT 200"
       )
       .bind(&tag)
       .fetch_all(&state.db_pool)
@@ -1683,7 +1687,7 @@ pub async fn render_search_posts_html(
 
   let search_results_html = if let Some(tag) = normalized_tag.clone() {
     let rows = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci JOIN post_tag pt ON pt.postid = post.postid WHERE pt.tag = ? ORDER BY post.timestamp DESC LIMIT 200"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci JOIN post_tag pt ON pt.postid = post.postid WHERE pt.tag = ? ORDER BY post.timestamp DESC LIMIT 200"
       )
       .bind(&tag)
       .fetch_all(&state.db_pool)
@@ -1914,7 +1918,7 @@ pub async fn render_projects_html(
     .map_err(|e| format!("Projects query failed: {}", e))?;
 
   let projects_html = if rows.is_empty() {
-    r#"<br><div class="notice"><p><em>:[[ :no-projects-yet: ]]:</em></p></div>"#.to_string()
+    r#"<br><div class="notice"><p><em>:[[ :is-by: none: for-the: user-projects: ]]:</em></p></div>"#.to_string()
   } else {
     let reinforcement_names: HashSet<String> = rows
       .iter()
@@ -3443,7 +3447,7 @@ pub async fn render_war_room_posts_chunk(
 
   for selected_follower in selected_followers {
     let post_row = sqlx::query_as::<_, PostRow>(
-        "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) = LOWER(?) AND (post.parentid = '' OR post.parentid IS NULL) ORDER BY post.timestamp DESC LIMIT 1"
+        "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) = LOWER(?) AND (post.parentid = '' OR post.parentid IS NULL) ORDER BY post.timestamp DESC LIMIT 1"
       )
       .bind(selected_follower)
       .fetch_optional(&state.db_pool)
@@ -4347,7 +4351,7 @@ pub async fn render_single_post_html(
   };
 
   let post = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.postid = ? LIMIT 1"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.postid = ? LIMIT 1"
     )
     .bind(ib_uid)
     .bind(pid)
@@ -4361,7 +4365,7 @@ pub async fn render_single_post_html(
   };
 
   let replies = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.parentid = ? ORDER BY post.timestamp ASC"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.parentid = ? ORDER BY post.timestamp ASC"
     )
     .bind(pid)
     .fetch_all(&state.db_pool)
@@ -4466,7 +4470,7 @@ pub async fn render_single_post_html(
           <div class="post-content">{post_body}</div>
           <div class="post-actions">
             {ack_controls}
-            <p><a href="javascript:void(0);" class="copy-link">:[[ :copy-link: ]]:</a></p>
+            <p><a href="javascript:void(0);" class="copy-link">:[[ :copy-link: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="javascript:void(0);" class="pin-post-link">:[[ :pin-post: ]]:</a></p>
           </div>
           <p class="acknowledged-count">Acknowleged {ib_post_acknowledged_count} times.</p>
         </div>
@@ -4624,7 +4628,7 @@ pub async fn render_single_post_mobile_html(
   let advert_html = render_advert_html(state).await;
 
   let post = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.postid = ? LIMIT 1"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.postid = ? LIMIT 1"
     )
     .bind(ib_uid)
     .bind(pid)
@@ -4638,7 +4642,7 @@ pub async fn render_single_post_mobile_html(
   };
 
   let replies = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.parentid = ? ORDER BY post.timestamp ASC"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.parentid = ? ORDER BY post.timestamp ASC"
     )
     .bind(pid)
     .fetch_all(&state.db_pool)
@@ -4734,7 +4738,7 @@ pub async fn render_single_post_mobile_html(
           <div class="post-content">{post_body}</div>
           <div class="post-actions">
             {ack_controls}
-            <p><a href="javascript:void(0);" class="copy-link">:[[ :copy-link: ]]:</a></p>
+            <p><a href="javascript:void(0);" class="copy-link">:[[ :copy-link: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="javascript:void(0);" class="pin-post-link">:[[ :pin-post: ]]:</a></p>
           </div>
           <p class="acknowledged-count">Acknowleged {ib_post_acknowledged_count} times.</p>
         </div>
@@ -4882,7 +4886,7 @@ pub async fn render_embed_post_response(
   pid: &str,
 ) -> HttpResponse {
   let post = match sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.postid = ? LIMIT 1"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.postid = ? LIMIT 1"
     )
     .bind(ib_uid)
     .bind(pid)
@@ -5359,7 +5363,7 @@ pub fn render_ack_disabled() -> String {
 
 pub fn render_inbox_contacts_html(inbox_users: &[String]) -> String {
   if inbox_users.is_empty() {
-    return "<p><em>:[[ :no-direct-message-contacts: ]]:</em></p>".to_string();
+    return "<p><em>:[[ :is-by: none: for-the: direct-message-contacts: ]]:</em></p>".to_string();
   }
 
   inbox_users
@@ -5375,7 +5379,7 @@ pub fn render_inbox_contacts_html(inbox_users: &[String]) -> String {
 }
 
 pub async fn related_users(state: &AppState, session_uid: Option<i64>) -> String {
-  let empty_result = ":[[ :is-by: no: for-the: related-users: ]]:".to_string();
+  let empty_result = ":[[ :is-by: none: for-the: related-users: ]]:".to_string();
 
   let uid = match session_uid {
     Some(id) => id,
