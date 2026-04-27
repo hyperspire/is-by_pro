@@ -1062,7 +1062,9 @@ function attachPinPostEventListener() {
 
         const data = await response.json();
         if (data.success === true) {
-          window.location.reload();
+          const url = new URL(window.location.href);
+          url.searchParams.set("t", Date.now());
+          window.location.href = url.toString();
         } else {
           console.error("Failed to pin post: ", data.message);
         }
