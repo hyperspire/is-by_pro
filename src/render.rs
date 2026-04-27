@@ -563,7 +563,7 @@ pub async fn render_profile_html(
   let sidebar_login_html = if session_uid.is_none() {
     r#"<div id="actions-section">
     <div class="login-section">
-      <p><a href="/v1/auth/github">Login with GitHub</a></p>
+      <p style="width: 100%; text-align: center; margin: 0;"><a href="/v1/auth/github">Login with GitHub</a></p>
     </div>
   </div>"#
       .to_string()
@@ -1150,7 +1150,7 @@ pub async fn render_search_users_html(
   let sidebar_login_html = if session_uid.is_none() {
     r#"<div id="actions-section">
     <div class="login-section">
-      <p><a href="/v1/auth/github">Login with GitHub</a></p>
+      <p style="width: 100%; text-align: center; margin: 0;"><a href="/v1/auth/github">Login with GitHub</a></p>
     </div>
   </div>"#
       .to_string()
@@ -1451,7 +1451,7 @@ pub async fn render_search_users_mobile_html(
   } else {
       r#"<div id="actions-section">
       <div class="login-section">
-        <p><a href="/v1/auth/github">Login with GitHub</a></p>
+        <p style="width: 100%; text-align: center; margin: 0;"><a href="/v1/auth/github">Login with GitHub</a></p>
       </div>
     </div>"#
         .to_string()
@@ -1640,7 +1640,7 @@ pub async fn render_search_posts_mobile_html(
   } else {
       r#"<div id="actions-section">
       <div class="login-section">
-        <p><a href="/v1/auth/github">Login with GitHub</a></p>
+        <p style="width: 100%; text-align: center; margin: 0;"><a href="/v1/auth/github">Login with GitHub</a></p>
       </div>
     </div>"#
         .to_string()
@@ -1794,7 +1794,7 @@ pub async fn render_search_posts_html(
   if session_uid.is_none() {
     sidebar_login_html = r#"<div id="actions-section">
       <div class="login-section">
-        <p><a href="/v1/auth/github">Login with GitHub</a></p>
+        <p style="width: 100%; text-align: center; margin: 0;"><a href="/v1/auth/github">Login with GitHub</a></p>
       </div>
     </div>"#.to_string();
   }
@@ -2146,7 +2146,7 @@ pub async fn render_projects_html(
     let sidebar_login_html = if session_uid.is_none() {
       r#"<div id="actions-section">
       <div class="login-section">
-        <p><a href="/v1/auth/github">Login with GitHub</a></p>
+        <p style="width: 100%; text-align: center; margin: 0;"><a href="/v1/auth/github">Login with GitHub</a></p>
       </div>
     </div>"#
         .to_string()
@@ -2589,7 +2589,7 @@ pub async fn render_projects_mobile_html(
   } else {
       r#"<div id="actions-section">
       <div class="login-section">
-        <p><a href="/v1/auth/github">Login with GitHub</a></p>
+        <p style="width: 100%; text-align: center; margin: 0;"><a href="/v1/auth/github">Login with GitHub</a></p>
       </div>
     </div>"#
         .to_string()
@@ -2864,7 +2864,7 @@ pub async fn render_search_projects_html(
   let sidebar_login_html = if session_uid.is_none() {
     r#"<div id="actions-section">
     <div class="login-section">
-      <p><a href="/v1/auth/github">Login with GitHub</a></p>
+      <p style="width: 100%; text-align: center; margin: 0;"><a href="/v1/auth/github">Login with GitHub</a></p>
     </div>
   </div>"#
       .to_string()
@@ -3212,7 +3212,7 @@ pub async fn render_search_projects_mobile_html(
   } else {
       r#"<div id="actions-section">
       <div class="login-section">
-        <p><a href="/v1/auth/github">Login with GitHub</a></p>
+        <p style="width: 100%; text-align: center; margin: 0;"><a href="/v1/auth/github">Login with GitHub</a></p>
       </div>
     </div>"#
         .to_string()
@@ -3368,7 +3368,7 @@ pub async fn render_user_search_section_html(
   } else {
       r#"<div id="actions-section">
       <div class="login-section">
-        <p><a href="/v1/auth/github">Login with GitHub</a></p>
+        <p style="width: 100%; text-align: center; margin: 0;"><a href="/v1/auth/github">Login with GitHub</a></p>
       </div>
     </div>"#
         .to_string()
@@ -3691,7 +3691,7 @@ pub async fn render_war_room_html(
   let sidebar_login_html = if session_uid.is_none() {
     r#"<div id="actions-section">
     <div class="login-section">
-      <p><a href="/v1/auth/github">Login with GitHub</a></p>
+      <p style="width: 100%; text-align: center; margin: 0;"><a href="/v1/auth/github">Login with GitHub</a></p>
     </div>
   </div>"#
       .to_string()
@@ -3898,7 +3898,7 @@ pub async fn render_war_room_mobile_html(
   } else {
       r#"<div id="actions-section">
       <div class="login-section">
-        <p><a href="/v1/auth/github">Login with GitHub</a></p>
+        <p style="width: 100%; text-align: center; margin: 0;"><a href="/v1/auth/github">Login with GitHub</a></p>
       </div>
     </div>"#
         .to_string()
@@ -4059,7 +4059,7 @@ pub async fn render_inbox_html(
   let sidebar_login_html = if session_uid.is_none() {
     r#"<div id="actions-section">
     <div class="login-section">
-      <p><a href="/v1/auth/github">Login with GitHub</a></p>
+      <p style="width: 100%; text-align: center; margin: 0;"><a href="/v1/auth/github">Login with GitHub</a></p>
     </div>
   </div>"#
       .to_string()
@@ -4293,7 +4293,7 @@ pub async fn render_inbox_mobile_html(
   } else {
       r#"<div id="actions-section">
       <div class="login-section">
-        <p><a href="/v1/auth/github">Login with GitHub</a></p>
+        <p style="width: 100%; text-align: center; margin: 0;"><a href="/v1/auth/github">Login with GitHub</a></p>
       </div>
     </div>"#
         .to_string()
@@ -4555,7 +4555,7 @@ pub async fn render_single_post_html(
   let sidebar_login_html = if session_uid.is_none() {
     r#"<div id="actions-section">
     <div class="login-section">
-      <p><a href="/v1/auth/github">Login with GitHub</a></p>
+      <p style="width: 100%; text-align: center; margin: 0;"><a href="/v1/auth/github">Login with GitHub</a></p>
     </div>
   </div>"#
       .to_string()
@@ -4845,7 +4845,7 @@ pub async fn render_single_post_mobile_html(
   } else {
       r#"<div id="actions-section">
       <div class="login-section">
-        <p><a href="/v1/auth/github">Login with GitHub</a></p>
+        <p style="width: 100%; text-align: center; margin: 0;"><a href="/v1/auth/github">Login with GitHub</a></p>
       </div>
     </div>"#
         .to_string()

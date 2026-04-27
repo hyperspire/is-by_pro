@@ -1157,3 +1157,8 @@ a:hover {
     max-width: 360px;
     margin: 6px auto;
 }
+.login-section p {
+    width: 100%;
+    text-align: center !important;
+    margin: 0 auto;
+}
