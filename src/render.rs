@@ -4596,6 +4596,7 @@ pub async fn render_single_post_html(
   context.insert("related_users", &related_users_html);
   context.insert("trending_tags", &trending_tags_html);
   context.insert("copyright", &COPYRIGHT);
+  context.insert("meta_tags", &extract_meta_tags_from_post(&post.post));
   
   let html = TEMPLATES.render("single_post.html", &context)
     .map_err(|e| {
@@ -4971,6 +4972,148 @@ fn extract_rumble_info(url: &str) -> Option<String> {
         }
     }
     None
+}
+
+pub fn extract_meta_tags_from_post(raw_text: &str) -> String {
+  let chars: Vec<(usize, char)> = raw_text.char_indices().collect();
+  let mut index = 0usize;
+
+  while index < chars.len() {
+    let (byte_pos, _ch) = chars[index];
+    let previous_is_token_char = index > 0
+      && (chars[index - 1].1.is_ascii_alphanumeric() || chars[index - 1].1 == '_');
+    let scheme_url_start = raw_text[byte_pos..].starts_with("http://") || raw_text[byte_pos..].starts_with("https://");
+    let www_url_start = !previous_is_token_char && raw_text[byte_pos..].starts_with("www.");
+
+    if scheme_url_start || www_url_start {
+      let mut url_end_index = index;
+
+      while url_end_index < chars.len() && !chars[url_end_index].1.is_whitespace() {
+        url_end_index += 1;
+      }
+
+      let url_end_byte = if url_end_index < chars.len() {
+        chars[url_end_index].0
+      } else {
+        raw_text.len()
+      };
+
+      let raw_url = &raw_text[byte_pos..url_end_byte];
+      let (trimmed_url, _) = trim_trailing_url_punctuation(raw_url);
+      let href = if www_url_start {
+        format!("https://{}", trimmed_url)
+      } else {
+        trimmed_url.to_string()
+      };
+
+      if let Some(video_id) = extract_youtube_video_id(&href) {
+        return format!(
+          r#"<meta property="og:type" content="video.other">
+<meta property="og:video:url" content="https://www.youtube.com/embed/{video_id}">
+<meta property="og:video:secure_url" content="https://www.youtube.com/embed/{video_id}">
+<meta property="og:video:type" content="text/html">
+<meta property="og:video:width" content="1280">
+<meta property="og:video:height" content="720">
+<meta name="twitter:card" content="player">
+<meta name="twitter:player" content="https://www.youtube.com/embed/{video_id}">
+<meta name="twitter:player:width" content="1280">
+<meta name="twitter:player:height" content="720">"#,
+          video_id = escape_html(&video_id)
+        );
+      } else if let Some(pos) = href.find("i.imgur.com/") {
+          let rest = &href[pos + "i.imgur.com/".len()..];
+          let end = rest.find('?').unwrap_or(rest.len());
+          let path = &rest[..end];
+          let path_lower = path.to_lowercase();
+          
+          if path_lower.ends_with(".mp4") || path_lower.ends_with(".gifv") {
+              let mp4_path = if path_lower.ends_with(".gifv") {
+                  format!("{}.mp4", &path[..path.len() - 5])
+              } else {
+                  path.to_string()
+              };
+              return format!(
+                r#"<meta property="og:type" content="video.other">
+<meta property="og:video:url" content="https://i.imgur.com/{mp4_path}">
+<meta property="og:video:secure_url" content="https://i.imgur.com/{mp4_path}">
+<meta property="og:video:type" content="video/mp4">
+<meta name="twitter:card" content="player">
+<meta name="twitter:player:stream" content="https://i.imgur.com/{mp4_path}">
+<meta name="twitter:player:stream:content_type" content="video/mp4">"#,
+                mp4_path = escape_html(&mp4_path)
+              );
+          } else {
+              return format!(
+                r#"<meta property="og:type" content="image">
+<meta property="og:image" content="https://i.imgur.com/{img_path}">
+<meta property="og:image:secure_url" content="https://i.imgur.com/{img_path}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://i.imgur.com/{img_path}">"#,
+                img_path = escape_html(path)
+              );
+          }
+      } else if let Some(pos) = href.find("imgur.com/") {
+          let rest = &href[pos + "imgur.com/".len()..];
+          let end = rest.find('?').unwrap_or(rest.len());
+          let path = &rest[..end];
+          let path = path.trim_end_matches('/');
+          if !path.is_empty() {
+              if !path.starts_with("a/") && !path.starts_with("gallery/") {
+                  let path_lower = path.to_lowercase();
+                  if path_lower.ends_with(".mp4") || path_lower.ends_with(".gifv") {
+                      let mp4_path = if path_lower.ends_with(".gifv") {
+                          format!("{}.mp4", &path[..path.len() - 5])
+                      } else {
+                          path.to_string()
+                      };
+                      return format!(
+                        r#"<meta property="og:type" content="video.other">
+<meta property="og:video:url" content="https://i.imgur.com/{mp4_path}">
+<meta property="og:video:secure_url" content="https://i.imgur.com/{mp4_path}">
+<meta property="og:video:type" content="video/mp4">
+<meta name="twitter:card" content="player">
+<meta name="twitter:player:stream" content="https://i.imgur.com/{mp4_path}">
+<meta name="twitter:player:stream:content_type" content="video/mp4">"#,
+                        mp4_path = escape_html(&mp4_path)
+                      );
+                  } else {
+                      return format!(
+                        r#"<meta property="og:type" content="image">
+<meta property="og:image" content="https://i.imgur.com/{img_path}.jpg">
+<meta property="og:image:secure_url" content="https://i.imgur.com/{img_path}.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://i.imgur.com/{img_path}.jpg">"#,
+                        img_path = escape_html(path)
+                      );
+                  }
+              }
+          }
+      } else if let Some(pos) = href.find("rumble.com/embed/") {
+          let start = pos + "rumble.com/embed/".len();
+          let rest = &href[start..];
+          let end = rest.find('/').unwrap_or(rest.len());
+          let end = rest[..end].find('?').unwrap_or(end);
+          let id = &rest[..end];
+          if !id.is_empty() {
+              return format!(
+                r#"<meta property="og:type" content="video.other">
+<meta property="og:video:url" content="https://rumble.com/embed/{rumble_id}/">
+<meta property="og:video:secure_url" content="https://rumble.com/embed/{rumble_id}/">
+<meta property="og:video:type" content="text/html">
+<meta property="og:video:width" content="1280">
+<meta property="og:video:height" content="720">
+<meta name="twitter:card" content="player">
+<meta name="twitter:player" content="https://rumble.com/embed/{rumble_id}/">
+<meta name="twitter:player:width" content="1280">
+<meta name="twitter:player:height" content="720">"#,
+                rumble_id = escape_html(id)
+              );
+          }
+      }
+    }
+    index += 1;
+  }
+  String::new()
 }
 
 pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> String {
