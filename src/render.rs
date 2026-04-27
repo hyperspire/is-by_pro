@@ -4970,7 +4970,7 @@ fn extract_imgur_info(url: &str) -> Option<String> {
         let mp4_path = format!("{}.mp4", &path[..path.len() - 5]);
         return Some(format!(r#"<div class="imgur-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><video src="https://i.imgur.com/{}" controls loop muted playsinline style="max-width: 100%; max-height: 500px; border-radius: 8px;"></video></div>"#, escape_html(&mp4_path)));
     } else {
-        return Some(format!(r#"<div class="imgur-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><img src="https://i.imgur.com/{}" style="max-width: 100%; max-height: 500px; border-radius: 8px;" alt="Imgur Preview"></div>"#, escape_html(path)));
+        return Some(format!(r#"<div class="imgur-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><a href="https://i.imgur.com/{0}" target="_blank" rel="noopener"><img src="https://i.imgur.com/{0}" style="max-width: 100%; max-height: 500px; border-radius: 8px;" alt="Imgur Preview"></a></div>"#, escape_html(path)));
     }
   } else if let Some(pos) = url.find("imgur.com/") {
     let rest = &url[pos + "imgur.com/".len()..];
@@ -4990,7 +4990,7 @@ fn extract_imgur_info(url: &str) -> Option<String> {
             let mp4_path = format!("{}.mp4", &path[..path.len() - 5]);
             return Some(format!(r#"<div class="imgur-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><video src="https://i.imgur.com/{}" controls loop muted playsinline style="max-width: 100%; max-height: 500px; border-radius: 8px;"></video></div>"#, escape_html(&mp4_path)));
         } else {
-            return Some(format!(r#"<div class="imgur-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><img src="https://i.imgur.com/{}.jpg" style="max-width: 100%; max-height: 500px; border-radius: 8px;" alt="Imgur Preview"></div>"#, escape_html(path)));
+            return Some(format!(r#"<div class="imgur-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><a href="https://i.imgur.com/{0}.jpg" target="_blank" rel="noopener"><img src="https://i.imgur.com/{0}.jpg" style="max-width: 100%; max-height: 500px; border-radius: 8px;" alt="Imgur Preview"></a></div>"#, escape_html(path)));
         }
     } else {
         return Some(format!(r#"<div class="imgur-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><iframe scrolling="no" src="https://imgur.com/{}/embed?pub=true" style="width: 100%; max-width: 560px; height: 500px; border: none; border-radius: 8px;" allowfullscreen="true"></iframe></div>"#, escape_html(path)));
