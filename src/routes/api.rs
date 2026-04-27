@@ -240,6 +240,19 @@ pub async fn show_post_get(
   )
   .await
 }
+#[get("/v1/embedpost")]
+pub async fn embed_post_get(
+  state: web::Data<AppState>,
+  query: web::Query<ShowPostRequest>,
+) -> impl Responder {
+  render_embed_post_response(
+    &state,
+    query.ib_uid,
+    &query.ib_user,
+    &query.pid,
+  )
+  .await
+}
 #[post("/v1/follow")]
 pub async fn follow_user(
   req: HttpRequest,

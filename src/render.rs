@@ -4858,6 +4858,7 @@ pub async fn render_single_post_mobile_html(
   context.insert("advert_html", &advert_html);
   context.insert("single_post_html", &single_post_html);
   context.insert("navigation_links", &navigation_links);
+  context.insert("meta_tags", &extract_meta_tags_from_post(&post.post));
   
   let html = TEMPLATES.render("single_post_mobile.html", &context)
         .map_err(|e| {
@@ -4872,6 +4873,44 @@ pub async fn render_single_post_mobile_html(
         })?;
 
   Ok(html)
+}
+
+pub async fn render_embed_post_response(
+  state: &AppState,
+  ib_uid: i64,
+  ib_user: &str,
+  pid: &str,
+) -> HttpResponse {
+  let post = match sqlx::query_as::<_, PostRow>(
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.postid = ? LIMIT 1"
+    )
+    .bind(ib_uid)
+    .bind(pid)
+    .fetch_optional(&state.db_pool)
+    .await {
+        Ok(Some(p)) => p,
+        _ => return HttpResponse::NotFound().body("Post not found"),
+    };
+
+  let single_post_html = format!(
+    r#"<div class="glass-card" style="margin: 0; padding: 10px;">
+        <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}" style="border: none;">
+          {post_meta}
+          <div class="post-content">{post_body}</div>
+        </div>
+      </div>"#,
+    ib_post_id = escape_html(&post.postid),
+    ib_post_timestamp = escape_html(&post.timestamp),
+    post_meta = render_post_meta(&post.ib_uid, &post.username, &post.timestamp, post.user_total_acks),
+    post_body = render_post_with_hashtags(&post.post, ib_uid, ib_user),
+  );
+
+  let mut context = Context::new();
+  context.insert("single_post_html", &single_post_html);
+  context.insert("iframe_id", &format!("embed_{}", pid));
+
+  let html = TEMPLATES.render("embed_post.html", &context).unwrap_or_else(|e| format!("Error: {}", e));
+  HttpResponse::Ok().content_type("text/html; charset=utf-8").body(html)
 }
 
 pub async fn render_show_post_response(
@@ -4970,6 +5009,22 @@ fn extract_rumble_info(url: &str) -> Option<String> {
         if !id.is_empty() {
             return Some(format!(r#"<div class="youtube-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><div class="youtube-preview-container" style="width:100%; max-width:560px; margin: 0 auto; display: block; position: relative; overflow: hidden; padding-bottom: 56.25%; height: 0; border-radius: 8px;"><iframe src="https://rumble.com/embed/{}/" title="Rumble video player" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen width="100%" height="100%" style="border:0; position:absolute; top:0; left:0; width:100%; height:100%;"></iframe></div></div>"#, escape_html(id)));
         }
+    }
+    None
+}
+
+fn extract_is_by_info(url: &str) -> Option<String> {
+    if let Some(pos) = url.find("is-by.pro/v1/showpost?") {
+        let start = pos + "is-by.pro/v1/showpost?".len();
+        let query_string = &url[start..];
+        let id = format!("embed_{}", uuid::Uuid::new_v4().simple());
+        
+        return Some(format!(
+            r#"<div class="isby-preview-wrapper" style="width:100%; margin: 10px 0;">
+                <iframe id="{}" src="https://is-by.pro/v1/embedpost?{}" style="width: 100%; border: 1px solid #3F3F3F; border-radius: 8px; min-height: 250px; max-height: 500px; overflow-y: auto;" scrolling="yes"></iframe>
+            </div>"#,
+            id, escape_html(query_string)
+        ));
     }
     None
 }
@@ -5161,6 +5216,8 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
         rendered.push_str(&imgur_html);
       } else if let Some(rumble_html) = extract_rumble_info(&href) {
         rendered.push_str(&rumble_html);
+      } else if let Some(is_by_html) = extract_is_by_info(&href) {
+        rendered.push_str(&is_by_html);
       } else {
         rendered.push_str(&format!(
           r#"<a class="post-link" href="{href}" target="_blank" rel="noopener">{label}</a>"#,
