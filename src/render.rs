@@ -4955,7 +4955,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
 
       if let Some(video_id) = extract_youtube_video_id(&href) {
         rendered.push_str(&format!(
-          r#"<div class="youtube-preview-container"><iframe src="https://www.youtube.com/embed/{video_id}" title="YouTube video player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>"#,
+          r#"</p><div class="youtube-preview-container"><iframe src="https://www.youtube.com/embed/{video_id}" title="YouTube video player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div><p>"#,
           video_id = escape_html(&video_id)
         ));
       } else {

@@ -201,16 +201,14 @@ a:hover {
     display: flex;
     flex-direction: column;
     color: #3F3F3F;
-    width: 333px;
+    width: 100%;
+    max-width: 333px;
     height: auto;
     align-items: center;
-    /* Changed from flex-start to center */
     vertical-align: middle;
     justify-content: center;
-    /* Changed from flex-start to center */
     background-color: inherit;
     margin: 8px auto 4px auto;
-    /* Changed margin to auto horizontally */
     position: relative;
     top: 0;
     right: 0;
@@ -222,6 +220,16 @@ a:hover {
     align-items: center;
     justify-content: center;
     text-align: center;
+}
+
+.login-section a,
+.login-section a:visited,
+.login-section a:active,
+.login-section a:hover {
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    width: 100%;
 }
 
 #profile-section {
@@ -562,7 +570,8 @@ a:hover {
 }
 
 .youtube-preview-container {
-    margin: 10px auto;
+    display: block !important;
+    margin: 10px auto !important;
     width: 100%;
     max-width: 560px;
     border-radius: 8px;
