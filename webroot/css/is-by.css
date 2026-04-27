@@ -69,7 +69,7 @@ body {
     text-overflow: inherit;
     padding: 0px 6px 0px 6px;
     margin: 0px 6px 0px 6px;
-    background-color: #1e1e1e;
+    background-color: #3E3E3E;
     position: relative;
     left: -6px;
 }
@@ -123,7 +123,7 @@ body {
     text-overflow: inherit;
     padding: 6px;
     margin: 6px auto;
-    background-color: #1e1e1e;
+    background-color: #3E3E3E;
     position: relative;
     top: 0;
     left: 0;
@@ -233,7 +233,7 @@ a:hover {
 }
 
 #profile-section {
-    color: #3F3F3F;
+    color: #AFAFAF;
     width: 211px;
     height: auto;
     align-items: center;
@@ -250,7 +250,7 @@ a:hover {
 }
 
 #pro-profile-section {
-    color: #3F3F3F;
+    color: #AFAFAF;
     width: 211px;
     height: auto;
     align-items: center;
@@ -537,13 +537,13 @@ a:hover {
 }
 
 .post {
-    color: #3F3F3F !important;
+    color: #AFAFAF !important;
     text-decoration: none;
     font-weight: bold;
     text-align: left !important;
     font-size: 11px;
     background-color: #1C1C1C !important;
-    border: 1px solid #3F3F3F !important;
+    border: 1px solid #AFAFAF !important;
     border-radius: 4px;
     padding: 6px;
     margin: 10px auto 6px auto;
@@ -1105,7 +1105,7 @@ a:hover {
 }
 
 .toast {
-    background-color: #1e1e1e;
+    background-color: #3E3E3E;
     border: 2px solid #eeaa33;
     border-radius: 6px;
     padding: 12px 18px;
