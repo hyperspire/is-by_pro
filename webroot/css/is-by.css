@@ -927,25 +927,30 @@ a:hover {
     bottom: -533%;
 }
 
-.copyright,
+.copyright {
+    display: block;
+    width: 100%;
+    text-align: center;
+    margin: 6px 0;
+}
+
+.copyright p {
+    color: #AFAFAF;
+    font-size: 10px;
+    font-weight: normal;
+    font-family: Arial, Helvetica, sans-serif;
+    margin: 0;
+    word-wrap: break-word;
+}
+
 .copyright a,
 .copyright a:active,
 .copyright a:visited {
     color: #AFAFAF;
-    display: inline-block;
-    width: 100%;
     font-size: 10px;
     font-weight: normal;
     font-family: Arial, Helvetica, sans-serif;
-    flex-direction: row;
-    text-overflow: inherit;
-    text-wrap: wrap;
-    word-wrap: wrap;
-    align-items: center;
-    vertical-align: middle;
-    justify-content: center;
-    background-color: inherit;
-    margin: 6px 0px 6px 0px;
+    display: inline;
 }
 
 .heading {
