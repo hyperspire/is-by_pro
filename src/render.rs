@@ -43,7 +43,7 @@ pub async fn render_related_userlist_html(
   };
 
   if interests.is_empty() {
-    return ":[[ :is-by: no: for-the: related-users: ]]:".to_string();
+    return ":[[ :is-by: none: for-the: related-users: ]]:".to_string();
   }
 
   let regex_terms: Vec<String> = interests
@@ -187,7 +187,7 @@ pub async fn render_related_userlist_html(
   }
 
   let html = if related_html.is_empty() {
-    ":[[ :is-by: no: for-the: related-users: ]]:".to_string()
+    ":[[ :is-by: none: for-the: related-users: ]]:".to_string()
   } else {
     related_html
   };
