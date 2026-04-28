@@ -821,8 +821,8 @@ a:hover {
 #post-form .post-cancel,
 #post-form .post-submit,
 #reply-form .post-submit {
-    left: 0;
-    margin: 10px 0 !important;
+    display: inline-flex;
+    margin: 0 !important;
 }
 
 /* Projects page form/card polish without affecting post/reply forms. */

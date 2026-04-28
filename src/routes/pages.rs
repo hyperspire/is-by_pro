@@ -296,7 +296,7 @@ pub async fn ads_user_page(
   };
 
   let rows = match sqlx::query_as::<_, AdvertOwnedRow>(
-    "SELECT imageid, imagepath, url, COALESCE(clicks, 0) AS clicks, COALESCE(views, 0) AS views, COALESCE(payment_status, 'pending') AS payment_status FROM advert_image WHERE owner_uid = ? ORDER BY imageid DESC",
+    "SELECT imageid, imagepath, url, COALESCE(clicks, 0) AS clicks, COALESCE(views, 0) AS views, COALESCE(payment_status, 'pending') AS payment_status FROM advert_image WHERE owner_uid = ? AND is_active = TRUE ORDER BY imageid DESC",
   )
   .bind(session_uid)
   .fetch_all(&state.db_pool)
@@ -314,7 +314,7 @@ pub async fn ads_user_page(
       String::new()
     } else {
       format!(
-        r#"<form action="https://{DOMAIN}/v1/ads/pay/{imageid}" method="POST" style="display:inline-flex; margin:0 0 0 10px;"><input class="post-submit" type="submit" value="Pay with PayPal" style="position:static; left:0; margin:0;"></form>"#,
+        r#"<form action="https://{DOMAIN}/v1/ads/pay/{imageid}" method="POST" style="display:inline-flex; margin:0 0 0 10px !important;"><input class="post-submit" type="submit" value="Pay with PayPal" style="position:static; left:0; margin:0 !important;"></form>"#,
         imageid = row.imageid,
       )
     };
@@ -324,15 +324,16 @@ pub async fn ads_user_page(
   <p><strong>ID:</strong> {imageid} | <strong>Status:</strong> {status}</p>
   <p><strong>Views:</strong> {views} | <strong>Clicks:</strong> {clicks}</p>
   <p><img src="{imagepath}" width="400" height="111" alt="{imageid}"></p>
-  <form id="ad-user-update-{imageid}" action="https://{DOMAIN}/v1/ads/update" method="POST">
+  <form id="ad-user-update-{imageid}" action="https://{DOMAIN}/v1/ads/update" method="POST" enctype="multipart/form-data">
     <input type="hidden" name="imageid" value="{imageid}">
     <p>Target URL: <input class="post" type="text" name="url" value="{url}" maxlength="2048" required></p>
+    <p>New Image (optional, 400x111): <input type="file" name="ad_image" accept="image/png,image/jpeg,image/gif,image/webp"></p>
   </form>
   <div style="display:flex; justify-content:center; align-items:center; gap:10px; margin-top:8px;">
-    <input class="post-submit" type="submit" form="ad-user-update-{imageid}" value="Update Ad" style="position:static; left:0; margin:0;">
-    <form action="https://{DOMAIN}/v1/ads/delete" method="POST" style="display:inline-flex; margin:0;">
+    <input class="post-submit" type="submit" form="ad-user-update-{imageid}" value="Update Ad" style="position:static; left:0; margin:0 !important;">
+    <form action="https://{DOMAIN}/v1/ads/delete" method="POST" style="display:inline-flex; margin:0 !important;">
       <input type="hidden" name="imageid" value="{imageid}">
-      <input class="post-cancel" type="submit" value="Delete Ad" style="position:static; left:0; margin:0;">
+      <input class="post-cancel" type="submit" value="Delete Ad" style="position:static; left:0; margin:0 !important;">
     </form>
     {pay_now_html}
   </div>
