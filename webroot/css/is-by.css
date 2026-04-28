@@ -918,7 +918,7 @@ a:hover {
     height: 44px;
     flex-direction: row;
     text-wrap: wrap;
-    word-wrap: break-word;
+    word-wrap: wrap;
     align-items: flex-start;
     justify-content: center;
     align-items: center;
