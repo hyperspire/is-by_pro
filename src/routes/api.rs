@@ -1629,26 +1629,52 @@ pub async fn ads_user_create(
     return HttpResponse::InternalServerError().body(format!("Failed to save image: {}", err));
   }
 
-  let insert_result = sqlx::query(
-    "INSERT INTO advert_image (imagepath, url, owner_uid, owner_username, payment_status, clicks, views) VALUES (?, ?, ?, ?, 'pending', 0, 0)",
+  let existing_ad_id = sqlx::query_scalar::<_, i64>(
+    "SELECT imageid FROM advert_image WHERE owner_uid = ? AND payment_status = 'paid' AND is_active = FALSE LIMIT 1"
   )
-  .bind(&relative_image_path)
-  .bind(&target_url)
   .bind(session_uid)
-  .bind(&session_user)
-  .execute(&state.db_pool)
-  .await;
+  .fetch_optional(&state.db_pool)
+  .await
+  .unwrap_or(None);
 
-  let imageid = match insert_result {
-    Ok(result) => result.last_insert_id() as i64,
-    Err(err) => return HttpResponse::InternalServerError().body(format!("Failed to create ad: {}", err)),
-  };
+  if let Some(imageid) = existing_ad_id {
+    let update_result = sqlx::query(
+      "UPDATE advert_image SET imagepath = ?, url = ?, clicks = 0, views = 0, is_active = TRUE WHERE imageid = ? LIMIT 1"
+    )
+    .bind(&relative_image_path)
+    .bind(&target_url)
+    .bind(imageid)
+    .execute(&state.db_pool)
+    .await;
 
-  match paypal_create_subscription(imageid).await {
-    Ok(approval_url) => HttpResponse::SeeOther()
-      .insert_header(("Location", approval_url))
-      .finish(),
-    Err(err) => HttpResponse::InternalServerError().body(format!("Ad created but PayPal subscription failed: {}", err)),
+    match update_result {
+      Ok(_) => HttpResponse::SeeOther()
+        .insert_header(("Location", "/v1/ads"))
+        .finish(),
+      Err(err) => HttpResponse::InternalServerError().body(format!("Failed to recycle existing paid ad: {}", err)),
+    }
+  } else {
+    let insert_result = sqlx::query(
+      "INSERT INTO advert_image (imagepath, url, owner_uid, owner_username, payment_status, clicks, views, is_active) VALUES (?, ?, ?, ?, 'pending', 0, 0, TRUE)",
+    )
+    .bind(&relative_image_path)
+    .bind(&target_url)
+    .bind(session_uid)
+    .bind(&session_user)
+    .execute(&state.db_pool)
+    .await;
+
+    let imageid = match insert_result {
+      Ok(result) => result.last_insert_id() as i64,
+      Err(err) => return HttpResponse::InternalServerError().body(format!("Failed to create ad: {}", err)),
+    };
+
+    match paypal_create_subscription(imageid).await {
+      Ok(approval_url) => HttpResponse::SeeOther()
+        .insert_header(("Location", approval_url))
+        .finish(),
+      Err(err) => HttpResponse::InternalServerError().body(format!("Ad created but PayPal subscription failed: {}", err)),
+    }
   }
 }
 
@@ -1811,30 +1837,122 @@ pub async fn ads_paypal_cancel(
 pub async fn ads_user_update(
   req: HttpRequest,
   state: web::Data<AppState>,
-  payload: web::Form<AdsUserUpdateRequest>,
+  mut payload: Multipart,
 ) -> impl Responder {
   let Some((session_uid, _)) = get_session_identity(&req, &state).await else {
     return HttpResponse::Unauthorized().body("Login required");
   };
 
-  if !(payload.url.starts_with("https://") || payload.url.starts_with("http://")) {
+  let mut url_bytes: Vec<u8> = Vec::new();
+  let mut imageid_bytes: Vec<u8> = Vec::new();
+  let mut image_bytes: Vec<u8> = Vec::new();
+  let mut image_uploaded = false;
+
+  while let Some(item) = payload.next().await {
+    let mut field = match item {
+      Ok(field) => field,
+      Err(err) => return HttpResponse::BadRequest().body(format!("Upload read failed: {}", err)),
+    };
+
+    let field_name = field
+      .content_disposition()
+      .and_then(|cd| cd.get_name())
+      .unwrap_or_default()
+      .to_string();
+
+    while let Some(chunk) = field.next().await {
+      let data = match chunk {
+        Ok(data) => data,
+        Err(err) => return HttpResponse::BadRequest().body(format!("Upload chunk failed: {}", err)),
+      };
+
+      if field_name == "url" {
+        url_bytes.extend_from_slice(&data);
+      } else if field_name == "imageid" {
+        imageid_bytes.extend_from_slice(&data);
+      } else if field_name == "ad_image" {
+        if !data.is_empty() {
+          image_uploaded = true;
+          image_bytes.extend_from_slice(&data);
+        }
+      }
+    }
+  }
+
+  let target_url = String::from_utf8_lossy(&url_bytes).trim().to_string();
+  if !(target_url.starts_with("https://") || target_url.starts_with("http://")) {
     return HttpResponse::BadRequest().body("Target URL must start with http:// or https://");
   }
 
-  let update_result = sqlx::query(
-    "UPDATE advert_image SET url = ? WHERE imageid = ? AND owner_uid = ? LIMIT 1",
-  )
-  .bind(payload.url.trim())
-  .bind(payload.imageid)
-  .bind(session_uid)
-  .execute(&state.db_pool)
-  .await;
+  let imageid_str = String::from_utf8_lossy(&imageid_bytes).trim().to_string();
+  let imageid: i64 = match imageid_str.parse() {
+    Ok(val) => val,
+    Err(_) => return HttpResponse::BadRequest().body("Invalid imageid"),
+  };
 
-  match update_result {
-    Ok(_) => HttpResponse::SeeOther()
-      .insert_header(("Location", "/v1/ads"))
-      .finish(),
-    Err(err) => HttpResponse::InternalServerError().body(format!("Failed to update ad: {}", err)),
+  if image_uploaded && !image_bytes.is_empty() {
+    let detected_format = match image::guess_format(&image_bytes) {
+      Ok(format) => format,
+      Err(_) => return HttpResponse::BadRequest().body("Unsupported image format"),
+    };
+
+    let extension = match detected_format {
+      image::ImageFormat::Png => "png",
+      image::ImageFormat::Jpeg => "jpg",
+      image::ImageFormat::Gif => "gif",
+      image::ImageFormat::WebP => "webp",
+      _ => return HttpResponse::BadRequest().body("Only png, jpg, gif, webp are allowed"),
+    };
+
+    let image_dimensions = match image::load_from_memory(&image_bytes) {
+      Ok(image) => image.dimensions(),
+      Err(_) => return HttpResponse::BadRequest().body("Invalid image data"),
+    };
+
+    if image_dimensions != (400, 111) {
+      return HttpResponse::BadRequest().body("Image must be exactly 400x111 pixels");
+    }
+
+    if let Err(err) = fs::create_dir_all("./webroot/images/advert") {
+      return HttpResponse::InternalServerError().body(format!("Failed to prepare advert directory: {}", err));
+    }
+
+    let file_name = format!("ad_{}_{}.{}", session_uid, Uuid::new_v4(), extension);
+    let relative_image_path = format!("/images/advert/{}", file_name);
+    let disk_path = format!("./webroot{}", relative_image_path);
+
+    if let Err(err) = fs::write(&disk_path, &image_bytes) {
+      return HttpResponse::InternalServerError().body(format!("Failed to save image: {}", err));
+    }
+
+    let update_result = sqlx::query(
+      "UPDATE advert_image SET imagepath = ?, url = ? WHERE imageid = ? AND owner_uid = ? LIMIT 1",
+    )
+    .bind(&relative_image_path)
+    .bind(&target_url)
+    .bind(imageid)
+    .bind(session_uid)
+    .execute(&state.db_pool)
+    .await;
+
+    match update_result {
+      Ok(_) => HttpResponse::SeeOther().insert_header(("Location", "/v1/ads")).finish(),
+      Err(err) => HttpResponse::InternalServerError().body(format!("Failed to update ad with image: {}", err)),
+    }
+  } else {
+    let update_result = sqlx::query(
+      "UPDATE advert_image SET url = ? WHERE imageid = ? AND owner_uid = ? LIMIT 1",
+    )
+    .bind(&target_url)
+    .bind(imageid)
+    .bind(session_uid)
+    .execute(&state.db_pool)
+    .await;
+
+    match update_result {
+      Ok(_) => HttpResponse::SeeOther().insert_header(("Location", "/v1/ads")).finish(),
+      Err(err) => HttpResponse::InternalServerError().body(format!("Failed to update ad URL: {}", err)),
+    }
   }
 }
 
@@ -2418,4 +2536,41 @@ pub async fn github_auth_callback_v1(
   state: web::Data<AppState>,
 ) -> impl Responder {
   github_auth_callback_impl(req, query, state).await
+}
+
+#[post("/v1/ads/paypal/webhook")]
+pub async fn ads_paypal_webhook(
+  state: web::Data<AppState>,
+  body: web::Bytes,
+) -> impl Responder {
+  let json: serde_json::Value = match serde_json::from_slice(&body) {
+    Ok(json) => json,
+    Err(e) => {
+      eprintln!("PayPal webhook JSON parse error: {}", e);
+      return HttpResponse::BadRequest().body("Invalid JSON");
+    }
+  };
+
+  let event_type = json.get("event_type").and_then(|v| v.as_str()).unwrap_or("");
+  if event_type == "BILLING.SUBSCRIPTION.CANCELLED" 
+     || event_type == "BILLING.SUBSCRIPTION.EXPIRED" 
+     || event_type == "BILLING.SUBSCRIPTION.SUSPENDED" {
+    
+    if let Some(resource) = json.get("resource") {
+      if let Some(subscription_id) = resource.get("id").and_then(|v| v.as_str()) {
+        let update_result = sqlx::query(
+          "UPDATE advert_image SET payment_status = 'expired' WHERE paypal_order_id = ? AND payment_status IN ('paid')"
+        )
+        .bind(subscription_id)
+        .execute(&state.db_pool)
+        .await;
+
+        if let Err(e) = update_result {
+          eprintln!("Failed to update expired subscription in db: {}", e);
+        }
+      }
+    }
+  }
+
+  HttpResponse::Ok().finish()
 }

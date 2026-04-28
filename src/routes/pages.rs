@@ -260,7 +260,7 @@ pub async fn ads_admin_page(
       <div id="navigation-section">
         <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
       </div>
-      <div id="selected-user-posts-section" class="post-section">
+      <div id="ads-dashboard" class="post-section">
         <div class="notice"><p><em>Ad Admin Panel</em></p></div>
         <div class="post" style="margin-bottom:16px;">
           <form action="https://{DOMAIN}/v1/admin/ads/create" method="POST">
@@ -362,7 +362,7 @@ pub async fn ads_user_page(
       <div id="navigation-section">
         <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
       </div>
-      <div id="selected-user-posts-section" class="post-section">
+      <div id="ads-dashboard" class="post-section">
         <div class="notice"><p><em>My Ads (PayPal + 400x111 upload)</em></p></div>
         <div class="post" style="margin-bottom:16px;">
           <form action="https://{DOMAIN}/v1/ads/create" method="POST" enctype="multipart/form-data">

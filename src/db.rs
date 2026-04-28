@@ -191,6 +191,18 @@ pub async fn ensure_database_schema(pool: &MySqlPool) -> Result<(), sqlx::Error>
       .await?;
   }
 
+  let is_active_exists = sqlx::query_scalar::<_, i64>(
+      "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'advert_image' AND COLUMN_NAME = 'is_active'"
+    )
+    .fetch_one(pool)
+    .await?;
+
+  if is_active_exists == 0 {
+    sqlx::query("ALTER TABLE advert_image ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE")
+      .execute(pool)
+      .await?;
+  }
+
   let owner_username_exists = sqlx::query_scalar::<_, i64>(
       "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'advert_image' AND COLUMN_NAME = 'owner_username'"
     )

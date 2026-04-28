@@ -262,6 +262,7 @@ async fn main() -> std::io::Result<()> {
       .service(ads_paypal_cancel)
       .service(ads_user_update)
       .service(ads_user_delete)
+      .service(ads_paypal_webhook)
       .service(war_room)
       .service(inbox)
       .service(get_inbox_contacts_page)

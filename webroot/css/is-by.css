@@ -1172,3 +1172,11 @@ a:hover {
     text-align: center !important;
     margin: 0 auto;
 }
+
+#ads-dashboard .post {
+    width: 422px;
+}
+
+#ads-dashboard .post input[type=text] {
+    width: calc(100% - 16px);
+}
