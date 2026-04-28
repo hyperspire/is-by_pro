@@ -59,7 +59,7 @@ body {
 
 .for-the {
     display: inline-block;
-    width: 422px;
+    width: 100%;
     align-items: flex-start;
     vertical-align: middle;
     justify-content: center;
@@ -76,7 +76,7 @@ body {
 
 .is-by {
     display: flex;
-    width: 422px;
+    width: 100%;
     flex-direction: column;
     align-items: flex-start;
     vertical-align: middle;
@@ -94,7 +94,7 @@ body {
 
 .is-with {
     display: inline-block;
-    width: 422px;
+    width: 100%;
     font-size: 12px;
     align-items: flex-start;
     vertical-align: top;
