@@ -4588,6 +4588,7 @@ pub async fn render_single_post_html(
   context.insert("github_identity_html", &github_identity_html);
   context.insert("sidebar_login_html", &sidebar_login_html);
   context.insert("advert_html", &advert_html);
+  context.insert("post", &post.post);
   context.insert("single_post_html", &single_post_html);
   context.insert("rank_name", &rank_name);
   context.insert("rank_level", &rank_level);
@@ -4860,6 +4861,7 @@ pub async fn render_single_post_mobile_html(
   context.insert("ib_user", &escape_html(ib_user));
   context.insert("domain", &DOMAIN);
   context.insert("advert_html", &advert_html);
+  context.insert("post", &post.post);
   context.insert("single_post_html", &single_post_html);
   context.insert("navigation_links", &navigation_links);
   context.insert("meta_tags", &extract_meta_tags_from_post(&post.post));
