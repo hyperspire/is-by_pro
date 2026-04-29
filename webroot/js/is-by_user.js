@@ -527,6 +527,7 @@ function attachNewPostEventListener() {
     link.addEventListener('click', (event) => {
       event.preventDefault();
       postFormSection.style.display = 'block'; // display the form section
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     });
   }
 
