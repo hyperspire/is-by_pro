@@ -63,13 +63,13 @@
         <p><strong>:[[ :related-users: ]]:</strong></p><br>
         <div id="userlist-container">
           <br>
-          <p><em>{{ related_users | safe }}</em></p>
+          {{ related_users | safe }}
         </div>
       </div><br>
       <div id="trending-tags-section">
         <p><strong>:[[ :trending-tags: 24h: ]]:</strong></p>
         <div id="trending-tags-container">
-          <p><em>{{ trending_tags | safe }}</em></p>
+          {{ trending_tags | safe }}
         </div>
       </div><br>
       <div id="user-search-section">

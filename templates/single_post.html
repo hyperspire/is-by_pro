@@ -62,13 +62,13 @@
                 <p><strong>:[[ :related-users: ]]:</strong></p><br>
                 <div id="userlist-container">
                     <br>
-                    <p><em>{{ related_users | safe }}</em></p>
+                    {{ related_users | safe }}
                 </div>
             </div><br>
             <div id="trending-tags-section">
                 <p><strong>:[[ :trending-tags: 24h: ]]:</strong></p>
                 <div id="trending-tags-container">
-                    <p><em>{{ trending_tags | safe }}</em></p>
+                    {{ trending_tags | safe }}
                 </div>
             </div><br>
             <div id="user-search-section">
@@ -88,7 +88,8 @@
             <div id="sidebar-footer">
                 <p><a target="_blank" rel="noopener" href="https://is-by.pro/advertise.html">Advertise</a> | <a
                         target="_blank" rel="noopener" href="https://is-by.pro/privacy.html">Privacy</a> | <a
-                        target="_blank" rel="noopener" href="https://is-by.pro/tos.html">ToS</a> | @ {{ copyright }}</p>
+                        target="_blank" rel="noopener" href="https://is-by.pro/tos.html">ToS</a> | @ {{ copyright }}
+                </p>
             </div>
         </div>
     </div>
