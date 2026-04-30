@@ -3586,12 +3586,12 @@ pub async fn render_war_room_html(
   let war_room_chunk = render_war_room_posts_chunk(state, ib_uid, ib_user, session_uid, 0, 20).await?;
 
   let war_room_content = if war_room_chunk.total_followers == 0 {
-    r#"<div class="notice"><p><em>:[[ :war-room-no-followers: ]]:</em></p></div>"#.to_string()
+    r#"<div class="notice"><p><em>:[[ :war-room: for-the: followers: is-by: none ]]:</em></p></div>"#.to_string()
   } else if war_room_chunk.posts_html.trim().is_empty() && !war_room_chunk.has_more {
     r#"<div class="notice"><p><em>:[[ :war-room: is-by: no: is-with: follower-posts: ]]:</em></p></div>"#.to_string()
   } else {
     format!(
-      r#"<div class="notice"><p><em>:[[ :war-room-followers-selected: {selected_count}: ]]:</em></p></div>{rendered_posts}"#,
+      r#"<div class="notice"><p><em>:[[ :war-room: followers-selected: {selected_count}: ]]:</em></p></div>{rendered_posts}"#,
       selected_count = war_room_chunk.total_followers,
       rendered_posts = war_room_chunk.posts_html
     )
@@ -3787,12 +3787,12 @@ pub async fn render_war_room_mobile_html(
   let war_room_chunk = render_war_room_posts_chunk(state, ib_uid, ib_user, session_uid, 0, 20).await?;
 
   let war_room_content = if war_room_chunk.total_followers == 0 {
-    "<div class=\"notice\"><p><em>:[[ :war-room-no-followers: ]]:</em></p></div>".to_string()
+    "<div class=\"notice\"><p><em>:[[ :war-room: for-the: followers: is-by: none: ]]:</em></p></div>".to_string()
   } else if war_room_chunk.posts_html.trim().is_empty() && !war_room_chunk.has_more {
     "<div class=\"notice\"><p><em>:[[ :war-room: is-by: no: is-with: follower-posts: ]]:</em></p></div>".to_string()
   } else {
     format!(
-      r#"<div class="notice"><p><em>:[[ :war-room-followers-selected: {selected_count}: ]]:</em></p></div>{rendered_posts}"#,
+      r#"<div class="notice"><p><em>:[[ :war-room: followers-selected: {selected_count}: ]]:</em></p></div>{rendered_posts}"#,
       selected_count = war_room_chunk.total_followers,
       rendered_posts = war_room_chunk.posts_html
     )
