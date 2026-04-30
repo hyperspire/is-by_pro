@@ -3468,7 +3468,7 @@ pub async fn render_war_room_posts_chunk(
   let mut rendered_posts = String::new();
   for (selected_follower, post_row) in selected_posts {
     rendered_posts += &format!(
-      r#"<div class="notice"><p><em>:[[ :war-room-selected-follower: {selected_follower}: ]]:</em></p></div>
+      r#"<div class="notice"><p><em>:[[ :war-room: selected-follower: {selected_follower}: ]]:</em></p></div>
       <div class="post" data-postid="{post_id}" data-timestamp="{post_timestamp}">
         {post_meta}
         <div class="post-content">{post_body}</div>
@@ -3591,7 +3591,7 @@ pub async fn render_war_room_html(
     r#"<div class="notice"><p><em>:[[ :war-room: is-by: no: is-with: follower-posts: ]]:</em></p></div>"#.to_string()
   } else {
     format!(
-      r#"<div class="notice"><p><em>:[[ :war-room: followers-selected: {selected_count}: ]]:</em></p></div>{rendered_posts}"#,
+      r#"<div class="notice"><p><em>:[[ :war-room: for-the: followers-targeted: is-by: {selected_count}: ]]:</em></p></div>{rendered_posts}"#,
       selected_count = war_room_chunk.total_followers,
       rendered_posts = war_room_chunk.posts_html
     )
@@ -3792,7 +3792,7 @@ pub async fn render_war_room_mobile_html(
     "<div class=\"notice\"><p><em>:[[ :war-room: is-by: no: is-with: follower-posts: ]]:</em></p></div>".to_string()
   } else {
     format!(
-      r#"<div class="notice"><p><em>:[[ :war-room: followers-selected: {selected_count}: ]]:</em></p></div>{rendered_posts}"#,
+      r#"<div class="notice"><p><em>:[[ :war-room: for-the: followers-targeted: is-by: {selected_count}: ]]:</em></p></div>{rendered_posts}"#,
       selected_count = war_room_chunk.total_followers,
       rendered_posts = war_room_chunk.posts_html
     )
