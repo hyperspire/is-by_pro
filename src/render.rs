@@ -3468,7 +3468,7 @@ pub async fn render_war_room_posts_chunk(
   let mut rendered_posts = String::new();
   for (selected_follower, post_row) in selected_posts {
     rendered_posts += &format!(
-      r#"<div class="notice"><p><em>:[[ :war-room: selected-follower: {selected_follower}: ]]:</em></p></div>
+      r#"<div class="notice"><p><em>:[[ :war-room: targeted-follower: {selected_follower}: ]]:</em></p></div>
       <div class="post" data-postid="{post_id}" data-timestamp="{post_timestamp}">
         {post_meta}
         <div class="post-content">{post_body}</div>
