@@ -1,5 +1,6 @@
 /target
 /tests
+/tests_scratch
 /github
 /ssl
 /.env
