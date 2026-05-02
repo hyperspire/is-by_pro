@@ -1,0 +1,9 @@
+[Unit]
+Description=Run MySQL Backup every 24 hours
+[Timer]
+# Runs once a day at midnight. You can change 'daily' to a specific time like '*-*-* 03:00:00'
+OnCalendar=daily
+# Ensures the backup runs immediately if the system was offline during the scheduled time
+Persistent=true
+[Install]
+WantedBy=timers.target

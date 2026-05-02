@@ -1,0 +1,7 @@
+[Unit]
+Description=MySQL Database Backup Service
+After=mysql.service mariadb.service
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/bin/mysqldump --defaults-extra-file=/root/.my.cnf --all-databases --result-file=/home/opc/all_databases.sql
