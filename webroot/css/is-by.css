@@ -537,7 +537,7 @@ a:hover {
 }
 
 .post {
-    color: #AFAFAF !important;
+    color: #AFAFAF;
     text-decoration: none;
     font-weight: bold;
     text-align: left !important;
@@ -1180,6 +1180,7 @@ a:hover {
 #ads-dashboard .post input[type=text] {
     width: calc(100% - 16px);
 }
+
 /* GitHub Repository Card Styles */
 .github-repo-card {
     border: 1px solid var(--border-color);
@@ -1248,19 +1249,24 @@ pre {
     line-height: 1.5;
     margin: 10px 0;
 }
+
 code {
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
+
 .post-content {
     max-width: 100%;
     word-break: break-word;
     overflow-wrap: break-word;
     overflow-x: hidden;
 }
+
 .post-content pre {
     max-width: 100%;
     box-sizing: border-box;
 }
-.post-content img, .post-content iframe {
+
+.post-content img,
+.post-content iframe {
     max-width: 100%;
 }

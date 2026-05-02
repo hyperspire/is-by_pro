@@ -5360,6 +5360,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
     static ref SYNTAX_SET: SyntaxSet = SyntaxSet::load_defaults_newlines();
     static ref THEME_SET: ThemeSet = ThemeSet::load_defaults();
     static ref MENTION_TAG_REGEX: Regex = Regex::new(r"([#@][\w_]+)").unwrap();
+    static ref GITHUB_URL_REGEX: Regex = Regex::new(r"https://github\.com/([\w\-\.]+)/([\w\-\.]+)").unwrap();
   }
 
   let options = Options::all();
@@ -5433,46 +5434,68 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
           // Skip text inside intercepted links
       }
       Event::Text(text) => {
-          let mut last = 0;
-          for cap in MENTION_TAG_REGEX.captures_iter(&text) {
-              let m = cap.get(1).unwrap();
-              if m.start() > last {
-                  new_events.push(Event::Text(text[last..m.start()].to_string().into()));
+          let process_mentions_in_chunk = |chunk: &str, ib_uid: i64, ib_user: &str, new_events: &mut Vec<_>| {
+              let mut last = 0;
+              for cap in MENTION_TAG_REGEX.captures_iter(chunk) {
+                  let m = cap.get(1).unwrap();
+                  if m.start() > last {
+                      new_events.push(Event::Text(chunk[last..m.start()].to_string().into()));
+                  }
+                  
+                  let token_value = m.as_str();
+                  let prefix = &token_value[0..1];
+                  let value = &token_value[1..];
+                  
+                  let href = if prefix == "#" {
+                      format!(
+                          "https://{}/v1/searchposts?ib_uid={}&ib_user={}&tag=%23{}",
+                          DOMAIN,
+                          ib_uid,
+                          crate::url_encode_component(ib_user),
+                          crate::url_encode_component(token_value)
+                      )
+                  } else {
+                      format!(
+                          "https://{}/v1/profile/{}",
+                          DOMAIN,
+                          crate::url_encode_component(value)
+                      )
+                  };
+
+                  let class_name = if prefix == "#" { "post-tag" } else { "post-mention" };
+                  let link_html = format!(
+                      r#"<a class="{class_name}" href="{href}">{token}</a>"#,
+                      class_name = class_name,
+                      href = href,
+                      token = escape_html(token_value)
+                  );
+                  new_events.push(Event::Html(link_html.into()));
+                  
+                  last = m.end();
+              }
+              if last < chunk.len() {
+                  new_events.push(Event::Text(chunk[last..].to_string().into()));
+              }
+          };
+
+          let mut last_gh = 0;
+          for gh_cap in GITHUB_URL_REGEX.captures_iter(&text) {
+              let gh_m = gh_cap.get(0).unwrap();
+              if gh_m.start() > last_gh {
+                  let chunk = &text[last_gh..gh_m.start()];
+                  process_mentions_in_chunk(chunk, ib_uid, ib_user, &mut new_events);
               }
               
-              let token_value = m.as_str();
-              let prefix = &token_value[0..1];
-              let value = &token_value[1..];
-              
-              let href = if prefix == "#" {
-                  format!(
-                      "https://{}/v1/searchposts?ib_uid={}&ib_user={}&tag=%23{}",
-                      DOMAIN,
-                      ib_uid,
-                      crate::url_encode_component(ib_user),
-                      crate::url_encode_component(token_value)
-                  )
-              } else {
-                  format!(
-                      "https://{}/v1/profile/{}",
-                      DOMAIN,
-                      crate::url_encode_component(value)
-                  )
-              };
-
-              let class_name = if prefix == "#" { "post-tag" } else { "post-mention" };
-              let link_html = format!(
-                  r#"<a class="{class_name}" href="{href}">{token}</a>"#,
-                  class_name = class_name,
-                  href = href,
-                  token = escape_html(token_value)
-              );
+              let owner = gh_cap.get(1).unwrap().as_str();
+              let repo = gh_cap.get(2).unwrap().as_str();
+              let repo_str = format!("{}/{}", owner, repo);
+              let link_html = format!(r#"<div class="github-repo-card" data-repo="{}"></div>"#, escape_html(&repo_str));
               new_events.push(Event::Html(link_html.into()));
               
-              last = m.end();
+              last_gh = gh_m.end();
           }
-          if last < text.len() {
-              new_events.push(Event::Text(text[last..].to_string().into()));
+          if last_gh < text.len() {
+              process_mentions_in_chunk(&text[last_gh..], ib_uid, ib_user, &mut new_events);
           }
       }
       Event::Html(html) | Event::InlineHtml(html) => {
@@ -5649,4 +5672,25 @@ pub async fn related_users(state: &AppState, session_uid: Option<i64>) -> String
   }
 
   html
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_render_code() {
+        let text = "```rust\nfn main() {}\n```";
+        let out = render_post_with_hashtags(text, 1, "test");
+        println!("OUT_CODE: {}", out);
+        assert!(out.contains("<pre"));
+    }
+
+    #[test]
+    fn test_render_github() {
+        let text = "https://github.com/rust-lang/rust";
+        let out = render_post_with_hashtags(text, 1, "test");
+        println!("OUT_GH: {}", out);
+        assert!(out.contains("github-repo-card"));
+    }
 }
