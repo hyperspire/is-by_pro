@@ -1161,50 +1161,69 @@ function attachPinPostEventListener() {
   });
 }
 
-document.addEventListener("DOMContentLoaded", function () {
-  const repoCards = document.querySelectorAll('.github-repo-card');
-  repoCards.forEach(async (card) => {
-    const repoStr = card.getAttribute('data-repo');
-    if (!repoStr) return;
+async function renderGithubCard(card) {
+  if (card.dataset.rendered) return;
+  card.dataset.rendered = "true";
 
-    const [owner, repo] = repoStr.split('/');
-    if (!owner || !repo) return;
+  const repoStr = card.getAttribute('data-repo');
+  if (!repoStr) return;
 
-    try {
-      const response = await fetch(`/v1/github/repo?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch repo");
-      }
+  const [owner, repo] = repoStr.split('/');
+  if (!owner || !repo) return;
 
-      const data = await response.json();
-
-      const starIcon = `<svg aria-hidden="true" height="16" viewBox="0 0 16 16" version="1.1" width="16" data-view-component="true" style="fill: currentColor;"><path fill-rule="evenodd" d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25zm0 2.445L6.615 5.5a.75.75 0 01-.564.41l-3.097.45 2.24 2.184a.75.75 0 01.216.664l-.528 3.084 2.769-1.456a.75.75 0 01.698 0l2.77 1.456-.53-3.084a.75.75 0 01.216-.664l2.24-2.183-3.096-.45a.75.75 0 01-.564-.41L8 2.694v.001z"></path></svg>`;
-      const forkIcon = `<svg aria-hidden="true" height="16" viewBox="0 0 16 16" version="1.1" width="16" data-view-component="true" style="fill: currentColor;"><path fill-rule="evenodd" d="M5 3.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm0 2.122a2.25 2.25 0 10-1.5 0v.878A2.25 2.25 0 005.75 8.5h1.5v2.128a2.251 2.251 0 101.5 0V8.5h1.5a2.25 2.25 0 002.25-2.25v-.878a2.25 2.25 0 10-1.5 0v.878a.75.75 0 01-.75.75h-4.5A.75.75 0 015 6.25v-.878zm3.75 7.378a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm3-8.75a.75.75 0 100-1.5.75.75 0 000 1.5z"></path></svg>`;
-
-      let languageColor = "#8b949e";
-      if (data.language === "Rust") languageColor = "#dea584";
-      if (data.language === "JavaScript") languageColor = "#f1e05a";
-      if (data.language === "TypeScript") languageColor = "#3178c6";
-      if (data.language === "Python") languageColor = "#3572A5";
-      if (data.language === "Go") languageColor = "#00ADD8";
-
-      const langDot = data.language ? `<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background-color:${languageColor}; margin-right:4px;"></span>${data.language}` : '';
-
-      card.innerHTML = `
-        <div class="github-repo-card-header">
-          <img src="${data.owner_avatar_url}" class="github-repo-card-avatar" alt="owner avatar">
-          <a href="https://github.com/${repoStr}" target="_blank" rel="noopener" class="github-repo-card-title">${repoStr}</a>
-        </div>
-        <p class="github-repo-card-description">${data.description || 'No description provided.'}</p>
-        <div class="github-repo-card-stats">
-          ${data.language ? `<div class="github-repo-card-stat">${langDot}</div>` : ''}
-          <div class="github-repo-card-stat">${starIcon} ${data.stargazers_count}</div>
-          <div class="github-repo-card-stat">${forkIcon} ${data.forks_count}</div>
-        </div>
-      `;
-    } catch (e) {
-      console.error(e);
-      card.innerHTML = `<a href="https://github.com/${repoStr}" target="_blank" rel="noopener" class="github-repo-card-title">${repoStr}</a>`;
+  try {
+    const response = await fetch(`/v1/github/repo?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`);
+    if (!response.ok) {
+      throw new Error("Failed to fetch repo");
     }
+
+    const data = await response.json();
+
+    const starIcon = `<svg aria-hidden="true" height="16" viewBox="0 0 16 16" version="1.1" width="16" data-view-component="true" style="fill: currentColor;"><path fill-rule="evenodd" d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25zm0 2.445L6.615 5.5a.75.75 0 01-.564.41l-3.097.45 2.24 2.184a.75.75 0 01.216.664l-.528 3.084 2.769-1.456a.75.75 0 01.698 0l2.77 1.456-.53-3.084a.75.75 0 01.216-.664l2.24-2.183-3.096-.45a.75.75 0 01-.564-.41L8 2.694v.001z"></path></svg>`;
+    const forkIcon = `<svg aria-hidden="true" height="16" viewBox="0 0 16 16" version="1.1" width="16" data-view-component="true" style="fill: currentColor;"><path fill-rule="evenodd" d="M5 3.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm0 2.122a2.25 2.25 0 10-1.5 0v.878A2.25 2.25 0 005.75 8.5h1.5v2.128a2.251 2.251 0 101.5 0V8.5h1.5a2.25 2.25 0 002.25-2.25v-.878a2.25 2.25 0 10-1.5 0v.878a.75.75 0 01-.75.75h-4.5A.75.75 0 015 6.25v-.878zm3.75 7.378a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm3-8.75a.75.75 0 100-1.5.75.75 0 000 1.5z"></path></svg>`;
+
+    let languageColor = "#8b949e";
+    if (data.language === "Rust") languageColor = "#dea584";
+    if (data.language === "JavaScript") languageColor = "#f1e05a";
+    if (data.language === "TypeScript") languageColor = "#3178c6";
+    if (data.language === "Python") languageColor = "#3572A5";
+    if (data.language === "Go") languageColor = "#00ADD8";
+
+    const langDot = data.language ? `<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background-color:${languageColor}; margin-right:4px;"></span>${data.language}` : '';
+
+    card.innerHTML = `
+      <div class="github-repo-card-header">
+        <img src="${data.owner_avatar_url}" class="github-repo-card-avatar" alt="owner avatar">
+        <a href="https://github.com/${repoStr}" target="_blank" rel="noopener" class="github-repo-card-title">${repoStr}</a>
+      </div>
+      <p class="github-repo-card-description">${data.description || 'No description provided.'}</p>
+      <div class="github-repo-card-stats">
+        ${data.language ? `<div class="github-repo-card-stat">${langDot}</div>` : ''}
+        <div class="github-repo-card-stat">${starIcon} ${data.stargazers_count}</div>
+        <div class="github-repo-card-stat">${forkIcon} ${data.forks_count}</div>
+      </div>
+    `;
+  } catch (e) {
+    console.error(e);
+    card.innerHTML = `<a href="https://github.com/${repoStr}" target="_blank" rel="noopener" class="github-repo-card-title">${repoStr}</a>`;
+  }
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  document.querySelectorAll('.github-repo-card').forEach(renderGithubCard);
+
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType === 1) {
+          if (node.classList && node.classList.contains('github-repo-card')) {
+            renderGithubCard(node);
+          }
+          node.querySelectorAll('.github-repo-card').forEach(renderGithubCard);
+        }
+      });
+    });
   });
+
+  observer.observe(document.body, { childList: true, subtree: true });
 });

@@ -5475,6 +5475,12 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
               new_events.push(Event::Text(text[last..].to_string().into()));
           }
       }
+      Event::Html(html) | Event::InlineHtml(html) => {
+          new_events.push(Event::Text(html));
+      }
+      Event::Start(Tag::HtmlBlock) | Event::End(TagEnd::HtmlBlock) => {
+          // Drop HtmlBlock tags to prevent wrapping text in raw HTML blocks
+      }
       e => {
         if !skip_link_content && !in_code_block {
             new_events.push(e);

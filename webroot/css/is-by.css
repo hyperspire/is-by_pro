@@ -1251,3 +1251,16 @@ pre {
 code {
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
+.post-content {
+    max-width: 100%;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    overflow-x: hidden;
+}
+.post-content pre {
+    max-width: 100%;
+    box-sizing: border-box;
+}
+.post-content img, .post-content iframe {
+    max-width: 100%;
+}

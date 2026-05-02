@@ -1,0 +1,6 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.27s
+     Running `target/debug/is-by_pro`
+
+thread 'main' (651316) panicked at src/main.rs:141:6:
+Failed to connect to Redis: Connection refused (os error 111)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
