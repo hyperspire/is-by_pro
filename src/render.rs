@@ -5524,8 +5524,23 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
                       let trailing = &url[url.len() - trailing_len..];
                       url = &url[..url.len() - trailing_len];
                       
-                      let link_html = format!(r#"<a class="post-link" href="{url}" target="_blank" rel="noopener">{url}</a>"#, url=escape_html(url));
-                      new_events.push(Event::Html(link_html.into()));
+                      if let Some(video_id) = extract_youtube_video_id(url) {
+                          let current_link_html = format!(
+                              r#"<div class="youtube-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><div class="youtube-preview-container" style="width:100%; max-width:560px; margin: 0 auto; display: block; position: relative; overflow: hidden; padding-bottom: 56.25%; height: 0; border-radius: 8px;"><iframe src="https://www.youtube.com/embed/{video_id}" title="YouTube video player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen width="100%" height="100%" style="border:0; position:absolute; top:0; left:0; width:100%; height:100%;"></iframe></div></div>"#,
+                              video_id = escape_html(&video_id)
+                          );
+                          new_events.push(Event::Html(current_link_html.into()));
+                      } else if let Some(imgur_html) = extract_imgur_info(url) {
+                          new_events.push(Event::Html(imgur_html.into()));
+                      } else if let Some(rumble_html) = extract_rumble_info(url) {
+                          new_events.push(Event::Html(rumble_html.into()));
+                      } else if let Some(is_by_html) = extract_is_by_info(url) {
+                          new_events.push(Event::Html(is_by_html.into()));
+                      } else {
+                          let link_html = format!(r#"<a class="post-link" href="{url}" target="_blank" rel="noopener">{url}</a>"#, url=escape_html(url));
+                          new_events.push(Event::Html(link_html.into()));
+                      }
+                      
                       if trailing_len > 0 {
                           new_events.push(Event::Text(trailing.to_string().into()));
                       }
