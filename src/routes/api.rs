@@ -2243,7 +2243,7 @@ pub async fn send_direct_message(
       };
 
       let subscriptions = sqlx::query_as::<_, PushSubscriptionRow>(
-        "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE ib_uid = ?"
+        "SELECT * FROM push_subscriptions WHERE ib_uid = ?"
       )
       .bind(target_uid)
       .fetch_all(&state.db_pool)
@@ -2261,9 +2261,13 @@ pub async fn send_direct_message(
         tokio::spawn(async move {
           use web_push::{IsahcWebPushClient, WebPushClient, WebPushMessageBuilder, SubscriptionInfo, VapidSignatureBuilder, ContentEncoding};
 
+          use std::io::Write;
+          let mut log_file = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/push_log.txt").unwrap();
+          writeln!(log_file, "Started push task").unwrap();
           let client = match IsahcWebPushClient::new() {
             Ok(c) => c,
             Err(e) => {
+              writeln!(log_file, "Failed to create IsahcWebPushClient: {}", e).unwrap();
               eprintln!("Failed to create IsahcWebPushClient: {}", e);
               return;
             }
@@ -2305,10 +2309,15 @@ pub async fn send_direct_message(
               }
             };
 
+            writeln!(log_file, "Sending push to endpoint: {}", sub.endpoint).unwrap();
             if let Err(e) = client.send(message).await {
+              writeln!(log_file, "Failed to send web push: {}", e).unwrap();
               eprintln!("Failed to send web push: {}", e);
+            } else {
+              writeln!(log_file, "Successfully sent web push!").unwrap();
             }
           }
+          writeln!(log_file, "Finished push task").unwrap();
         });
       }
 
