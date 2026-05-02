@@ -34,7 +34,7 @@ pub async fn create_post(
   state: web::Data<AppState>,
   payload: web::Json<NewPostRequest>,
 ) -> impl Responder {
-  const MAX_POST_LEN: usize = 1024;
+  const MAX_POST_LEN: usize = 4096;
 
   let Some((session_uid, session_username)) = get_session_identity(&req, &state).await else {
     return HttpResponse::Unauthorized().json(PostResponse {
@@ -161,7 +161,7 @@ pub async fn create_reply(
   state: web::Data<AppState>,
   payload: web::Form<ReplyRequest>,
 ) -> impl Responder {
-  const MAX_POST_LEN: usize = 1024;
+  const MAX_POST_LEN: usize = 4096;
 
   let Some((session_uid, _)) = get_session_identity(&req, &state).await else {
     return HttpResponse::Unauthorized().body("Login required");
@@ -1044,7 +1044,7 @@ pub async fn update_post(
   state: web::Data<AppState>,
   payload: web::Form<EditPostUpdateRequest>,
 ) -> impl Responder {
-  const MAX_POST_LEN: usize = 1024;
+  const MAX_POST_LEN: usize = 4096;
 
   let session_uid = match get_session_uid(&req) {
     Some(uid) => uid,

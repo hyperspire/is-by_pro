@@ -115,7 +115,7 @@ pub async fn ensure_database_schema(pool: &MySqlPool) -> Result<(), sqlx::Error>
     .await;
 
   sqlx::query(
-    "CREATE TABLE IF NOT EXISTS post (ib_uid BIGINT NOT NULL, postid VARCHAR(64) PRIMARY KEY, parentid VARCHAR(64) NOT NULL DEFAULT '', post VARCHAR(1024) NOT NULL, timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, acknowledged_count BIGINT NOT NULL DEFAULT 0, INDEX idx_post_uid_time (ib_uid, timestamp), INDEX idx_post_parentid (parentid))",
+    "CREATE TABLE IF NOT EXISTS post (ib_uid BIGINT NOT NULL, postid VARCHAR(64) PRIMARY KEY, parentid VARCHAR(64) NOT NULL DEFAULT '', post VARCHAR(4096) NOT NULL, timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, acknowledged_count BIGINT NOT NULL DEFAULT 0, INDEX idx_post_uid_time (ib_uid, timestamp), INDEX idx_post_parentid (parentid))",
   )
   .execute(pool)
   .await?;
