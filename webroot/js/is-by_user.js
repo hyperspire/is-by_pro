@@ -607,6 +607,7 @@ function attachNewPostEventListener() {
   }
 
   characterCounter('post-character-count');
+  characterCounter('reply-character-count');
 
   for (let link of links) {
     link.addEventListener('click', (event) => {

@@ -1000,7 +1000,7 @@ pub async fn edit_post(
           <input type="hidden" name="pid" value="{pid}">
           {root_pid_field}
           {post_owner_uid_field}
-          <input type="text" class="post" name="post" maxlength="1024" value="{post}" required>
+          <textarea class="post" name="post" autocomplete="off" maxlength="4096" rows="3" required>{post}</textarea>
           <br>
           <input class="post-submit" type="submit" value="Save">
         </form>

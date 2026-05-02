@@ -813,6 +813,7 @@ a:hover {
 
 #post-form #post-message,
 #post-form #post-character-count,
+#reply-form #reply-character-count,
 #post-form .post,
 #reply-form .post {
     flex: 0 0 100%;

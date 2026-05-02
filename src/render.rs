@@ -4644,7 +4644,8 @@ pub async fn render_single_post_html(
             <input type="hidden" name="ib_uid" value="{ib_uid}">
             <input type="hidden" name="ib_user" value="{ib_user}">
             <input type="hidden" name="pid" value="{ib_post_id}">
-            <input type="text" class="post" name="post" maxlength="1024" required>
+            <textarea class="post" name="post" autocomplete="off" maxlength="4096" rows="3" required></textarea>
+            <div id="reply-character-count"></div>
             <br>
             <input class="post-submit" type="submit" value="Reply">
           </form>
@@ -4913,7 +4914,8 @@ pub async fn render_single_post_mobile_html(
             <input type="hidden" name="ib_uid" value="{ib_uid}">
             <input type="hidden" name="ib_user" value="{ib_user}">
             <input type="hidden" name="pid" value="{ib_post_id}">
-            <input type="text" class="post" name="post" maxlength="1024" required>
+            <textarea class="post" name="post" autocomplete="off" maxlength="4096" rows="3" required></textarea>
+            <div id="reply-character-count"></div>
             <br>
             <input class="post-submit" type="submit" value="Reply">
           </form>
