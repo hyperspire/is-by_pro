@@ -1,9 +1,0 @@
-[package]
-name = "tests_scratch"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-web-push = { version = "0.11.0", features = ["isahc-client"] }
-tokio = { version = "1.40.0", features = ["rt-multi-thread", "macros"] }
-serde_json = "1.0"
