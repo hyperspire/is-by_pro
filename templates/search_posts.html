@@ -41,11 +41,14 @@
                     <input id="post-cancel" class="post-cancel" type="button" value="Cancel">
                     <input class="post-submit" type="submit" value="Post">
                 </form>
-            </div><br>
-            <div class="notice">
-                <p><em>:[[ :search-posts: for-the: tag: {{ tag }}: ]]:</em></p>
             </div>
-            {{ search_results_html | safe }}
+            <div id="search-posts-section">
+                <br>
+                <div class="notice">
+                    <p><em>:[[ :search-posts: for-the: tag: {{ tag }}: ]]:</em></p>
+                </div>
+                {{ search_results_html | safe }}
+            </div>
         </div>
         <div id="profile-section">
             {{ sidebar_login_html | safe }}

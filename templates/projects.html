@@ -41,9 +41,12 @@
                     <input id="post-cancel" class="post-cancel" type="button" value="Cancel">
                     <input class="post-submit" type="submit" value="Post">
                 </form>
-            </div><br>
-            {{ add_project_form_html | safe }}
-            {{ projects_html | safe }}
+            </div>
+            <div id="projects-section">
+                <br>
+                {{ add_project_form_html | safe }}
+                {{ projects_html | safe }}
+            </div>
         </div>
         <div id="profile-section">
             {{ sidebar_login_html | safe }}
