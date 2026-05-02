@@ -2127,7 +2127,7 @@ pub async fn render_projects_html(
             ib_user = escape_html(ib_user),
             project_id = row.id,
             project = escape_html(&row.project),
-            description = render_post_with_hashtags(&row.description, ib_uid, ib_user),
+            description = escape_html(&row.description),
             languages = escape_html(&row.languages),
             reinforcements = escape_html(row.reinforcements.as_deref().unwrap_or("")),
             reinforcements_request_checked = if row.reinforcements_request == Some(true) { "checked" } else { "" }
