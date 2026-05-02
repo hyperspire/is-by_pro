@@ -626,7 +626,7 @@ function attachNewPostEventListener() {
     let ibUsername = '';
     const ibUID = Number(ibPostForm.querySelector('input[name="ib_uid"]').value);
     const ibUser = ibPostForm.querySelector('input[name="ib_user"]').value;
-    const post = ibPostForm.querySelector('input[name="post"]').value;
+    const post = ibPostForm.querySelector('[name="post"]').value;
 
     if (Number.isNaN(ibUID)) {
       generateIBFormMessageFailure('post-message', 'Invalid user id');
@@ -815,7 +815,7 @@ function attachEditProEventListener() {
 }
 
 function characterCounter(counter) {
-  const textFieldPost = document.querySelector('input[name="post"]');
+  const textFieldPost = document.querySelector('[name="post"]');
   const charCountDiv = document.getElementById(`${counter}`);
 
   if (!textFieldPost || !charCountDiv) {

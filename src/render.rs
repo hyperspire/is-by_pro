@@ -5378,7 +5378,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
     match event {
       Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(lang))) => {
         in_code_block = true;
-        code_language = lang.to_string();
+        code_language = lang.trim().to_string();
       }
       Event::Start(Tag::CodeBlock(CodeBlockKind::Indented)) => {
         in_code_block = true;
@@ -5389,7 +5389,15 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
         let syntax = SYNTAX_SET.find_syntax_by_token(&code_language)
             .unwrap_or_else(|| SYNTAX_SET.find_syntax_plain_text());
         let html = match highlighted_html_for_string(&code_content, &SYNTAX_SET, syntax, &THEME_SET.themes["base16-ocean.dark"]) {
-            Ok(h) => h,
+            Ok(mut h) => {
+                if let Some(idx) = h.find('>') {
+                    h.insert_str(idx + 1, "<code>");
+                }
+                if let Some(idx) = h.rfind("</pre>") {
+                    h.insert_str(idx, "</code>");
+                }
+                h
+            },
             Err(_) => format!("<pre><code>{}</code></pre>", escape_html(&code_content)),
         };
         code_content.clear();
@@ -5692,5 +5700,13 @@ mod tests {
         let out = render_post_with_hashtags(text, 1, "test");
         println!("OUT_GH: {}", out);
         assert!(out.contains("github-repo-card"));
+    }
+}
+
+#[test]
+fn print_themes() {
+    let ts = ThemeSet::load_defaults();
+    for key in ts.themes.keys() {
+        println!("THEME: {}", key);
     }
 }

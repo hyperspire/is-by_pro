@@ -1270,3 +1270,8 @@ code {
 .post-content iframe {
     max-width: 100%;
 }
+textarea.post {
+    font-family: inherit;
+    resize: vertical;
+    min-height: 40px;
+}
