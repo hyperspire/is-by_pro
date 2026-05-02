@@ -487,6 +487,13 @@ async function initPushNotifications() {
       return;
     }
 
+    // Force an update to ensure the latest sw.js is active
+    try {
+      await registration.update();
+    } catch (e) {
+      console.error('Failed to update service worker:', e);
+    }
+
     const keyResponse = await fetch('/v1/push/public-key');
     if (!keyResponse.ok) {
       console.error('Failed to fetch VAPID public key');
