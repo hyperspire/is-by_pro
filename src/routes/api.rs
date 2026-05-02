@@ -2231,23 +2231,93 @@ pub async fn send_direct_message(
         message: "You have a new direct message.".to_string(),
       });
 
+      let current_username = match sqlx::query_as::<_, SessionUserRow>(
+        "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
+      )
+      .bind(session_uid.to_string())
+      .fetch_optional(&state.db_pool)
+      .await
+      {
+        Ok(Some(row)) if !row.username.trim().is_empty() => row.username,
+        _ => req.cookie("ib_user").map(|cookie| cookie.value().to_string()).unwrap_or_default(),
+      };
+
+      let subscriptions = sqlx::query_as::<_, PushSubscriptionRow>(
+        "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE ib_uid = ?"
+      )
+      .bind(target_uid)
+      .fetch_all(&state.db_pool)
+      .await
+      .unwrap_or_default();
+
+      if !subscriptions.is_empty() {
+        let vapid_private = state.vapid_private_key.clone();
+        let payload = json!({
+          "title": "New Message",
+          "body": format!("New direct message from @{}", current_username),
+          "url": format!("https://{}/v1/inbox?target_user={}", DOMAIN, url_encode_component(&current_username)),
+        }).to_string();
+
+        tokio::spawn(async move {
+          use web_push::{IsahcWebPushClient, WebPushClient, WebPushMessageBuilder, SubscriptionInfo, VapidSignatureBuilder, ContentEncoding};
+
+          let client = match IsahcWebPushClient::new() {
+            Ok(c) => c,
+            Err(e) => {
+              eprintln!("Failed to create IsahcWebPushClient: {}", e);
+              return;
+            }
+          };
+
+          for sub in subscriptions {
+            let subscription_info = SubscriptionInfo::new(
+              &sub.endpoint,
+              &sub.p256dh,
+              &sub.auth,
+            );
+
+            let mut sig_builder = match VapidSignatureBuilder::from_base64(&vapid_private, &subscription_info) {
+              Ok(builder) => builder,
+              Err(e) => {
+                eprintln!("Failed to create VapidSignatureBuilder: {}", e);
+                continue;
+              }
+            };
+            
+            sig_builder.add_claim("sub", json!(format!("mailto:admin@{}", DOMAIN)));
+            let signature = match sig_builder.build() {
+              Ok(sig) => sig,
+              Err(e) => {
+                eprintln!("Failed to build VAPID signature: {}", e);
+                continue;
+              }
+            };
+
+            let mut builder = WebPushMessageBuilder::new(&subscription_info);
+            builder.set_payload(ContentEncoding::Aes128Gcm, payload.as_bytes());
+            builder.set_vapid_signature(signature);
+
+            let message = match builder.build() {
+              Ok(msg) => msg,
+              Err(e) => {
+                eprintln!("Failed to build web push message: {}", e);
+                continue;
+              }
+            };
+
+            if let Err(e) = client.send(message).await {
+              eprintln!("Failed to send web push: {}", e);
+            }
+          }
+        });
+      }
+
       if wants_json {
         HttpResponse::Ok().json(DMSendResponse {
           success: true,
           message: "Message sent".to_string(),
         })
       } else {
-        let current_username = match sqlx::query_as::<_, SessionUserRow>(
-          "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
-        )
-        .bind(session_uid.to_string())
-        .fetch_optional(&state.db_pool)
-        .await
-        {
-          Ok(Some(row)) if !row.username.trim().is_empty() => row.username,
-          _ => req.cookie("ib_user").map(|cookie| cookie.value().to_string()).unwrap_or_default(),
-        };
-
         HttpResponse::SeeOther()
           .insert_header((
             "Location",
@@ -2669,4 +2739,46 @@ pub async fn ads_paypal_webhook(
   }
 
   HttpResponse::Ok().finish()
+}
+
+#[get("/v1/push/public-key")]
+pub async fn get_vapid_public_key(state: web::Data<AppState>) -> impl Responder {
+  HttpResponse::Ok().body(state.vapid_public_key.clone())
+}
+
+#[post("/v1/push/subscribe")]
+pub async fn subscribe_push(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  payload: web::Json<PushSubscriptionRequest>,
+) -> impl Responder {
+  let session_uid = match get_session_uid(&req) {
+    Some(uid) => uid,
+    None => return HttpResponse::Unauthorized().json(json!({"success": false, "message": "Login required"})),
+  };
+
+  let sub = payload.into_inner();
+  
+  if sub.endpoint.is_empty() || sub.keys.p256dh.is_empty() || sub.keys.auth.is_empty() {
+    return HttpResponse::BadRequest().json(json!({"success": false, "message": "Invalid subscription payload"}));
+  }
+
+  // Insert or update
+  let result = sqlx::query(
+    "INSERT INTO push_subscriptions (ib_uid, endpoint, p256dh, auth, created_at) VALUES (?, ?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE p256dh = VALUES(p256dh), auth = VALUES(auth), created_at = NOW()"
+  )
+  .bind(session_uid)
+  .bind(&sub.endpoint)
+  .bind(&sub.keys.p256dh)
+  .bind(&sub.keys.auth)
+  .execute(&state.db_pool)
+  .await;
+
+  match result {
+    Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
+    Err(e) => {
+      eprintln!("Failed to save push subscription: {}", e);
+      HttpResponse::InternalServerError().json(json!({"success": false, "message": "Database error"}))
+    }
+  }
 }

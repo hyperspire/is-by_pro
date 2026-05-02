@@ -326,9 +326,75 @@ async function registerServiceWorker() {
       clearReloadCycleSuppression();
       window.location.reload();
     });
+
+    // Initialize push notifications after SW is ready
+    initPushNotifications(registration);
   } catch (error) {
     console.error('Service worker registration failed', error);
     setStatus('Service worker registration failed.');
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding)
+    .replace(/\-/g, '+')
+    .replace(/_/g, '/');
+
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+async function initPushNotifications(registration) {
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      console.log('Push notification permission denied.');
+      return;
+    }
+
+    const keyResponse = await fetch('/v1/push/public-key');
+    if (!keyResponse.ok) {
+      console.error('Failed to fetch VAPID public key');
+      return;
+    }
+    const vapidPublicKey = await keyResponse.text();
+    const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
+
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: applicationServerKey
+    });
+
+    const subJson = subscription.toJSON();
+    const payload = {
+      endpoint: subJson.endpoint,
+      keys: {
+        p256dh: subJson.keys.p256dh,
+        auth: subJson.keys.auth
+      }
+    };
+
+    const subscribeResponse = await fetch('/v1/push/subscribe', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (subscribeResponse.ok) {
+      console.log('Push subscription saved successfully.');
+    } else {
+      console.error('Failed to save push subscription to backend.');
+    }
+  } catch (error) {
+    console.error('Failed to initialize push notifications:', error);
   }
 }
 

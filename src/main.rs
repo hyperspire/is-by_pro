@@ -52,6 +52,7 @@ use is_by_pro::{
   AD_ADMIN_UID,
   AD_ADMIN_USER,
   AES256_KEY_ENV,
+  VAPID_ENV,
 };
 
 use actix_cors::Cors;
@@ -108,6 +109,7 @@ async fn main() -> std::io::Result<()> {
   let _ = dotenvy::from_path(MYSQL_ENV);
   let _ = dotenvy::from_path(PAYPAL_ENV);
   let _ = dotenvy::from_path(AES256_KEY_ENV);
+  let _ = dotenvy::from_path(VAPID_ENV);
 
   let key_str = std::env::var("AES256_KEY").expect("Missing AES256_KEY in environment file or shell");
   let mut key_bytes = [0u8; 32];
@@ -146,6 +148,10 @@ async fn main() -> std::io::Result<()> {
       .expect("Missing GITHUB_CLIENT_SECRET in environment file or shell"),
     sse_sender,
     redis_pool,
+    vapid_public_key: std::env::var("VAPID_PUBLIC_KEY")
+      .expect("Missing VAPID_PUBLIC_KEY in environment file or shell"),
+    vapid_private_key: std::env::var("VAPID_PRIVATE_KEY")
+      .expect("Missing VAPID_PRIVATE_KEY in environment file or shell"),
   };
 
   let http_server = HttpServer::new(|| {
@@ -242,6 +248,8 @@ async fn main() -> std::io::Result<()> {
       .service(get_commander_badge)
       .service(follow_user)
       .service(unfollow_user)
+      .service(get_vapid_public_key)
+      .service(subscribe_push)
       .service(block_user)
       .service(unblock_user)
       .service(get_war_room_posts_page)

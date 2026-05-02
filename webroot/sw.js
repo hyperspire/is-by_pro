@@ -74,3 +74,43 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
+self.addEventListener('push', (event) => {
+  if (event.data) {
+    try {
+      const data = event.data.json();
+      const title = data.title || 'New Notification';
+      const options = {
+        body: data.body || '',
+        icon: '/images/is-by_app_icon-192.png',
+        badge: '/images/is-by_app_icon-192.png',
+        vibrate: [200, 100, 200],
+        data: {
+          url: data.url || '/'
+        }
+      };
+
+      event.waitUntil(self.registration.showNotification(title, options));
+    } catch (e) {
+      console.error('Push event payload parsing failed:', e);
+    }
+  }
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  if (event.notification.data && event.notification.data.url) {
+    event.waitUntil(
+      clients.matchAll({ type: 'window' }).then((clientList) => {
+        for (const client of clientList) {
+          if (client.url.includes(event.notification.data.url) && 'focus' in client) {
+            return client.focus();
+          }
+        }
+        if (clients.openWindow) {
+          return clients.openWindow(event.notification.data.url);
+        }
+      })
+    );
+  }
+});

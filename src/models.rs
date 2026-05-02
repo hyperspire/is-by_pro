@@ -17,6 +17,8 @@ pub struct AppState {
   pub github_client_secret: String,
   pub sse_sender: tokio::sync::broadcast::Sender<SseEvent>,
   pub redis_pool: redis::aio::ConnectionManager,
+  pub vapid_public_key: String,
+  pub vapid_private_key: String,
 }
 
 #[derive(sqlx::FromRow)]
@@ -356,6 +358,25 @@ pub struct PayPalReturnQuery {
   pub token: Option<String>,
   pub subscription_id: Option<String>,
   pub ba_token: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct PushKeys {
+  pub p256dh: String,
+  pub auth: String,
+}
+
+#[derive(Deserialize)]
+pub struct PushSubscriptionRequest {
+  pub endpoint: String,
+  pub keys: PushKeys,
+}
+
+#[derive(sqlx::FromRow)]
+pub struct PushSubscriptionRow {
+  pub endpoint: String,
+  pub p256dh: String,
+  pub auth: String,
 }
 
 #[derive(Deserialize)]

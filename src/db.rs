@@ -161,6 +161,12 @@ pub async fn ensure_database_schema(pool: &MySqlPool) -> Result<(), sqlx::Error>
   .execute(pool)
   .await?;
 
+  sqlx::query(
+    "CREATE TABLE IF NOT EXISTS push_subscriptions (id BIGINT PRIMARY KEY AUTO_INCREMENT, ib_uid BIGINT NOT NULL, endpoint VARCHAR(1024) NOT NULL, p256dh VARCHAR(255) NOT NULL, auth VARCHAR(255) NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY uniq_push_sub (ib_uid, endpoint(255)), INDEX idx_push_sub_uid (ib_uid))",
+  )
+  .execute(pool)
+  .await?;
+
   // Add reinforcements columns if they don't exist
   let _ = sqlx::query(
     "ALTER TABLE project_profile ADD COLUMN reinforcements VARCHAR(9999) DEFAULT NULL",

@@ -13,3 +13,4 @@ pub const MYSQL_DATABASE: &str = "isby";
 pub const AD_ADMIN_UID: i64 = 138945726;
 pub const AD_ADMIN_USER: &str = "QWOD";
 pub const AES256_KEY_ENV: &str = ".env/AES256_KEY.env";
+pub const VAPID_ENV: &str = ".env/VAPID.env";
