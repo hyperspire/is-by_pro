@@ -5363,6 +5363,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
     static ref THEME_SET: ThemeSet = ThemeSet::load_defaults();
     static ref MENTION_TAG_REGEX: Regex = Regex::new(r"([#@][\w_]+)").unwrap();
     static ref GITHUB_URL_REGEX: Regex = Regex::new(r"https://github\.com/([\w\-\.]+)/([\w\-\.]+)").unwrap();
+    static ref GENERAL_URL_REGEX: Regex = Regex::new(r"https?://[^\s<]+").unwrap();
   }
 
   let mut options = Options::all();
@@ -5373,6 +5374,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
   let mut code_language = String::new();
   let mut code_content = String::new();
   let mut skip_link_content = false;
+  let mut in_link = false;
   let mut current_link_html = String::new();
 
   let mut new_events = Vec::new();
@@ -5418,6 +5420,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
         code_content.push_str(&text);
       }
       Event::Start(Tag::Link { link_type, dest_url, title, id }) => {
+        in_link = true;
         let dest_str = dest_url.to_string();
         if let Some(video_id) = extract_youtube_video_id(&dest_str) {
             skip_link_content = true;
@@ -5442,6 +5445,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
         }
       }
       Event::End(TagEnd::Link) => {
+        in_link = false;
         if skip_link_content {
             skip_link_content = false;
             new_events.push(Event::Html(std::mem::take(&mut current_link_html).into()));
@@ -5453,68 +5457,105 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
           // Skip text inside intercepted links
       }
       Event::Text(text) => {
-          let process_mentions_in_chunk = |chunk: &str, ib_uid: i64, ib_user: &str, new_events: &mut Vec<_>| {
-              let mut last = 0;
-              for cap in MENTION_TAG_REGEX.captures_iter(chunk) {
-                  let m = cap.get(1).unwrap();
-                  if m.start() > last {
-                      new_events.push(Event::Text(chunk[last..m.start()].to_string().into()));
+          if in_link {
+              new_events.push(Event::Text(text));
+          } else {
+              let process_mentions_in_chunk = |chunk: &str, ib_uid: i64, ib_user: &str, new_events: &mut Vec<_>| {
+                  let mut last = 0;
+                  for cap in MENTION_TAG_REGEX.captures_iter(chunk) {
+                      let m = cap.get(1).unwrap();
+                      if m.start() > last {
+                          new_events.push(Event::Text(chunk[last..m.start()].to_string().into()));
+                      }
+                      
+                      let token_value = m.as_str();
+                      let prefix = &token_value[0..1];
+                      let value = &token_value[1..];
+                      
+                      let href = if prefix == "#" {
+                          format!(
+                              "https://{}/v1/searchposts?ib_uid={}&ib_user={}&tag=%23{}",
+                              DOMAIN,
+                              ib_uid,
+                              crate::url_encode_component(ib_user),
+                              crate::url_encode_component(token_value)
+                          )
+                      } else {
+                          format!(
+                              "https://{}/v1/profile/{}",
+                              DOMAIN,
+                              crate::url_encode_component(value)
+                          )
+                      };
+
+                      let class_name = if prefix == "#" { "post-tag" } else { "post-mention" };
+                      let link_html = format!(
+                          r#"<a class="{class_name}" href="{href}">{token}</a>"#,
+                          class_name = class_name,
+                          href = href,
+                          token = escape_html(token_value)
+                      );
+                      new_events.push(Event::Html(link_html.into()));
+                      
+                      last = m.end();
+                  }
+                  if last < chunk.len() {
+                      new_events.push(Event::Text(chunk[last..].to_string().into()));
+                  }
+              };
+
+              let process_urls_and_mentions = |chunk: &str, ib_uid: i64, ib_user: &str, new_events: &mut Vec<_>| {
+                  let mut last = 0;
+                  for cap in GENERAL_URL_REGEX.captures_iter(chunk) {
+                      let m = cap.get(0).unwrap();
+                      if m.start() > last {
+                          process_mentions_in_chunk(&chunk[last..m.start()], ib_uid, ib_user, new_events);
+                      }
+                      
+                      let mut url = m.as_str();
+                      let mut trailing_len = 0;
+                      for c in url.chars().rev() {
+                          if ['.', ',', '!', '?', ';', ':', ')', ']', '}'].contains(&c) {
+                              trailing_len += c.len_utf8();
+                          } else {
+                              break;
+                          }
+                      }
+                      let trailing = &url[url.len() - trailing_len..];
+                      url = &url[..url.len() - trailing_len];
+                      
+                      let link_html = format!(r#"<a class="post-link" href="{url}" target="_blank" rel="noopener">{url}</a>"#, url=escape_html(url));
+                      new_events.push(Event::Html(link_html.into()));
+                      if trailing_len > 0 {
+                          new_events.push(Event::Text(trailing.to_string().into()));
+                      }
+                      
+                      last = m.end();
+                  }
+                  if last < chunk.len() {
+                      process_mentions_in_chunk(&chunk[last..], ib_uid, ib_user, new_events);
+                  }
+              };
+
+              let mut last_gh = 0;
+              for gh_cap in GITHUB_URL_REGEX.captures_iter(&text) {
+                  let gh_m = gh_cap.get(0).unwrap();
+                  if gh_m.start() > last_gh {
+                      let chunk = &text[last_gh..gh_m.start()];
+                      process_urls_and_mentions(chunk, ib_uid, ib_user, &mut new_events);
                   }
                   
-                  let token_value = m.as_str();
-                  let prefix = &token_value[0..1];
-                  let value = &token_value[1..];
-                  
-                  let href = if prefix == "#" {
-                      format!(
-                          "https://{}/v1/searchposts?ib_uid={}&ib_user={}&tag=%23{}",
-                          DOMAIN,
-                          ib_uid,
-                          crate::url_encode_component(ib_user),
-                          crate::url_encode_component(token_value)
-                      )
-                  } else {
-                      format!(
-                          "https://{}/v1/profile/{}",
-                          DOMAIN,
-                          crate::url_encode_component(value)
-                      )
-                  };
-
-                  let class_name = if prefix == "#" { "post-tag" } else { "post-mention" };
-                  let link_html = format!(
-                      r#"<a class="{class_name}" href="{href}">{token}</a>"#,
-                      class_name = class_name,
-                      href = href,
-                      token = escape_html(token_value)
-                  );
+                  let owner = gh_cap.get(1).unwrap().as_str();
+                  let repo = gh_cap.get(2).unwrap().as_str();
+                  let repo_str = format!("{}/{}", owner, repo);
+                  let link_html = format!(r#"<div class="github-repo-card" data-repo="{}"></div>"#, escape_html(&repo_str));
                   new_events.push(Event::Html(link_html.into()));
                   
-                  last = m.end();
+                  last_gh = gh_m.end();
               }
-              if last < chunk.len() {
-                  new_events.push(Event::Text(chunk[last..].to_string().into()));
+              if last_gh < text.len() {
+                  process_urls_and_mentions(&text[last_gh..], ib_uid, ib_user, &mut new_events);
               }
-          };
-
-          let mut last_gh = 0;
-          for gh_cap in GITHUB_URL_REGEX.captures_iter(&text) {
-              let gh_m = gh_cap.get(0).unwrap();
-              if gh_m.start() > last_gh {
-                  let chunk = &text[last_gh..gh_m.start()];
-                  process_mentions_in_chunk(chunk, ib_uid, ib_user, &mut new_events);
-              }
-              
-              let owner = gh_cap.get(1).unwrap().as_str();
-              let repo = gh_cap.get(2).unwrap().as_str();
-              let repo_str = format!("{}/{}", owner, repo);
-              let link_html = format!(r#"<div class="github-repo-card" data-repo="{}"></div>"#, escape_html(&repo_str));
-              new_events.push(Event::Html(link_html.into()));
-              
-              last_gh = gh_m.end();
-          }
-          if last_gh < text.len() {
-              process_mentions_in_chunk(&text[last_gh..], ib_uid, ib_user, &mut new_events);
           }
       }
       Event::Html(html) => {
