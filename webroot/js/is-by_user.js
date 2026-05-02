@@ -824,7 +824,7 @@ function characterCounter(counter) {
 
   textFieldPost.addEventListener('input', (event) => {
     const charCountPost = event.target.value.length;
-    charCountDiv.textContent = charCountPost + '/1024';
+    charCountDiv.textContent = charCountPost + '/4096';
     if (charCountPost > 1000) {
       charCountDiv.style.color = 'red';
     } else {
@@ -833,7 +833,7 @@ function characterCounter(counter) {
   });
 
   textFieldPost.addEventListener('focus', () => {
-    charCountDiv.textContent = '0/1024';
+    charCountDiv.textContent = '0/4096';
   });
 }
 
