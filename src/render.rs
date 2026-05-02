@@ -5480,7 +5480,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
                               DOMAIN,
                               ib_uid,
                               crate::url_encode_component(ib_user),
-                              crate::url_encode_component(token_value)
+                              crate::url_encode_component(value)
                           )
                       } else {
                           format!(
