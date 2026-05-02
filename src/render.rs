@@ -5515,17 +5515,9 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
           }
       }
       Event::Html(html) => {
-          let syntax = SYNTAX_SET.find_syntax_by_token("html")
-              .unwrap_or_else(|| SYNTAX_SET.find_syntax_plain_text());
-          let highlighted = match highlighted_html_for_string(&html, &SYNTAX_SET, syntax, &THEME_SET.themes["base16-ocean.dark"]) {
-              Ok(mut h) => {
-                  if let Some(idx) = h.find('>') { h.insert_str(idx + 1, "<code>"); }
-                  if let Some(idx) = h.rfind("</pre>") { h.insert_str(idx, "</code>"); }
-                  h
-              },
-              Err(_) => format!("<pre><code>{}</code></pre>", crate::utils::escape_html(&html)),
-          };
-          new_events.push(Event::Html(highlighted.into()));
+          let escaped = crate::utils::escape_html(&html).replace("\n", "<br>");
+          let formatted = format!("<span style=\"font-family: monospace; color: #AFAFAF;\">{}</span>", escaped);
+          new_events.push(Event::Html(formatted.into()));
       }
       Event::InlineHtml(html) => {
           new_events.push(Event::Text(html));
