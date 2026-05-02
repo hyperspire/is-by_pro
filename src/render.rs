@@ -259,7 +259,9 @@ pub async fn render_advert_html(state: &AppState) -> String {
   .await;
 
   format!(
-    r#"<a href="https://{DOMAIN}/v1/ad/click/{imageid}"><img src="{imagepath}" width="400" height="111" alt="{imageid}"></a>"#,
+    r#"<div class="sponsor-content">
+      <a href="https://{DOMAIN}/v1/ad/click/{imageid}"><img src="{imagepath}" width="400" height="111" alt="{imageid}"></a>
+    </div>"#,
     imageid = ad_row.imageid,
     imagepath = escape_html(&ad_row.imagepath),
   )
