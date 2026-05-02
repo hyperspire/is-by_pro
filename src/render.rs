@@ -5365,7 +5365,8 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
     static ref GITHUB_URL_REGEX: Regex = Regex::new(r"https://github\.com/([\w\-\.]+)/([\w\-\.]+)").unwrap();
   }
 
-  let options = Options::all();
+  let mut options = Options::all();
+  options.remove(Options::ENABLE_WIKILINKS);
   let parser = Parser::new_ext(raw_text, options);
 
   let mut in_code_block = false;
