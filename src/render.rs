@@ -4,6 +4,11 @@ use actix_web::{HttpRequest, HttpResponse};
 use std::collections::HashSet;
 use tera::Context;
 use crate::DOMAIN;
+use pulldown_cmark::{Parser, Event, Tag, TagEnd, Options, CodeBlockKind};
+use syntect::parsing::SyntaxSet;
+use syntect::highlighting::ThemeSet;
+use syntect::html::highlighted_html_for_string;
+use regex::Regex;
 
 pub async fn render_related_userlist_html(
   state: &AppState,
@@ -2120,7 +2125,7 @@ pub async fn render_projects_html(
             ib_user = escape_html(ib_user),
             project_id = row.id,
             project = escape_html(&row.project),
-            description = escape_html(&row.description),
+            description = render_post_with_hashtags(&row.description, ib_uid, ib_user),
             languages = escape_html(&row.languages),
             reinforcements = escape_html(row.reinforcements.as_deref().unwrap_or("")),
             reinforcements_request_checked = if row.reinforcements_request == Some(true) { "checked" } else { "" }
@@ -2533,7 +2538,7 @@ pub async fn render_projects_mobile_html(
             ib_user = escape_html(ib_user),
             project_id = row.id,
             project = escape_html(&row.project),
-            description = escape_html(&row.description),
+            description = render_post_with_hashtags(&row.description, ib_uid, ib_user),
             languages = escape_html(&row.languages),
             reinforcements = escape_html(row.reinforcements.as_deref().unwrap_or("")),
             reinforcements_request_checked = if row.reinforcements_request == Some(true) { "checked" } else { "" }
@@ -5106,6 +5111,20 @@ pub async fn render_show_post_response(
   }
 }
 
+fn extract_github_repo(url: &str) -> Option<String> {
+  if url.starts_with("https://github.com/") {
+      let parts: Vec<&str> = url.trim_start_matches("https://github.com/").split('/').collect();
+      if parts.len() >= 2 {
+          let owner = parts[0];
+          let repo = parts[1];
+          if !owner.is_empty() && !repo.is_empty() {
+              return Some(format!("{}/{}", owner, repo));
+          }
+      }
+  }
+  None
+}
+
 fn extract_youtube_video_id(url: &str) -> Option<String> {
   if let Some(pos) = url.find("youtube.com/watch?v=") {
     let start = pos + "youtube.com/watch?v=".len();
@@ -5337,125 +5356,135 @@ pub fn extract_meta_tags_from_post(raw_text: &str) -> String {
 }
 
 pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> String {
-  let mut rendered = String::new();
-  let chars: Vec<(usize, char)> = raw_text.char_indices().collect();
-  let mut cursor = 0usize;
-  let mut index = 0usize;
+  lazy_static::lazy_static! {
+    static ref SYNTAX_SET: SyntaxSet = SyntaxSet::load_defaults_newlines();
+    static ref THEME_SET: ThemeSet = ThemeSet::load_defaults();
+    static ref MENTION_TAG_REGEX: Regex = Regex::new(r"([#@][\w_]+)").unwrap();
+  }
 
-  while index < chars.len() {
-    let (byte_pos, ch) = chars[index];
-    let previous_is_token_char = index > 0
-      && (chars[index - 1].1.is_ascii_alphanumeric() || chars[index - 1].1 == '_');
-    let scheme_url_start = raw_text[byte_pos..].starts_with("http://") || raw_text[byte_pos..].starts_with("https://");
-    let www_url_start = !previous_is_token_char && raw_text[byte_pos..].starts_with("www.");
+  let options = Options::all();
+  let parser = Parser::new_ext(raw_text, options);
 
-    if scheme_url_start || www_url_start {
-      let mut url_end_index = index;
+  let mut in_code_block = false;
+  let mut code_language = String::new();
+  let mut code_content = String::new();
+  let mut skip_link_content = false;
+  let mut current_link_html = String::new();
 
-      while url_end_index < chars.len() && !chars[url_end_index].1.is_whitespace() {
-        url_end_index += 1;
+  let mut new_events = Vec::new();
+
+  for event in parser {
+    match event {
+      Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(lang))) => {
+        in_code_block = true;
+        code_language = lang.to_string();
       }
-
-      rendered.push_str(&escape_html(&raw_text[cursor..byte_pos]));
-
-      let url_end_byte = if url_end_index < chars.len() {
-        chars[url_end_index].0
-      } else {
-        raw_text.len()
-      };
-
-      let raw_url = &raw_text[byte_pos..url_end_byte];
-      let (trimmed_url, trailing_punctuation) = trim_trailing_url_punctuation(raw_url);
-      let href = if www_url_start {
-        format!("https://{}", trimmed_url)
-      } else {
-        trimmed_url.to_string()
-      };
-
-      if let Some(video_id) = extract_youtube_video_id(&href) {
-        rendered.push_str(&format!(
-          r#"<div class="youtube-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><div class="youtube-preview-container" style="width:100%; max-width:560px; margin: 0 auto; display: block; position: relative; overflow: hidden; padding-bottom: 56.25%; height: 0; border-radius: 8px;"><iframe src="https://www.youtube.com/embed/{video_id}" title="YouTube video player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen width="100%" height="100%" style="border:0; position:absolute; top:0; left:0; width:100%; height:100%;"></iframe></div></div>"#,
-          video_id = escape_html(&video_id)
-        ));
-      } else if let Some(imgur_html) = extract_imgur_info(&href) {
-        rendered.push_str(&imgur_html);
-      } else if let Some(rumble_html) = extract_rumble_info(&href) {
-        rendered.push_str(&rumble_html);
-      } else if let Some(is_by_html) = extract_is_by_info(&href) {
-        rendered.push_str(&is_by_html);
-      } else {
-        rendered.push_str(&format!(
-          r#"<a class="post-link" href="{href}" target="_blank" rel="noopener">{label}</a>"#,
-          href = escape_html(&href),
-          label = escape_html(trimmed_url)
-        ));
+      Event::Start(Tag::CodeBlock(CodeBlockKind::Indented)) => {
+        in_code_block = true;
+        code_language = String::new();
       }
-      rendered.push_str(&escape_html(trailing_punctuation));
-
-      cursor = url_end_byte;
-      index = url_end_index;
-      continue;
-    }
-
-    if (ch == '#' || ch == '@') && !previous_is_token_char {
-      let mut token_end_index = index + 1;
-
-      while token_end_index < chars.len() {
-        let next_char = chars[token_end_index].1;
-        if next_char.is_ascii_alphanumeric() || next_char == '_' {
-          token_end_index += 1;
+      Event::End(TagEnd::CodeBlock) => {
+        in_code_block = false;
+        let syntax = SYNTAX_SET.find_syntax_by_token(&code_language)
+            .unwrap_or_else(|| SYNTAX_SET.find_syntax_plain_text());
+        let html = match highlighted_html_for_string(&code_content, &SYNTAX_SET, syntax, &THEME_SET.themes["base16-ocean.dark"]) {
+            Ok(h) => h,
+            Err(_) => format!("<pre><code>{}</code></pre>", escape_html(&code_content)),
+        };
+        code_content.clear();
+        new_events.push(Event::Html(html.into()));
+      }
+      Event::Text(text) if in_code_block => {
+        code_content.push_str(&text);
+      }
+      Event::Start(Tag::Link { link_type, dest_url, title, id }) => {
+        let dest_str = dest_url.to_string();
+        if let Some(video_id) = extract_youtube_video_id(&dest_str) {
+            skip_link_content = true;
+            current_link_html = format!(
+                r#"<div class="youtube-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><div class="youtube-preview-container" style="width:100%; max-width:560px; margin: 0 auto; display: block; position: relative; overflow: hidden; padding-bottom: 56.25%; height: 0; border-radius: 8px;"><iframe src="https://www.youtube.com/embed/{video_id}" title="YouTube video player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen width="100%" height="100%" style="border:0; position:absolute; top:0; left:0; width:100%; height:100%;"></iframe></div></div>"#,
+                video_id = escape_html(&video_id)
+            );
+        } else if let Some(imgur_html) = extract_imgur_info(&dest_str) {
+            skip_link_content = true;
+            current_link_html = imgur_html;
+        } else if let Some(rumble_html) = extract_rumble_info(&dest_str) {
+            skip_link_content = true;
+            current_link_html = rumble_html;
+        } else if let Some(is_by_html) = extract_is_by_info(&dest_str) {
+            skip_link_content = true;
+            current_link_html = is_by_html;
+        } else if let Some(repo) = extract_github_repo(&dest_str) {
+            skip_link_content = true;
+            current_link_html = format!(r#"<div class="github-repo-card" data-repo="{}"></div>"#, escape_html(&repo));
         } else {
-          break;
+            new_events.push(Event::Start(Tag::Link { link_type, dest_url, title, id }));
         }
       }
-
-      if token_end_index > index + 1 {
-        rendered.push_str(&escape_html(&raw_text[cursor..byte_pos]));
-
-        let token_start_byte = byte_pos + ch.len_utf8();
-        let token_end_byte = if token_end_index < chars.len() {
-          chars[token_end_index].0
+      Event::End(TagEnd::Link) => {
+        if skip_link_content {
+            skip_link_content = false;
+            new_events.push(Event::Html(std::mem::take(&mut current_link_html).into()));
         } else {
-          raw_text.len()
-        };
+            new_events.push(Event::End(TagEnd::Link));
+        }
+      }
+      Event::Text(_text) if skip_link_content => {
+          // Skip text inside intercepted links
+      }
+      Event::Text(text) => {
+          let mut last = 0;
+          for cap in MENTION_TAG_REGEX.captures_iter(&text) {
+              let m = cap.get(1).unwrap();
+              if m.start() > last {
+                  new_events.push(Event::Text(text[last..m.start()].to_string().into()));
+              }
+              
+              let token_value = m.as_str();
+              let prefix = &token_value[0..1];
+              let value = &token_value[1..];
+              
+              let href = if prefix == "#" {
+                  format!(
+                      "https://{}/v1/searchposts?ib_uid={}&ib_user={}&tag=%23{}",
+                      DOMAIN,
+                      ib_uid,
+                      crate::url_encode_component(ib_user),
+                      crate::url_encode_component(token_value)
+                  )
+              } else {
+                  format!(
+                      "https://{}/v1/profile/{}",
+                      DOMAIN,
+                      crate::url_encode_component(value)
+                  )
+              };
 
-        let token_value = &raw_text[token_start_byte..token_end_byte];
-        let href = if ch == '#' {
-          format!(
-            "https://{DOMAIN}/v1/searchposts?ib_uid={ib_uid}&ib_user={ib_user}&tag=%23{tag}",
-            ib_uid = ib_uid,
-            ib_user = url_encode_component(ib_user),
-            tag = url_encode_component(token_value)
-          )
-        } else {
-          format!(
-            "https://{DOMAIN}/v1/profile/{username}",
-            username = url_encode_component(token_value)
-          )
-        };
-
-        let class_name = if ch == '#' { "post-tag" } else { "post-mention" };
-        rendered.push_str(&format!(
-          r#"<a class="{class_name}" href="{href}">{prefix}{token}</a>"#,
-          class_name = class_name,
-          href = href,
-          prefix = ch,
-          token = escape_html(token_value)
-        ));
-
-        cursor = token_end_byte;
-        index = token_end_index;
-        continue;
+              let class_name = if prefix == "#" { "post-tag" } else { "post-mention" };
+              let link_html = format!(
+                  r#"<a class="{class_name}" href="{href}">{token}</a>"#,
+                  class_name = class_name,
+                  href = href,
+                  token = escape_html(token_value)
+              );
+              new_events.push(Event::Html(link_html.into()));
+              
+              last = m.end();
+          }
+          if last < text.len() {
+              new_events.push(Event::Text(text[last..].to_string().into()));
+          }
+      }
+      e => {
+        if !skip_link_content && !in_code_block {
+            new_events.push(e);
+        }
       }
     }
-
-    index += 1;
   }
 
-  if cursor < raw_text.len() {
-    rendered.push_str(&escape_html(&raw_text[cursor..]));
-  }
-
+  let mut rendered = String::new();
+  pulldown_cmark::html::push_html(&mut rendered, new_events.into_iter());
   rendered
 }
 

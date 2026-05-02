@@ -2261,13 +2261,9 @@ pub async fn send_direct_message(
         tokio::spawn(async move {
           use web_push::{IsahcWebPushClient, WebPushClient, WebPushMessageBuilder, SubscriptionInfo, VapidSignatureBuilder, ContentEncoding};
 
-          use std::io::Write;
-          let mut log_file = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/push_log.txt").unwrap();
-          writeln!(log_file, "Started push task").unwrap();
           let client = match IsahcWebPushClient::new() {
             Ok(c) => c,
             Err(e) => {
-              writeln!(log_file, "Failed to create IsahcWebPushClient: {}", e).unwrap();
               eprintln!("Failed to create IsahcWebPushClient: {}", e);
               return;
             }
@@ -2309,15 +2305,10 @@ pub async fn send_direct_message(
               }
             };
 
-            writeln!(log_file, "Sending push to endpoint: {}", sub.endpoint).unwrap();
             if let Err(e) = client.send(message).await {
-              writeln!(log_file, "Failed to send web push: {}", e).unwrap();
               eprintln!("Failed to send web push: {}", e);
-            } else {
-              writeln!(log_file, "Successfully sent web push!").unwrap();
             }
           }
-          writeln!(log_file, "Finished push task").unwrap();
         });
       }
 
@@ -2790,4 +2781,63 @@ pub async fn subscribe_push(
       HttpResponse::InternalServerError().json(json!({"success": false, "message": "Database error"}))
     }
   }
+}
+
+
+#[derive(serde::Deserialize)]
+pub struct GithubRepoQuery {
+    pub owner: String,
+    pub repo: String,
+}
+
+#[get("/v1/github/repo")]
+pub async fn get_github_repo_info(
+    query: web::Query<GithubRepoQuery>,
+    state: web::Data<crate::AppState>,
+) -> impl Responder {
+    let cache_key = format!("cache:github_repo:{}:{}", query.owner, query.repo);
+    
+    if let Some(cached_data) = crate::utils::get_cache(&state.redis_pool, &cache_key).await {
+        return HttpResponse::Ok()
+            .content_type("application/json")
+            .body(cached_data);
+    }
+
+    let url = format!("https://api.github.com/repos/{}/{}", query.owner, query.repo);
+    let client = reqwest::Client::new();
+    
+    match client
+        .get(&url)
+        .header("User-Agent", "is-by-pro")
+        .send()
+        .await
+    {
+        Ok(response) => {
+            if response.status().is_success() {
+                if let Ok(json_val) = response.json::<serde_json::Value>().await {
+                    let mut info = json!({});
+                    info["name"] = json_val["name"].clone();
+                    info["description"] = json_val["description"].clone();
+                    info["stargazers_count"] = json_val["stargazers_count"].clone();
+                    info["forks_count"] = json_val["forks_count"].clone();
+                    info["language"] = json_val["language"].clone();
+                    info["owner_avatar_url"] = json_val["owner"]["avatar_url"].clone();
+
+                    let response_json = info.to_string();
+                    crate::utils::set_cache(&state.redis_pool, &cache_key, &response_json, 3600).await;
+                    
+                    HttpResponse::Ok()
+                        .content_type("application/json")
+                        .body(response_json)
+                } else {
+                    HttpResponse::InternalServerError().body("Failed to parse GitHub response")
+                }
+            } else if response.status() == 404 {
+                HttpResponse::NotFound().body("Repository not found")
+            } else {
+                HttpResponse::InternalServerError().body("GitHub API request failed")
+            }
+        }
+        Err(_) => HttpResponse::InternalServerError().body("Failed to connect to GitHub"),
+    }
 }

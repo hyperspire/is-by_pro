@@ -249,6 +249,7 @@ async fn main() -> std::io::Result<()> {
       .service(follow_user)
       .service(unfollow_user)
       .service(get_vapid_public_key)
+      .service(get_github_repo_info)
       .service(subscribe_push)
       .service(block_user)
       .service(unblock_user)

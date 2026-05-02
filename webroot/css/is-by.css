@@ -1180,3 +1180,74 @@ a:hover {
 #ads-dashboard .post input[type=text] {
     width: calc(100% - 16px);
 }
+/* GitHub Repository Card Styles */
+.github-repo-card {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 16px;
+    margin: 10px 0;
+    background-color: var(--card-bg-color, #1e1e24);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 500px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+}
+
+.github-repo-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.github-repo-card-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+}
+
+.github-repo-card-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--highlight-color);
+    text-decoration: none;
+    word-break: break-all;
+}
+
+.github-repo-card-title:hover {
+    text-decoration: underline;
+}
+
+.github-repo-card-description {
+    font-size: 14px;
+    color: var(--text-color-secondary, #8b949e);
+    margin: 0;
+}
+
+.github-repo-card-stats {
+    display: flex;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--text-color-secondary, #8b949e);
+    align-items: center;
+}
+
+.github-repo-card-stat {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Syntax Highlighting Base Styles */
+pre {
+    background-color: #1e1e1e;
+    padding: 16px;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 10px 0;
+}
+code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
