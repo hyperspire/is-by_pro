@@ -364,7 +364,62 @@ pub async fn render_profile_html(
     .map(|username| !show_unfollow && !username.eq_ignore_ascii_case(&viewed_username))
     .unwrap_or(false);
 
-  let follow_form_html = if show_follow {
+  let is_blocking = if let Some(uid) = session_uid {
+    sqlx::query_scalar::<_, i64>("SELECT 1 FROM user_blocks WHERE blocker_uid = ? AND blocked_uid = ? LIMIT 1")
+      .bind(uid)
+      .bind(ib_uid)
+      .fetch_optional(&state.db_pool)
+      .await
+      .unwrap_or(None)
+      .is_some()
+  } else {
+    false
+  };
+
+  let is_blocked_by_them = if let Some(uid) = session_uid {
+    sqlx::query_scalar::<_, i64>("SELECT 1 FROM user_blocks WHERE blocker_uid = ? AND blocked_uid = ? LIMIT 1")
+      .bind(ib_uid)
+      .bind(uid)
+      .fetch_optional(&state.db_pool)
+      .await
+      .unwrap_or(None)
+      .is_some()
+  } else {
+    false
+  };
+
+  let is_blocked = is_blocking || is_blocked_by_them;
+
+  let show_edit_profile_link = session_username
+    .as_ref()
+    .map(|username| username.eq_ignore_ascii_case(&viewed_username))
+    .unwrap_or(false);
+
+  let block_form_html = if session_uid.is_some() && !show_edit_profile_link && !is_blocking {
+    format!(
+      r#"<form id="block-form" action="https://{DOMAIN}/v1/block" method="POST">
+        <input type="hidden" name="target_user" value="{target_user}">
+        <input class="post-cancel" type="submit" value="Block">
+      </form>"#,
+      target_user = escape_html(&viewed_username)
+    )
+  } else {
+    String::new()
+  };
+
+  let unblock_form_html = if session_uid.is_some() && !show_edit_profile_link && is_blocking {
+    format!(
+      r#"<form id="unblock-form" action="https://{DOMAIN}/v1/unblock" method="POST">
+        <input type="hidden" name="target_user" value="{target_user}">
+        <input class="post-submit" type="submit" value="Unblock">
+      </form>"#,
+      target_user = escape_html(&viewed_username)
+    )
+  } else {
+    String::new()
+  };
+
+  let follow_form_html = if show_follow && !is_blocked {
     format!(
       r#"<form id="follow-form" action="https://{DOMAIN}/v1/follow" method="POST">
         <input type="hidden" name="target_user" value="{target_user}">
@@ -389,12 +444,16 @@ pub async fn render_profile_html(
   };
   
   let follow_section_html = &format!(
-      r#"<div id="follow-section">
+      r#"<div id="follow-section" style="display:flex; gap:10px; align-items:center;">
       {follow_form_html}
       {unfollow_form_html}
+      {block_form_html}
+      {unblock_form_html}
     </div>"#,
       follow_form_html = follow_form_html,
-      unfollow_form_html = unfollow_form_html
+      unfollow_form_html = unfollow_form_html,
+      block_form_html = block_form_html,
+      unblock_form_html = unblock_form_html
     );
 
   let show_edit_profile_link = session_username
@@ -430,108 +489,116 @@ pub async fn render_profile_html(
 
   if let Ok(ib_pro) = ib_pro_result {
 
-  let ib_post_results_length: i64 = sqlx::query_scalar(
-      "SELECT COUNT(*) FROM post WHERE post.ib_uid = ? AND (post.parentid = \"\" OR post.parentid IS NULL)"
+  let selected_user_posts_section = if is_blocked {
+    format!(
+      r#"<div id="selected-user-posts-section" data-ib-uid="{ib_uid}" data-ib-user="{ib_user_escaped}"><br><div class="notice"><p><em>This user is unavailable.</em></p></div></div>"#,
+      ib_uid = ib_uid,
+      ib_user_escaped = escape_html(ib_user),
     )
-    .bind(ib_uid)
-    .fetch_one(&state.db_pool)
-    .await
-    .unwrap_or(0);
+  } else {
+    let ib_post_results_length: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM post WHERE post.ib_uid = ? AND (post.parentid = \"\" OR post.parentid IS NULL)"
+      )
+      .bind(ib_uid)
+      .fetch_one(&state.db_pool)
+      .await
+      .unwrap_or(0);
 
-  let ib_post_results = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = \"\" OR post.parentid IS NULL) ORDER BY (post.postid = user.pinned_postid) DESC, post.timestamp DESC LIMIT 21"
-    )
-    .bind(ib_uid)
-    .fetch_all(&state.db_pool)
-    .await
-    .map_err(|e| format!("Post query failed: {}", e))?;
+    let ib_post_results = sqlx::query_as::<_, PostRow>(
+        "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = \"\" OR post.parentid IS NULL) ORDER BY (post.postid = user.pinned_postid) DESC, post.timestamp DESC LIMIT 21"
+      )
+      .bind(ib_uid)
+      .fetch_all(&state.db_pool)
+      .await
+      .map_err(|e| format!("Post query failed: {}", e))?;
 
-  let profile_has_more = ib_post_results.len() > 20;
-  let display_rows = &ib_post_results[..ib_post_results.len().min(20)];
+    let profile_has_more = ib_post_results.len() > 20;
+    let display_rows = &ib_post_results[..ib_post_results.len().min(20)];
 
-  let mut selected_user_posts_response_content = format!(
-    r#"<br><div class="notice"><p><em>:[[ :for-the: [[ posts: is-by: {ib_post_results_length}: is-with: showing-latest-results: ]]:</em></p></div>"#,
-    ib_post_results_length = ib_post_results_length,
-  );
+    let mut selected_user_posts_response_content = format!(
+      r#"<br><div class="notice"><p><em>:[[ :for-the: [[ posts: is-by: {ib_post_results_length}: is-with: showing-latest-results: ]]:</em></p></div>"#,
+      ib_post_results_length = ib_post_results_length,
+    );
 
-  let displayed_post_ids: Vec<String> = display_rows
-    .iter()
-    .map(|row| row.postid.clone())
-    .collect();
-  let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &displayed_post_ids).await;
+    let displayed_post_ids: Vec<String> = display_rows
+      .iter()
+      .map(|row| row.postid.clone())
+      .collect();
+    let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &displayed_post_ids).await;
 
-  for row in display_rows.iter() {
-    let row_owner_uid = row.ib_uid.parse::<i64>().ok();
-    let can_manage_post = session_uid.is_some() && session_uid == row_owner_uid;
-    let manage_actions = if can_manage_post {
-      format!(
-        r#"<form class="delete-post-form" action="https://{DOMAIN}/v1/deletepost" method="POST">
-            <input type="hidden" name="ib_uid" value="{ib_uid}">
-            <input type="hidden" name="ib_user" value="{ib_user}">
-            <input type="hidden" name="pid" value="{ib_post_id}">
-          </form>
-          <form class="edit-post-form" action="https://{DOMAIN}/v1/editpost" method="GET">
-            <input type="hidden" name="ib_uid" value="{ib_uid}">
-            <input type="hidden" name="ib_user" value="{ib_user}">
-            <input type="hidden" name="pid" value="{ib_post_id}">
-          </form>
-          <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="javascript:void(0);" class="pin-post-link">:[[ :pin-post: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;"#,
+    for row in display_rows.iter() {
+      let row_owner_uid = row.ib_uid.parse::<i64>().ok();
+      let can_manage_post = session_uid.is_some() && session_uid == row_owner_uid;
+      let manage_actions = if can_manage_post {
+        format!(
+          r#"<form class="delete-post-form" action="https://{DOMAIN}/v1/deletepost" method="POST">
+              <input type="hidden" name="ib_uid" value="{ib_uid}">
+              <input type="hidden" name="ib_user" value="{ib_user}">
+              <input type="hidden" name="pid" value="{ib_post_id}">
+            </form>
+            <form class="edit-post-form" action="https://{DOMAIN}/v1/editpost" method="GET">
+              <input type="hidden" name="ib_uid" value="{ib_uid}">
+              <input type="hidden" name="ib_user" value="{ib_user}">
+              <input type="hidden" name="pid" value="{ib_post_id}">
+            </form>
+            <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="javascript:void(0);" class="pin-post-link">:[[ :pin-post: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;"#,
+          ib_uid = ib_uid,
+          ib_user = escape_html(ib_user),
+          ib_post_id = escape_html(&row.postid),
+        )
+      } else {
+        String::new()
+      };
+
+      selected_user_posts_response_content += &format!(
+        r#"
+        {pinned_label}
+        <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
+          {post_meta}
+          <div class="post-content">{post_body}</div>
+          <div class="post-actions">
+            {ack_controls}
+            {manage_actions}
+            <form class="show-post-form" action="https://{DOMAIN}/v1/showpost" method="GET">
+              <input type="hidden" name="ib_uid" value="{ib_uid}">
+              <input type="hidden" name="ib_user" value="{ib_user}">
+              <input type="hidden" name="pid" value="{ib_post_id}">
+            </form>
+            <a href="javascript:void(0);" class="show-post">:[[ :show-post: ]]:</a>
+          </div>
+          <p class="acknowledged-count">Acknowleged {acknowledged_count} times.</p>
+        </div>"#,
+        ib_post_id = escape_html(&row.postid),
+        ib_post_timestamp = escape_html(&row.timestamp),
+        pinned_label = if row.pinned_postid.as_deref() == Some(&row.postid) { "<div class=\"pinned-label\" style=\"font-weight: bold; margin-bottom: -10px; color: #AFAFAF;\">📌 Pinned</div>" } else { "" },
+        post_meta = render_post_meta(&row.ib_uid, &row.username, &row.timestamp, row.user_total_acks),
+        manage_actions = manage_actions,
+        ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&row.postid) {
+          render_ack_disabled()
+        } else {
+          render_ack_controls(ib_uid, ib_user, &row.postid)
+        },
+        acknowledged_count = row.acknowledged_count,
+        post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user),
         ib_uid = ib_uid,
         ib_user = escape_html(ib_user),
-        ib_post_id = escape_html(&row.postid),
-      )
+      );
+    }
+
+    let sentinel_html = if profile_has_more {
+      r#"<div id="posts-load-sentinel"></div>"#
     } else {
-      String::new()
+      ""
     };
 
-    selected_user_posts_response_content += &format!(
-      r#"
-      {pinned_label}
-      <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}">
-        {post_meta}
-        <div class="post-content">{post_body}</div>
-        <div class="post-actions">
-          {ack_controls}
-          {manage_actions}
-          <form class="show-post-form" action="https://{DOMAIN}/v1/showpost" method="GET">
-            <input type="hidden" name="ib_uid" value="{ib_uid}">
-            <input type="hidden" name="ib_user" value="{ib_user}">
-            <input type="hidden" name="pid" value="{ib_post_id}">
-          </form>
-          <a href="javascript:void(0);" class="show-post">:[[ :show-post: ]]:</a>
-        </div>
-        <p class="acknowledged-count">Acknowleged {acknowledged_count} times.</p>
-      </div>"#,
-      ib_post_id = escape_html(&row.postid),
-      ib_post_timestamp = escape_html(&row.timestamp),
-      pinned_label = if row.pinned_postid.as_deref() == Some(&row.postid) { "<div class=\"pinned-label\" style=\"font-weight: bold; margin-bottom: -10px; color: #AFAFAF;\">📌 Pinned</div>" } else { "" },
-      post_meta = render_post_meta(&row.ib_uid, &row.username, &row.timestamp, row.user_total_acks),
-      manage_actions = manage_actions,
-      ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&row.postid) {
-        render_ack_disabled()
-      } else {
-        render_ack_controls(ib_uid, ib_user, &row.postid)
-      },
-      acknowledged_count = row.acknowledged_count,
-      post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user),
+    format!(
+      r#"<div id="selected-user-posts-section" data-ib-uid="{ib_uid}" data-ib-user="{ib_user_escaped}">{selected_user_posts_response_content}{sentinel_html}</div>"#,
+      selected_user_posts_response_content = selected_user_posts_response_content,
       ib_uid = ib_uid,
-      ib_user = escape_html(ib_user),
-    );
-  }
-
-  let sentinel_html = if profile_has_more {
-    r#"<div id="posts-load-sentinel"></div>"#
-  } else {
-    ""
+      ib_user_escaped = escape_html(ib_user),
+      sentinel_html = sentinel_html,
+    )
   };
-
-  let selected_user_posts_section = &format!(
-    r#"<div id="selected-user-posts-section" data-ib-uid="{ib_uid}" data-ib-user="{ib_user_escaped}">{selected_user_posts_response_content}{sentinel_html}</div>"#,
-    selected_user_posts_response_content = selected_user_posts_response_content,
-    ib_uid = ib_uid,
-    ib_user_escaped = escape_html(ib_user),
-    sentinel_html = sentinel_html,
-  );
 
   let unread_dm_count = if let Some(uid) = session_uid {
     sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM dm WHERE recipient_uid = ? AND read_at IS NULL")
@@ -602,7 +669,7 @@ pub async fn render_profile_html(
   context.insert("ib_website", &ib_website_escaped);
   context.insert("follow_section_html", &follow_section_html);
   context.insert("edit_profile_link", &edit_profile_link);
-  context.insert("selected_user_posts_section", selected_user_posts_section);
+  context.insert("selected_user_posts_section", &selected_user_posts_section);
   context.insert("related_users", &related_users_html);
   context.insert("trending_tags", &trending_tags_html);
   context.insert("copyright", &COPYRIGHT);
@@ -677,6 +744,32 @@ pub async fn render_profile_mobile_html(
     })
     .unwrap_or_default();
 
+  let is_blocking = if let Some(uid) = session_uid {
+    sqlx::query_scalar::<_, i64>("SELECT 1 FROM user_blocks WHERE blocker_uid = ? AND blocked_uid = ? LIMIT 1")
+      .bind(uid)
+      .bind(ib_uid)
+      .fetch_optional(&state.db_pool)
+      .await
+      .unwrap_or(None)
+      .is_some()
+  } else {
+    false
+  };
+
+  let is_blocked_by_them = if let Some(uid) = session_uid {
+    sqlx::query_scalar::<_, i64>("SELECT 1 FROM user_blocks WHERE blocker_uid = ? AND blocked_uid = ? LIMIT 1")
+      .bind(ib_uid)
+      .bind(uid)
+      .fetch_optional(&state.db_pool)
+      .await
+      .unwrap_or(None)
+      .is_some()
+  } else {
+    false
+  };
+
+  let is_blocked = is_blocking || is_blocked_by_them;
+
   let show_edit_profile_link = session_username
     .as_ref()
     .map(|username| username.eq_ignore_ascii_case(&viewed_username))
@@ -727,21 +820,31 @@ pub async fn render_profile_mobile_html(
     .await
     .unwrap_or(0);
 
-  let ib_post_results = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = \"\" OR post.parentid IS NULL) ORDER BY (post.postid = user.pinned_postid) DESC, post.timestamp DESC LIMIT 21"
-    )
-    .bind(ib_uid)
-    .fetch_all(&state.db_pool)
-    .await
-    .map_err(|e| format!("Post query failed: {}", e))?;
+  let ib_post_results = if is_blocked {
+    vec![]
+  } else {
+    sqlx::query_as::<_, PostRow>(
+        "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = \"\" OR post.parentid IS NULL) ORDER BY (post.postid = user.pinned_postid) DESC, post.timestamp DESC LIMIT 21"
+      )
+      .bind(ib_uid)
+      .fetch_all(&state.db_pool)
+      .await
+      .map_err(|e| format!("Post query failed: {}", e))?
+  };
 
   let profile_has_more = ib_post_results.len() > 20;
   let display_rows = &ib_post_results[..ib_post_results.len().min(20)];
 
-  let mut selected_user_posts_response_content = format!(
-    r#"<br><div class="notice"><p><em>:[[ :for-the: [[ posts: is-by: {ib_post_results_length}: is-with: showing-latest-results: ]]:</em></p></div>"#,
-    ib_post_results_length = ib_post_results_length,
-  );
+  let mut selected_user_posts_response_content = if is_blocked {
+    format!(
+      r#"<br><div class="notice"><p><em>This user is unavailable.</em></p></div>"#,
+    )
+  } else {
+    format!(
+      r#"<br><div class="notice"><p><em>:[[ :for-the: [[ posts: is-by: {ib_post_results_length}: is-with: showing-latest-results: ]]:</em></p></div>"#,
+      ib_post_results_length = ib_post_results_length,
+    )
+  };
 
   let displayed_post_ids: Vec<String> = display_rows
     .iter()
@@ -892,7 +995,31 @@ pub async fn render_profile_mobile_html(
     .map(|username| !show_unfollow && !username.eq_ignore_ascii_case(&viewed_username))
     .unwrap_or(false);
 
-  let follow_form_html = if show_follow {
+  let block_form_html = if session_uid.is_some() && !show_edit_profile_link && !is_blocking {
+    format!(
+      r#"<form id="block-form" action="https://{DOMAIN}/v1/block" method="POST">
+        <input type="hidden" name="target_user" value="{target_user}">
+        <input class="post-cancel" type="submit" value="Block">
+      </form>"#,
+      target_user = escape_html(&viewed_username)
+    )
+  } else {
+    String::new()
+  };
+
+  let unblock_form_html = if session_uid.is_some() && !show_edit_profile_link && is_blocking {
+    format!(
+      r#"<form id="unblock-form" action="https://{DOMAIN}/v1/unblock" method="POST">
+        <input type="hidden" name="target_user" value="{target_user}">
+        <input class="post-submit" type="submit" value="Unblock">
+      </form>"#,
+      target_user = escape_html(&viewed_username)
+    )
+  } else {
+    String::new()
+  };
+
+  let follow_form_html = if show_follow && !is_blocked {
     format!(
       r#"<form id="follow-form" action="https://{DOMAIN}/v1/follow" method="POST">
         <input type="hidden" name="target_user" value="{target_user}">
@@ -917,12 +1044,16 @@ pub async fn render_profile_mobile_html(
   };
 
   let follow_section_html = &format!(
-      r#"<div id="follow-section">
+      r#"<div id="follow-section" style="display:flex; gap:10px; align-items:center;">
       {follow_form_html}
       {unfollow_form_html}
+      {block_form_html}
+      {unblock_form_html}
     </div>"#,
       follow_form_html = follow_form_html,
-      unfollow_form_html = unfollow_form_html
+      unfollow_form_html = unfollow_form_html,
+      block_form_html = block_form_html,
+      unblock_form_html = unblock_form_html
     );
 
   let session_nav_uid = session_uid.unwrap_or(ib_uid);
@@ -1511,10 +1642,20 @@ pub async fn render_search_posts_mobile_html(
     if rows.is_empty() {
       post_html = "<p><em>:[[ :search-posts: is-by: no: is-with: results: ]]:</em></p>".to_string();
     } else {
-      let row_post_ids: Vec<String> = rows.iter().map(|row| row.postid.clone()).collect();
-      let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &row_post_ids).await;
+      let mut row_post_ids = Vec::new();
+      let mut display_rows = Vec::new();
 
       for row in rows {
+        let is_blocked = crate::db::is_blocked(state, session_uid, row.ib_uid.parse::<i64>().ok()).await;
+        if !is_blocked {
+          row_post_ids.push(row.postid.clone());
+          display_rows.push(row);
+        }
+      }
+
+      let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &row_post_ids).await;
+
+      for row in display_rows {
         post_html += &format!(
           r#"<div class="post" data-postid="{post_id}" data-timestamp="{post_timestamp}">
             {post_meta}
@@ -1698,10 +1839,20 @@ pub async fn render_search_posts_html(
       "<p><em>:[[ :search-posts: is-by: no: is-with: results: ]]:</em></p>".to_string()
     } else {
       let mut post_html = String::new();
-      let row_post_ids: Vec<String> = rows.iter().map(|row| row.postid.clone()).collect();
-      let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &row_post_ids).await;
+      let mut row_post_ids = Vec::new();
+      let mut display_rows = Vec::new();
 
       for row in rows {
+        let is_blocked = crate::db::is_blocked(state, session_uid, row.ib_uid.parse::<i64>().ok()).await;
+        if !is_blocked {
+          row_post_ids.push(row.postid.clone());
+          display_rows.push(row);
+        }
+      }
+
+      let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &row_post_ids).await;
+
+      for row in display_rows {
         post_html += &format!(
           r#"<div class="post" data-postid="{post_id}" data-timestamp="{post_timestamp}">
             {post_meta}
@@ -3455,7 +3606,15 @@ pub async fn render_war_room_posts_chunk(
       .map_err(|e| format!("War room post lookup failed: {}", e))?;
 
     if let Some(post_row) = post_row {
-      selected_posts.push((selected_follower.clone(), post_row));
+      let is_blocked = crate::db::is_blocked(
+        state,
+        session_uid,
+        post_row.ib_uid.parse::<i64>().ok()
+      ).await;
+
+      if !is_blocked {
+        selected_posts.push((selected_follower.clone(), post_row));
+      }
     }
   }
 

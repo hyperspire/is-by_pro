@@ -236,6 +236,12 @@ pub async fn ensure_database_schema(pool: &MySqlPool) -> Result<(), sqlx::Error>
       .await?;
   }
 
+  sqlx::query(
+    "CREATE TABLE IF NOT EXISTS user_blocks (blocker_uid BIGINT NOT NULL, blocked_uid BIGINT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (blocker_uid, blocked_uid), INDEX idx_blocked (blocked_uid))",
+  )
+  .execute(pool)
+  .await?;
+
   Ok(())
 }
 pub async fn replace_post_tags(pool: &MySqlPool, postid: &str, post_text: &str) -> Result<(), sqlx::Error> {
@@ -401,6 +407,31 @@ pub async fn lookup_user_by_username(state: &AppState, username: &str) -> Result
   Ok(parsed)
 }
 
+pub async fn is_blocked(state: &AppState, uid1: Option<i64>, uid2: Option<i64>) -> bool {
+  let (Some(u1), Some(u2)) = (uid1, uid2) else {
+    return false;
+  };
+
+  if u1 == u2 {
+    return false;
+  }
+
+  let result = sqlx::query_scalar::<_, i64>(
+    "SELECT 1 FROM user_blocks WHERE (blocker_uid = ? AND blocked_uid = ?) OR (blocker_uid = ? AND blocked_uid = ?) LIMIT 1"
+  )
+  .bind(u1)
+  .bind(u2)
+  .bind(u2)
+  .bind(u1)
+  .fetch_optional(&state.db_pool)
+  .await;
+
+  match result {
+    Ok(Some(_)) => true,
+    _ => false,
+  }
+}
+
 pub async fn load_inbox_contacts(
   state: &AppState,
   ib_uid: i64,
@@ -447,6 +478,18 @@ pub async fn load_inbox_contacts(
       inbox_users.push(username.to_string());
     }
   }
+
+  let blocked_usernames = sqlx::query_scalar::<_, String>(
+    "SELECT CAST(COALESCE(CONVERT(username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci IN (SELECT CAST(CASE WHEN blocker_uid = ? THEN blocked_uid ELSE blocker_uid END AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci FROM user_blocks WHERE blocker_uid = ? OR blocked_uid = ?)"
+  )
+  .bind(ib_uid)
+  .bind(ib_uid)
+  .bind(ib_uid)
+  .fetch_all(&state.db_pool)
+  .await
+  .unwrap_or_default();
+
+  inbox_users.retain(|u| !blocked_usernames.iter().any(|b| b.eq_ignore_ascii_case(u)));
 
   Ok(inbox_users)
 }

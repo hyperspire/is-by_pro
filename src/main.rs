@@ -242,6 +242,8 @@ async fn main() -> std::io::Result<()> {
       .service(get_commander_badge)
       .service(follow_user)
       .service(unfollow_user)
+      .service(block_user)
+      .service(unblock_user)
       .service(get_war_room_posts_page)
       .service(search_users)
       .service(search_posts)

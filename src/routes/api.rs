@@ -653,6 +653,87 @@ pub async fn unfollow_user(
     .insert_header(("Location", format!("/v1/profile/{}", target_row.username)))
     .finish()
 }
+
+#[post("/v1/block")]
+pub async fn block_user(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  payload: web::Form<FollowRequest>,
+) -> impl Responder {
+  let session_uid = match get_session_uid(&req) {
+    Some(uid) => uid,
+    None => return HttpResponse::Unauthorized().body("Login required"),
+  };
+
+  let target_user = payload.target_user.trim();
+  if target_user.is_empty() {
+    return HttpResponse::BadRequest().body("Target user is required");
+  }
+
+  let target_uid = match lookup_user_by_username(&state, target_user).await {
+    Ok(Some((uid, _))) => uid,
+    Ok(None) => return HttpResponse::NotFound().body("Profile not found"),
+    Err(err) => return HttpResponse::InternalServerError().body(format!("Block lookup failed: {}", err)),
+  };
+
+  if session_uid == target_uid {
+    return HttpResponse::BadRequest().body("Cannot block yourself");
+  }
+
+  if let Err(err) = sqlx::query(
+    "INSERT IGNORE INTO user_blocks (blocker_uid, blocked_uid, created_at) VALUES (?, ?, NOW())",
+  )
+  .bind(session_uid)
+  .bind(target_uid)
+  .execute(&state.db_pool)
+  .await
+  {
+    return HttpResponse::InternalServerError().body(format!("Failed to block user: {}", err));
+  }
+
+  HttpResponse::SeeOther()
+    .insert_header(("Location", format!("/v1/profile/{}", url_encode_component(target_user))))
+    .finish()
+}
+
+#[post("/v1/unblock")]
+pub async fn unblock_user(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  payload: web::Form<FollowRequest>,
+) -> impl Responder {
+  let session_uid = match get_session_uid(&req) {
+    Some(uid) => uid,
+    None => return HttpResponse::Unauthorized().body("Login required"),
+  };
+
+  let target_user = payload.target_user.trim();
+  if target_user.is_empty() {
+    return HttpResponse::BadRequest().body("Target user is required");
+  }
+
+  let target_uid = match lookup_user_by_username(&state, target_user).await {
+    Ok(Some((uid, _))) => uid,
+    Ok(None) => return HttpResponse::NotFound().body("Profile not found"),
+    Err(err) => return HttpResponse::InternalServerError().body(format!("Unblock lookup failed: {}", err)),
+  };
+
+  if let Err(err) = sqlx::query(
+    "DELETE FROM user_blocks WHERE blocker_uid = ? AND blocked_uid = ?",
+  )
+  .bind(session_uid)
+  .bind(target_uid)
+  .execute(&state.db_pool)
+  .await
+  {
+    return HttpResponse::InternalServerError().body(format!("Failed to unblock user: {}", err));
+  }
+
+  HttpResponse::SeeOther()
+    .insert_header(("Location", format!("/v1/profile/{}", url_encode_component(target_user))))
+    .finish()
+}
+
 #[get("/v1/editprofile")]
 pub async fn edit_profile(
   req: HttpRequest,
@@ -1096,6 +1177,14 @@ pub async fn get_posts_page(
   let session_uid = get_session_uid(&req);
   let ib_uid = query.ib_uid;
   let ib_user = &query.ib_user.clone();
+
+  let is_blocked = crate::db::is_blocked(&state, session_uid, Some(ib_uid)).await;
+  if is_blocked {
+    return HttpResponse::Ok().json(PostsPageResponse {
+      posts_html: String::new(),
+      has_more: false,
+    });
+  }
 
   let ib_post_results = if let Some(before_ts) = &query.before_timestamp {
     sqlx::query_as::<_, PostRow>(
@@ -2100,6 +2189,13 @@ pub async fn send_direct_message(
     return HttpResponse::BadRequest().json(DMSendResponse {
       success: false,
       message: "Cannot send a direct message to yourself".to_string(),
+    });
+  }
+
+  if crate::db::is_blocked(&state, Some(session_uid), Some(target_uid)).await {
+    return HttpResponse::Forbidden().json(DMSendResponse {
+      success: false,
+      message: "You cannot send messages to this user".to_string(),
     });
   }
 
