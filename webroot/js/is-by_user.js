@@ -825,7 +825,7 @@ function characterCounter(counter) {
   textFieldPost.addEventListener('input', (event) => {
     const charCountPost = event.target.value.length;
     charCountDiv.textContent = charCountPost + '/4096';
-    if (charCountPost > 1000) {
+    if (charCountPost > 4096) {
       charCountDiv.style.color = 'red';
     } else {
       charCountDiv.style.color = 'green';
