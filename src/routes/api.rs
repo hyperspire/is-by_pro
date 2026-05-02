@@ -2255,7 +2255,7 @@ pub async fn send_direct_message(
         let payload = json!({
           "title": "New Message",
           "body": format!("New direct message from @{}", current_username),
-          "url": format!("https://{}/v1/inbox?target_user={}", DOMAIN, url_encode_component(&current_username)),
+          "url": format!("https://{}/v1/inbox?ib_uid={}&ib_user={}&target_user={}", DOMAIN, target_uid, url_encode_component(&payload.target_user), url_encode_component(&current_username)),
         }).to_string();
 
         tokio::spawn(async move {
