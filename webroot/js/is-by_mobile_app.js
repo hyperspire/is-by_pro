@@ -1,6 +1,6 @@
 const APP_PANELS = ['home', 'mission', 'access'];
-const SHELL_CACHE_NAME = 'is-by-mobile-shell-v9';
-const SHELL_VERSION = 'mobile-shell-v9';
+const SHELL_CACHE_NAME = 'is-by-mobile-shell-v10';
+const SHELL_VERSION = 'mobile-shell-v10';
 const UPDATE_BANNER_SUPPRESS_KEY = 'is-by-mobile-update-banner-suppressed';
 const UPDATE_BANNER_SUPPRESS_VERSION_KEY = 'is-by-mobile-update-banner-suppressed-version';
 

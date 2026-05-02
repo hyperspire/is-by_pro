@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Push Notification Diagnostics</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
+        button { padding: 10px 20px; font-size: 16px; margin-top: 10px; cursor: pointer; }
+        #log { margin-top: 20px; background: #eee; padding: 10px; font-family: monospace; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h2>Push Notification Diagnostics</h2>
+    
+    <button onclick="checkStatus()">1. Check Status</button>
+    <button onclick="requestPerm()">2. Request Permission</button>
+    <button onclick="triggerLocal()">3. Trigger Local Notification (No Backend)</button>
+
+    <div id="log">Logs will appear here...</div>
+
+    <script>
+        function log(msg) {
+            document.getElementById('log').textContent += '\n' + msg;
+            console.log(msg);
+        }
+
+        function checkStatus() {
+            log('--- Checking Status ---');
+            log('Notification API Supported: ' + ('Notification' in window));
+            log('Service Worker Supported: ' + ('serviceWorker' in navigator));
+            if ('Notification' in window) {
+                log('Current Permission: ' + Notification.permission);
+            }
+            navigator.serviceWorker.getRegistration().then(reg => {
+                log('Service Worker Registered: ' + (reg ? 'YES' : 'NO'));
+            });
+        }
+
+        async function requestPerm() {
+            log('--- Requesting Permission ---');
+            if (!('Notification' in window)) return log('Notification API not supported.');
+            try {
+                const p = await Notification.requestPermission();
+                log('Permission result: ' + p);
+            } catch (e) {
+                log('Error requesting permission: ' + e);
+            }
+        }
+
+        async function triggerLocal() {
+            log('--- Triggering Local Notification ---');
+            if (Notification.permission !== 'granted') {
+                return log('Cannot trigger: permission is not granted.');
+            }
+            const reg = await navigator.serviceWorker.getRegistration();
+            if (!reg) {
+                return log('Cannot trigger: no service worker registration found.');
+            }
+            
+            try {
+                await reg.showNotification('Diagnostic Test', {
+                    body: 'If you see this, notifications are working on your OS!',
+                    icon: '/images/is-by_app_icon-192.png',
+                    vibrate: [200, 100, 200]
+                });
+                log('Successfully called showNotification()');
+            } catch (e) {
+                log('Error calling showNotification(): ' + e);
+            }
+        }
+    </script>
+</body>
+</html>
