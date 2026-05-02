@@ -5386,8 +5386,16 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
       }
       Event::End(TagEnd::CodeBlock) => {
         in_code_block = false;
-        let syntax = SYNTAX_SET.find_syntax_by_token(&code_language)
-            .unwrap_or_else(|| SYNTAX_SET.find_syntax_plain_text());
+        let syntax = if code_language.is_empty() {
+            if code_content.trim_start().starts_with('<') {
+                SYNTAX_SET.find_syntax_by_token("html").unwrap_or_else(|| SYNTAX_SET.find_syntax_plain_text())
+            } else {
+                SYNTAX_SET.find_syntax_plain_text()
+            }
+        } else {
+            SYNTAX_SET.find_syntax_by_token(&code_language)
+                .unwrap_or_else(|| SYNTAX_SET.find_syntax_plain_text())
+        };
         let html = match highlighted_html_for_string(&code_content, &SYNTAX_SET, syntax, &THEME_SET.themes["base16-ocean.dark"]) {
             Ok(mut h) => {
                 if let Some(idx) = h.find('>') {
@@ -5506,7 +5514,20 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
               process_mentions_in_chunk(&text[last_gh..], ib_uid, ib_user, &mut new_events);
           }
       }
-      Event::Html(html) | Event::InlineHtml(html) => {
+      Event::Html(html) => {
+          let syntax = SYNTAX_SET.find_syntax_by_token("html")
+              .unwrap_or_else(|| SYNTAX_SET.find_syntax_plain_text());
+          let highlighted = match highlighted_html_for_string(&html, &SYNTAX_SET, syntax, &THEME_SET.themes["base16-ocean.dark"]) {
+              Ok(mut h) => {
+                  if let Some(idx) = h.find('>') { h.insert_str(idx + 1, "<code>"); }
+                  if let Some(idx) = h.rfind("</pre>") { h.insert_str(idx, "</code>"); }
+                  h
+              },
+              Err(_) => format!("<pre><code>{}</code></pre>", crate::utils::escape_html(&html)),
+          };
+          new_events.push(Event::Html(highlighted.into()));
+      }
+      Event::InlineHtml(html) => {
           new_events.push(Event::Text(html));
       }
       Event::Start(Tag::HtmlBlock) | Event::End(TagEnd::HtmlBlock) => {
@@ -5703,10 +5724,9 @@ mod tests {
     }
 }
 
+
 #[test]
-fn print_themes() {
-    let ts = ThemeSet::load_defaults();
-    for key in ts.themes.keys() {
-        println!("THEME: {}", key);
-    }
+fn test_plain_highlight() {
+    let post = "    <div class=\"content\">\n    <form id=\"select-user-form\" action=\"/\">\n        <input type=\"hidden\" name=\"ib_uid\" value=\"\">\n";
+    println!("PLAIN_OUT: {}", render_post_with_hashtags(post, 1, "test"));
 }
