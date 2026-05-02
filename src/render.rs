@@ -48,7 +48,7 @@ pub async fn render_related_userlist_html(
   };
 
   if interests.is_empty() {
-    return "<p><em>:[[ :is-by: none: for-the: related-users: ]]:</em></p>".to_string();
+    return "<p><em>:[[ :for-the: related-users: is-by: none: ]]:</em></p>".to_string();
   }
 
   let regex_terms: Vec<String> = interests
@@ -192,7 +192,7 @@ pub async fn render_related_userlist_html(
   }
 
   let html = if related_html.is_empty() {
-    "<p><em>:[[ :is-by: none: for-the: related-users: ]]:</em></p>".to_string()
+    "<p><em>:[[ :for-the: related-users: is-by: none: ]]:</em></p>".to_string()
   } else {
     related_html
   };
@@ -280,7 +280,7 @@ pub async fn render_trending_tags_html(state: &AppState, ib_uid: i64, ib_user: &
     .await;
 
   let html = match rows {
-    Ok(rows) if rows.is_empty() => "<p><em>:[[ :is-by: none: for-the: trending-tags: ]]:</em></p>".to_string(),
+    Ok(rows) if rows.is_empty() => "<p><em>:[[ :for-the: trending-tags: is-by: none: ]]:</em></p>".to_string(),
     Ok(rows) => rows
       .iter()
       .map(|row| {
@@ -2076,7 +2076,7 @@ pub async fn render_projects_html(
     .map_err(|e| format!("Projects query failed: {}", e))?;
 
   let projects_html = if rows.is_empty() {
-    r#"<br><div class="notice"><p><em>:[[ :is-by: none: for-the: user-projects: ]]:</em></p></div>"#.to_string()
+    r#"<br><div class="notice"><p><em>:[[ :for-the: user-projects: is-by: none: ]]:</em></p></div>"#.to_string()
   } else {
     let reinforcement_names: HashSet<String> = rows
       .iter()
@@ -2489,7 +2489,7 @@ pub async fn render_projects_mobile_html(
     .map_err(|e| format!("Projects query failed: {}", e))?;
 
   let projects_html = if rows.is_empty() {
-    r#"<br><div class="notice"><p><em>:[[ :no-projects-yet: ]]:</em></p></div>"#.to_string()
+    r#"<br><div class="notice"><p><em>:[[ :for-the: projects: is-by: none: ]]:</em></p></div>"#.to_string()
   } else {
     let reinforcement_names: HashSet<String> = rows
       .iter()
@@ -5664,7 +5664,7 @@ pub fn render_ack_disabled() -> String {
 
 pub fn render_inbox_contacts_html(inbox_users: &[String]) -> String {
   if inbox_users.is_empty() {
-    return "<p><em>:[[ :is-by: none: for-the: direct-message-contacts: ]]:</em></p>".to_string();
+    return "<p><em>:[[ :for-the: direct-message-contacts: is-by: none: ]]:</em></p>".to_string();
   }
 
   inbox_users
@@ -5680,7 +5680,7 @@ pub fn render_inbox_contacts_html(inbox_users: &[String]) -> String {
 }
 
 pub async fn related_users(state: &AppState, session_uid: Option<i64>) -> String {
-  let empty_result = "<p><em>:[[ :is-by: none: for-the: related-users: ]]:</em></p>".to_string();
+  let empty_result = "<p><em>:[[ :for-the: related-users: is-by: none: ]]:</em></p>".to_string();
 
   let uid = match session_uid {
     Some(id) => id,
