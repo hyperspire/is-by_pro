@@ -25,6 +25,7 @@ function attachEventListeners() {
     attachDMContactsInfiniteScrollEventListener,
     attachDMContactSearchEventListener,
     attachSSEListener,
+    attachGlobalPushInitializer,
   ];
 
   listeners.forEach((setup) => {
@@ -532,6 +533,18 @@ function urlBase64ToUint8Array(base64String) {
     outputArray[i] = rawData.charCodeAt(i);
   }
   return outputArray;
+}
+
+function attachGlobalPushInitializer() {
+  const initPushOnFirstClick = () => {
+    initPushNotifications();
+    document.removeEventListener('click', initPushOnFirstClick);
+    document.removeEventListener('touchstart', initPushOnFirstClick);
+  };
+  
+  // Attach to the very first interaction to satisfy strict browser gesture requirements
+  document.addEventListener('click', initPushOnFirstClick);
+  document.addEventListener('touchstart', initPushOnFirstClick, { passive: true });
 }
 
 async function initPushNotifications() {
