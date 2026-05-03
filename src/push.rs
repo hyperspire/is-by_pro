@@ -78,7 +78,14 @@ pub async fn send_push_notification(
         match builder.build() {
             Ok(message) => {
                 if let Err(e) = client.send(message).await {
-                    eprintln!("Push send error: {:?}", e);
+                    if let web_push::WebPushError::EndpointNotValid(_) = e {
+                        let _ = sqlx::query("DELETE FROM push_subscriptions WHERE endpoint = ?")
+                            .bind(&sub.endpoint)
+                            .execute(&state.db_pool)
+                            .await;
+                    } else {
+                        eprintln!("Push send error: {:?}", e);
+                    }
                 }
             }
             Err(e) => eprintln!("Push message build error: {:?}", e),
@@ -119,9 +126,8 @@ mod tests {
         let mysql_password = std::env::var("MYSQL_PASSWORD").unwrap_or_default();
         let mysql_host = std::env::var("MYSQL_HOST").unwrap_or_default();
         let mysql_user = std::env::var("MYSQL_USER").unwrap_or_default();
-        let mysql_db = std::env::var("MYSQL_DATABASE").unwrap_or_else(|_| "is-by".to_string());
         
-        let db_url = format!("mysql://{}:{}@{}:3306/{}", mysql_user, mysql_password, mysql_host, mysql_db);
+        let db_url = format!("mysql://{}:{}@{}:3306/isby", mysql_user, mysql_password, mysql_host);
         let pool = sqlx::mysql::MySqlPoolOptions::new().connect(&db_url).await.unwrap();
 
         let subs = sqlx::query_as::<_, PushSubscriptionRow>(
@@ -168,7 +174,16 @@ mod tests {
 
         match client.send(message).await {
             Ok(_) => println!("PUSH SENT SUCCESSFULLY!"),
-            Err(e) => println!("PUSH FAILED: {:?}", e),
+            Err(e) => {
+                println!("PUSH FAILED: {:?}", e);
+                if let web_push::WebPushError::EndpointNotValid(_) = e {
+                    let _ = sqlx::query("DELETE FROM push_subscriptions WHERE endpoint = ?")
+                        .bind(&sub.endpoint)
+                        .execute(&pool)
+                        .await;
+                    println!("Deleted expired subscription from DB.");
+                }
+            }
         }
     }
 }
