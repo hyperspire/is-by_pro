@@ -4179,10 +4179,17 @@ pub async fn render_inbox_html(
             <p><strong>:[[ :direct-messages: ]]: <span id="dm-target-user">{default_target_user}</span></strong></p>
             <div id="dm-message-status"></div>
             <div id="dm-thread"></div>
+            <div id="dm-typing-indicator" style="display: none;" class="typing-indicator"><em>User is typing...</em></div>
             <form id="dm-form" action="https://{DOMAIN}/v1/dm/send" method="POST">
               <input type="hidden" id="dm-target-user-input" name="target_user" value="{default_target_user}">
-              <input type="text" id="dm-message-input" name="message" maxlength="1024" placeholder="Type a direct message" required>
-              <input type="submit" value="Send">
+              <div class="dm-input-row">
+                <input type="text" id="dm-message-input" name="message" maxlength="1024" placeholder="Type a direct message" required>
+                <button id="emoji-btn" class="emoji-btn" title="Insert Emoji">😀</button>
+                <input type="submit" value="Send">
+              </div>
+              <div id="emoji-picker" style="display: none;" class="emoji-picker-container">
+                <span>😀</span><span>😂</span><span>❤️</span><span>👍</span><span>🙏</span><span>😭</span><span>🥺</span><span>🔥</span><span>🥰</span><span>😊</span><span>✨</span><span>😍</span><span>🚀</span><span>🎉</span><span>😎</span><span>💯</span><span>💀</span><span>💡</span><span>👏</span><span>🥳</span>
+              </div>
             </form>
           </div>
         </div>
@@ -4367,10 +4374,17 @@ pub async fn render_inbox_mobile_html(
           <p><strong>:[[ :direct-messages: ]]: <span id="dm-target-user">{default_target_user}</span></strong></p>
           <div id="dm-message-status"></div>
           <div id="dm-thread"></div>
+          <div id="dm-typing-indicator" style="display: none;" class="typing-indicator"><em>User is typing...</em></div>
           <form id="dm-form" action="https://{DOMAIN}/v1/dm/send" method="POST">
             <input type="hidden" id="dm-target-user-input" name="target_user" value="{default_target_user}">
-            <input type="text" id="dm-message-input" name="message" maxlength="1024" placeholder="Type a direct message" required>
-            <input type="submit" value="Send">
+            <div class="dm-input-row">
+              <input type="text" id="dm-message-input" name="message" maxlength="1024" placeholder="Type a direct message" required>
+              <button id="emoji-btn" class="emoji-btn" title="Insert Emoji">😀</button>
+              <input type="submit" value="Send">
+            </div>
+            <div id="emoji-picker" style="display: none;" class="emoji-picker-container">
+              <span>😀</span><span>😂</span><span>❤️</span><span>👍</span><span>🙏</span><span>😭</span><span>🥺</span><span>🔥</span><span>🥰</span><span>😊</span><span>✨</span><span>😍</span><span>🚀</span><span>🎉</span><span>😎</span><span>💯</span><span>💀</span><span>💡</span><span>👏</span><span>🥳</span>
+            </div>
           </form>
         </div>
       </div>

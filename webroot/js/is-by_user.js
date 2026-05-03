@@ -328,6 +328,59 @@ function attachDirectMessageEventListeners() {
       console.error('dm-send-error:', error);
     }
   });
+
+  const dmMessageInput = document.getElementById('dm-message-input');
+  if (dmMessageInput) {
+    if (dmMessageInput.dataset.typingBound !== '1') {
+      dmMessageInput.dataset.typingBound = '1';
+      let typingTimer = null;
+      dmMessageInput.addEventListener('input', () => {
+        if (!typingTimer) {
+          const targetUser = dmTargetInput.value.trim();
+          if (targetUser) {
+            fetch('/v1/dm/typing', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'ib-uid': String(getCurrentIBUID()),
+              },
+              body: JSON.stringify({ target_user: targetUser }),
+            }).catch(() => {});
+          }
+          typingTimer = setTimeout(() => { typingTimer = null; }, 3000);
+        }
+      });
+    }
+  }
+
+  // Emoji Picker Logic
+  const emojiBtn = document.getElementById('emoji-btn');
+  const emojiPicker = document.getElementById('emoji-picker');
+  if (emojiBtn && emojiPicker) {
+    if (emojiBtn.dataset.bound !== '1') {
+      emojiBtn.dataset.bound = '1';
+      emojiBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        emojiPicker.style.display = emojiPicker.style.display === 'none' ? 'grid' : 'none';
+      });
+
+      emojiPicker.addEventListener('click', (e) => {
+        if (e.target.tagName === 'SPAN') {
+          const emoji = e.target.textContent;
+          if (dmMessageInput) {
+            const start = dmMessageInput.selectionStart;
+            const end = dmMessageInput.selectionEnd;
+            const text = dmMessageInput.value;
+            dmMessageInput.value = text.slice(0, start) + emoji + text.slice(end);
+            dmMessageInput.selectionStart = dmMessageInput.selectionEnd = start + emoji.length;
+            dmMessageInput.focus();
+            emojiPicker.style.display = 'none';
+          }
+        }
+      });
+    }
+  }
 }
 
 function attachDMOpenButtons(buttons, dmPanel, dmTargetLabel, dmTargetInput) {
@@ -408,26 +461,33 @@ async function loadDMThread(targetUser) {
     if (!Array.isArray(data.messages) || data.messages.length === 0) {
       dmThread.innerHTML = '<p><em>:[[ :no-direct-messages: ]]:</em></p>';
       await updateUnreadDMCount();
-      return;
+    } else {
+      dmThread.innerHTML = data.messages.map((message) => {
+        const senderClass = message.is_mine ? 'dm-message dm-message-mine' : 'dm-message dm-message-theirs';
+        // First escape the entire message
+        let processedMessage = escapeHTML(message.message);
+        // Then replace escaped marker patterns with actual links
+        processedMessage = processedMessage.replace(/\|\|\|LINK\|\|\|([^|]*)\|\|\|([^|]*)\|\|\|/g,
+          (match, url, text) => `<a href="${url}" target="_blank">${text}</a>`
+        );
+        const readReceipt = (message.is_mine && message.is_read) ? '<span class="read-receipt">✓✓</span>' : '';
+        return `
+          <div class="${senderClass}">
+            <p class="dm-message-meta"><strong>${escapeHTML(message.sender_user)}</strong> <span>${escapeHTML(message.timestamp)}</span> ${readReceipt}</p>
+            <p class="dm-message-body">${processedMessage}</p>
+          </div>`;
+      }).join('');
+      dmThread.scrollTop = dmThread.scrollHeight;
+      await updateUnreadDMCount();
     }
 
-    dmThread.innerHTML = data.messages.map((message) => {
-      const senderClass = message.is_mine ? 'dm-message dm-message-mine' : 'dm-message dm-message-theirs';
-      // First escape the entire message
-      let processedMessage = escapeHTML(message.message);
-      // Then replace escaped marker patterns with actual links
-      processedMessage = processedMessage.replace(/\|\|\|LINK\|\|\|([^|]*)\|\|\|([^|]*)\|\|\|/g,
-        (match, url, text) => `<a href="${url}" target="_blank">${text}</a>`
-      );
-      return `
-        <div class="${senderClass}">
-          <p class="dm-message-meta"><strong>${escapeHTML(message.sender_user)}</strong> <span>${escapeHTML(message.timestamp)}</span></p>
-          <p class="dm-message-body">${processedMessage}</p>
-        </div>`;
-    }).join('');
-
-    dmThread.scrollTop = dmThread.scrollHeight;
-    await updateUnreadDMCount();
+    const typingIndicator = document.getElementById('dm-typing-indicator');
+    if (typingIndicator) {
+      typingIndicator.style.display = data.is_typing ? 'block' : 'none';
+      if (data.is_typing) {
+        dmThread.scrollTop = dmThread.scrollHeight;
+      }
+    }
   } catch (error) {
     console.error('dm-thread-error:', error);
   }
@@ -825,7 +885,9 @@ function characterCounter(counter) {
   textFieldPost.addEventListener('input', (event) => {
     const charCountPost = event.target.value.length;
     charCountDiv.textContent = charCountPost + '/4096';
-    if (charCountPost > 4000) {
+    if (charCountPost > 4096) {
+      charCountDiv.style.color = 'red';
+    } else if (charCountPost > 4000) {
       charCountDiv.style.color = 'yellow';
     } else {
       charCountDiv.style.color = 'green';

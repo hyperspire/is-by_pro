@@ -392,6 +392,11 @@ pub struct DMMessagesRequest {
 }
 
 #[derive(Deserialize)]
+pub struct DMTypingRequest {
+  pub target_user: String,
+}
+
+#[derive(Deserialize)]
 pub struct FollowRequest {
   pub target_user: String,
 }
@@ -498,6 +503,7 @@ pub struct DMMessageRow {
   pub recipient_username: String,
   pub message: Vec<u8>,
   pub created_at: String,
+  pub read_at: Option<String>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -552,6 +558,7 @@ pub struct DMMessageResponseItem {
   pub message: String,
   pub timestamp: String,
   pub is_mine: bool,
+  pub is_read: bool,
 }
 
 #[derive(Serialize)]
@@ -559,6 +566,7 @@ pub struct DMMessagesResponse {
   pub success: bool,
   pub messages: Vec<DMMessageResponseItem>,
   pub has_more: bool,
+  pub is_typing: bool,
 }
 
 #[derive(Serialize)]

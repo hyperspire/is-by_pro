@@ -2389,6 +2389,7 @@ pub async fn direct_messages(
         success: false,
         messages: Vec::new(),
         has_more: false,
+        is_typing: false,
       });
     }
   };
@@ -2399,6 +2400,7 @@ pub async fn direct_messages(
       success: false,
       messages: Vec::new(),
       has_more: false,
+      is_typing: false,
     });
   }
 
@@ -2409,6 +2411,7 @@ pub async fn direct_messages(
         success: false,
         messages: Vec::new(),
         has_more: false,
+        is_typing: false,
       });
     }
     Err(_) => {
@@ -2416,6 +2419,7 @@ pub async fn direct_messages(
         success: false,
         messages: Vec::new(),
         has_more: false,
+        is_typing: false,
       });
     }
   };
@@ -2423,7 +2427,7 @@ pub async fn direct_messages(
   let limit = 21; // Fetch one extra to check for more
   let rows_result = if let Some(before_id) = query.before_id {
     sqlx::query_as::<_, DMMessageRow>(
-      "SELECT dm.id, dm.sender_uid, CAST(COALESCE(CONVERT(sender.username USING utf8mb4), CAST(dm.sender_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS sender_username, CAST(COALESCE(CONVERT(recipient.username USING utf8mb4), CAST(dm.recipient_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS recipient_username, dm.message, DATE_FORMAT(dm.created_at, '%Y-%m-%d %H:%i:%s') AS created_at FROM dm AS dm LEFT JOIN user AS sender ON CONVERT(sender.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(dm.sender_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LEFT JOIN user AS recipient ON CONVERT(recipient.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(dm.recipient_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE ((dm.sender_uid = ? AND dm.recipient_uid = ?) OR (dm.sender_uid = ? AND dm.recipient_uid = ?)) AND dm.id < ? ORDER BY dm.id DESC LIMIT ?",
+      "SELECT dm.id, dm.sender_uid, CAST(COALESCE(CONVERT(sender.username USING utf8mb4), CAST(dm.sender_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS sender_username, CAST(COALESCE(CONVERT(recipient.username USING utf8mb4), CAST(dm.recipient_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS recipient_username, dm.message, DATE_FORMAT(dm.created_at, '%Y-%m-%d %H:%i:%s') AS created_at, DATE_FORMAT(dm.read_at, '%Y-%m-%d %H:%i:%s') AS read_at FROM dm AS dm LEFT JOIN user AS sender ON CONVERT(sender.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(dm.sender_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LEFT JOIN user AS recipient ON CONVERT(recipient.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(dm.recipient_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE ((dm.sender_uid = ? AND dm.recipient_uid = ?) OR (dm.sender_uid = ? AND dm.recipient_uid = ?)) AND dm.id < ? ORDER BY dm.id DESC LIMIT ?",
     )
     .bind(session_uid)
     .bind(target_uid)
@@ -2435,7 +2439,7 @@ pub async fn direct_messages(
     .await
   } else {
     sqlx::query_as::<_, DMMessageRow>(
-      "SELECT dm.id, dm.sender_uid, CAST(COALESCE(CONVERT(sender.username USING utf8mb4), CAST(dm.sender_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS sender_username, CAST(COALESCE(CONVERT(recipient.username USING utf8mb4), CAST(dm.recipient_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS recipient_username, dm.message, DATE_FORMAT(dm.created_at, '%Y-%m-%d %H:%i:%s') AS created_at FROM dm AS dm LEFT JOIN user AS sender ON CONVERT(sender.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(dm.sender_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LEFT JOIN user AS recipient ON CONVERT(recipient.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(dm.recipient_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE (dm.sender_uid = ? AND dm.recipient_uid = ?) OR (dm.sender_uid = ? AND dm.recipient_uid = ?) ORDER BY dm.id DESC LIMIT ?",
+      "SELECT dm.id, dm.sender_uid, CAST(COALESCE(CONVERT(sender.username USING utf8mb4), CAST(dm.sender_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS sender_username, CAST(COALESCE(CONVERT(recipient.username USING utf8mb4), CAST(dm.recipient_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS recipient_username, dm.message, DATE_FORMAT(dm.created_at, '%Y-%m-%d %H:%i:%s') AS created_at, DATE_FORMAT(dm.read_at, '%Y-%m-%d %H:%i:%s') AS read_at FROM dm AS dm LEFT JOIN user AS sender ON CONVERT(sender.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(dm.sender_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LEFT JOIN user AS recipient ON CONVERT(recipient.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(dm.recipient_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE (dm.sender_uid = ? AND dm.recipient_uid = ?) OR (dm.sender_uid = ? AND dm.recipient_uid = ?) ORDER BY dm.id DESC LIMIT ?",
     )
     .bind(session_uid)
     .bind(target_uid)
@@ -2453,6 +2457,7 @@ pub async fn direct_messages(
         success: false,
         messages: Vec::new(),
         has_more: false,
+        is_typing: false,
       });
     }
   };
@@ -2484,17 +2489,62 @@ pub async fn direct_messages(
         message: decrypted_message,
         timestamp: row.created_at,
         is_mine: row.sender_uid == session_uid,
+        is_read: row.read_at.is_some(),
       }
     })
     .collect::<Vec<DMMessageResponseItem>>();
 
   messages.reverse();
 
+  let typing_key = format!("dm:typing:{}:{}", target_uid, session_uid);
+  let is_typing: bool = redis::cmd("EXISTS")
+    .arg(&typing_key)
+    .query_async(&mut state.redis_pool.clone())
+    .await
+    .unwrap_or(false);
+
   HttpResponse::Ok().json(DMMessagesResponse {
     success: true,
     messages,
     has_more,
+    is_typing,
   })
+}
+
+#[post("/v1/dm/typing")]
+pub async fn dm_typing(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  payload: web::Json<DMTypingRequest>,
+) -> impl Responder {
+  let session_uid = match get_session_uid(&req) {
+    Some(uid) => uid,
+    None => return HttpResponse::Unauthorized().finish(),
+  };
+
+  let target_user = payload.target_user.trim();
+  if target_user.is_empty() {
+    return HttpResponse::BadRequest().finish();
+  }
+
+  let (target_uid, _) = match lookup_user_by_username(&state, target_user).await {
+    Ok(Some(found)) => found,
+    _ => return HttpResponse::NotFound().finish(),
+  };
+
+  if target_uid == session_uid {
+    return HttpResponse::BadRequest().finish();
+  }
+
+  let typing_key = format!("dm:typing:{}:{}", session_uid, target_uid);
+  let _: Result<(), _> = redis::cmd("SETEX")
+    .arg(&typing_key)
+    .arg(5)
+    .arg(1)
+    .query_async(&mut state.redis_pool.clone())
+    .await;
+
+  HttpResponse::Ok().finish()
 }
 
 #[get("/v1/dm/unreadcount")]

@@ -280,6 +280,7 @@ async fn main() -> std::io::Result<()> {
       .service(send_direct_message)
       .service(ad_click)
       .service(direct_messages)
+      .service(dm_typing)
       .service(direct_message_unread_count)
       .service(github_auth_start_v1)
       .service(github_auth_callback_v1)
