@@ -4182,10 +4182,12 @@ pub async fn render_inbox_html(
             <div id="dm-typing-indicator" style="display: none;" class="typing-indicator"><em>User is typing...</em></div>
             <form id="dm-form" action="https://{DOMAIN}/v1/dm/send" method="POST">
               <input type="hidden" id="dm-target-user-input" name="target_user" value="{default_target_user}">
-              <div class="dm-input-row">
+              <div class="dm-input-container">
                 <input type="text" id="dm-message-input" name="message" maxlength="1024" placeholder="Type a direct message" required>
-                <button id="emoji-btn" class="emoji-btn" title="Insert Emoji">😀</button>
-                <input type="submit" value="Send">
+                <div class="dm-action-row">
+                  <button id="emoji-btn" class="emoji-btn" title="Insert Emoji">😀</button>
+                  <input type="submit" value="Send">
+                </div>
               </div>
               <div id="emoji-picker" style="display: none;" class="emoji-picker-container">
                 <span>😀</span><span>😂</span><span>❤️</span><span>👍</span><span>🙏</span><span>😭</span><span>🥺</span><span>🔥</span><span>🥰</span><span>😊</span><span>✨</span><span>😍</span><span>🚀</span><span>🎉</span><span>😎</span><span>💯</span><span>💀</span><span>💡</span><span>👏</span><span>🥳</span>
@@ -4377,10 +4379,12 @@ pub async fn render_inbox_mobile_html(
           <div id="dm-typing-indicator" style="display: none;" class="typing-indicator"><em>User is typing...</em></div>
           <form id="dm-form" action="https://{DOMAIN}/v1/dm/send" method="POST">
             <input type="hidden" id="dm-target-user-input" name="target_user" value="{default_target_user}">
-            <div class="dm-input-row">
+            <div class="dm-input-container">
               <input type="text" id="dm-message-input" name="message" maxlength="1024" placeholder="Type a direct message" required>
-              <button id="emoji-btn" class="emoji-btn" title="Insert Emoji">😀</button>
-              <input type="submit" value="Send">
+              <div class="dm-action-row">
+                <button id="emoji-btn" class="emoji-btn" title="Insert Emoji">😀</button>
+                <input type="submit" value="Send">
+              </div>
             </div>
             <div id="emoji-picker" style="display: none;" class="emoji-picker-container">
               <span>😀</span><span>😂</span><span>❤️</span><span>👍</span><span>🙏</span><span>😭</span><span>🥺</span><span>🔥</span><span>🥰</span><span>😊</span><span>✨</span><span>😍</span><span>🚀</span><span>🎉</span><span>😎</span><span>💯</span><span>💀</span><span>💡</span><span>👏</span><span>🥳</span>

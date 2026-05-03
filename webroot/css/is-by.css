@@ -1294,10 +1294,20 @@ textarea.post {
     resize: vertical;
     min-height: 40px;
 }
-.dm-input-row {
+
+.dm-input-container {
     display: flex;
+    flex-direction: column;
     gap: 8px;
+    width: 100%;
+}
+
+.dm-action-row {
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
     align-items: center;
+    justify-content: flex-end;
 }
 
 .emoji-btn {
