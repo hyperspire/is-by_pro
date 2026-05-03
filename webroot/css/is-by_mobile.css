@@ -879,3 +879,11 @@ textarea {
   color: #e6edf3;
   font-size: 14px;
 }
+
+#dm-inbox-layout {
+  flex-direction: column;
+}
+
+#dm-panel {
+  width: 100%;
+}
