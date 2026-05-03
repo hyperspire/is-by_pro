@@ -277,7 +277,7 @@ async function registerServiceWorker() {
   }
 
   try {
-    const registration = await navigator.serviceWorker.register(`/sw.js?v=${SHELL_VERSION}`, { scope: '/' });
+    const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
     registration.update();
     setStatus(`Mobile shell cached: ${SHELL_CACHE_NAME}`);
     watchServiceWorkerRegistration(registration);

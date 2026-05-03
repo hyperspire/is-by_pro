@@ -290,9 +290,15 @@ function attachDirectMessageEventListeners() {
   }
   dmForm.dataset.dmSubmitBound = '1';
 
+  const dmSubmitBtn = dmForm.querySelector('.post-submit');
+  if (dmSubmitBtn) {
+    dmSubmitBtn.addEventListener('click', () => {
+      initPushNotifications();
+    });
+  }
+
   dmForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    initPushNotifications();
 
     const targetUser = dmTargetInput.value.trim();
     const messageField = document.getElementById('dm-message-input');
