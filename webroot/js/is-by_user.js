@@ -607,7 +607,6 @@ function attachNewPostEventListener() {
   }
 
   characterCounter('post-character-count');
-  characterCounter('reply-character-count');
 
   for (let link of links) {
     link.addEventListener('click', (event) => {
@@ -826,8 +825,8 @@ function characterCounter(counter) {
   textFieldPost.addEventListener('input', (event) => {
     const charCountPost = event.target.value.length;
     charCountDiv.textContent = charCountPost + '/4096';
-    if (charCountPost > 4096) {
-      charCountDiv.style.color = 'red';
+    if (charCountPost > 4000) {
+      charCountDiv.style.color = 'yellow';
     } else {
       charCountDiv.style.color = 'green';
     }
