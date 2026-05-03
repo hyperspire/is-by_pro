@@ -126,8 +126,9 @@ mod tests {
         let mysql_password = std::env::var("MYSQL_PASSWORD").unwrap_or_default();
         let mysql_host = std::env::var("MYSQL_HOST").unwrap_or_default();
         let mysql_user = std::env::var("MYSQL_USER").unwrap_or_default();
+        let mysql_database = std::env::var("MYSQL_DATABASE").map(|db| db.trim_end_matches(';').to_string()).unwrap_or_default();
         
-        let db_url = format!("mysql://{}:{}@{}:3306/isby", mysql_user, mysql_password, mysql_host);
+        let db_url = format!("mysql://{}:{}@{}:3306/{}", mysql_user, mysql_password, mysql_host, mysql_database);
         let pool = sqlx::mysql::MySqlPoolOptions::new().connect(&db_url).await.unwrap();
 
         let subs = sqlx::query_as::<_, PushSubscriptionRow>(

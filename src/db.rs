@@ -1,7 +1,6 @@
 use sqlx::{mysql::MySqlPoolOptions, MySqlPool};
 use std::collections::{HashSet, HashMap};
 use crate::{extract_hashtags, models::*, utils::*};
-use crate::{MYSQL_DATABASE, MYSQL_USER};
 
 pub async fn acknowledged_post_ids_for_user(pool: &MySqlPool, viewer_uid: Option<i64>, post_ids: &[String]) -> HashSet<String> {
   let Some(uid) = viewer_uid else {
@@ -37,11 +36,16 @@ pub async fn create_db_pool() -> Result<MySqlPool, sqlx::Error> {
     .unwrap_or(3306);
   let mysql_password = std::env::var("MYSQL_PASSWORD")
     .expect("Missing MYSQL_PASSWORD in environment file or shell");
+  let mysql_user = std::env::var("MYSQL_USER")
+    .expect("Missing MYSQL_USER in environment file or shell");
+  let mysql_database = std::env::var("MYSQL_DATABASE")
+    .map(|db| db.trim_end_matches(';').to_string())
+    .expect("Missing MYSQL_DATABASE in environment file or shell");
 
   let server_options = sqlx::mysql::MySqlConnectOptions::new()
     .host(&mysql_host)
     .port(mysql_port)
-    .username(MYSQL_USER)
+    .username(&mysql_user)
     .password(&mysql_password);
 
   // Bootstrap the database itself before connecting with a selected schema.
@@ -50,7 +54,7 @@ pub async fn create_db_pool() -> Result<MySqlPool, sqlx::Error> {
     .connect_with(server_options.clone())
     .await?;
 
-  let safe_database_name = MYSQL_DATABASE.replace('`', "");
+  let safe_database_name = mysql_database.replace('`', "");
   let create_database_sql = format!(
     "CREATE DATABASE IF NOT EXISTS `{}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
     safe_database_name
@@ -64,7 +68,7 @@ pub async fn create_db_pool() -> Result<MySqlPool, sqlx::Error> {
 
   MySqlPoolOptions::new()
     .max_connections(5)
-    .connect_with(server_options.database(MYSQL_DATABASE))
+    .connect_with(server_options.database(&mysql_database))
     .await
 }
 pub async fn ensure_database_schema(pool: &MySqlPool) -> Result<(), sqlx::Error> {
