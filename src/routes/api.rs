@@ -2114,7 +2114,14 @@ pub async fn get_inbox_contacts_page(
   let limit = query.limit.unwrap_or(20).clamp(1, 50) as usize;
 
   match load_inbox_contacts(&state, query.ib_uid, &query.ib_user).await {
-    Ok(all_contacts) => {
+    Ok(mut all_contacts) => {
+      if let Some(search_term) = &query.search {
+        let term = search_term.trim().to_lowercase();
+        if !term.is_empty() {
+          all_contacts.retain(|c| c.to_lowercase().contains(&term));
+        }
+      }
+
       let total_contacts = all_contacts.len();
       let start = offset.min(total_contacts);
       let end = start.saturating_add(limit).min(total_contacts);

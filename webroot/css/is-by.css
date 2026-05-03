@@ -441,8 +441,27 @@ a:hover {
     box-sizing: border-box;
 }
 
-#dm-contact-list {
+#dm-contacts-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     width: 180px;
+    flex-shrink: 0;
+}
+
+.dm-contact-search {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px;
+    border-radius: 6px;
+    border: 1px solid #2a2a2a;
+    background-color: #151515;
+    color: #e6edf3;
+    font-size: 13px;
+}
+
+#dm-contact-list {
+    width: 100%;
     min-height: 120px;
     background-color: #151515;
     border: 1px solid #2a2a2a;

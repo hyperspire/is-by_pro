@@ -4174,9 +4174,12 @@ pub async fn render_inbox_html(
     r#"<div id="selected-user-posts-section" class="post-section">
         <div class="notice"><p><em>:[[ :direct-message-inbox: ]]:</em></p></div>
         <div id="dm-inbox-layout">
+        <div id="dm-contacts-container">
+          <input type="search" id="dm-contact-search" class="dm-contact-search" placeholder="Search contacts..." autocomplete="off">
           <div id="dm-contact-list" data-ib-uid="{ib_uid}" data-ib-user="{ib_user}" data-contacts-offset="{contacts_next_offset}">{contact_list_html}{contacts_sentinel_html}</div>
+        </div>
           <div id="dm-panel" style="display:block;">
-            <p><strong>:[[ :direct-messages: ]]: <span id="dm-target-user">{default_target_user}</span></strong></p>
+            <p><strong>:[[ :direct-messages: <span id="dm-target-user">{default_target_user}</span>: ]]:</strong></p>
             <div id="dm-message-status"></div>
             <div id="dm-thread"></div>
             <div id="dm-typing-indicator" style="display: none;" class="typing-indicator"><em>User is typing...</em></div>
@@ -4371,9 +4374,12 @@ pub async fn render_inbox_mobile_html(
     r#"<div class="glass-card">
       <div class="notice"><p><em>:[[ :direct-message-inbox: ]]:</em></p></div>
       <div id="dm-inbox-layout">
-        <div id="dm-contact-list" data-ib-uid="{ib_uid}" data-ib-user="{ib_user}" data-contacts-offset="{contacts_next_offset}">{contact_list_html}{contacts_sentinel_html}</div>
+        <div id="dm-contacts-container">
+          <input type="search" id="dm-contact-search" class="dm-contact-search" placeholder="Search contacts..." autocomplete="off">
+          <div id="dm-contact-list" data-ib-uid="{ib_uid}" data-ib-user="{ib_user}" data-contacts-offset="{contacts_next_offset}">{contact_list_html}{contacts_sentinel_html}</div>
+        </div>
         <div id="dm-panel" style="display:block;">
-          <p><strong>:[[ :direct-messages: ]]: <span id="dm-target-user">{default_target_user}</span></strong></p>
+          <p><strong>:[[ :direct-messages: <span id="dm-target-user">{default_target_user}</span>: ]]:</strong></p>
           <div id="dm-message-status"></div>
           <div id="dm-thread"></div>
           <div id="dm-typing-indicator" style="display: none;" class="typing-indicator"><em>User is typing...</em></div>

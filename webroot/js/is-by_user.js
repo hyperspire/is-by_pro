@@ -23,6 +23,7 @@ function attachEventListeners() {
     attachPostsInfiniteScrollEventListener,
     attachFollowersInfiniteScrollEventListener,
     attachDMContactsInfiniteScrollEventListener,
+    attachDMContactSearchEventListener,
     attachSSEListener,
   ];
 
@@ -346,7 +347,7 @@ function attachDirectMessageEventListeners() {
                 'ib-uid': String(getCurrentIBUID()),
               },
               body: JSON.stringify({ target_user: targetUser }),
-            }).catch(() => {});
+            }).catch(() => { });
           }
           typingTimer = setTimeout(() => { typingTimer = null; }, 3000);
         }
@@ -1072,12 +1073,18 @@ function attachDMContactsInfiniteScrollEventListener() {
     loading = true;
 
     try {
+      const searchInput = document.getElementById('dm-contact-search');
+      const searchVal = searchInput ? searchInput.value.trim() : '';
+
       const params = new URLSearchParams({
         ib_uid: ibUID,
         ib_user: ibUser,
         offset: contactList.dataset.contactsOffset || '0',
         limit: '20'
       });
+      if (searchVal) {
+        params.append('search', searchVal);
+      }
 
       const resp = await fetch(`/api/v1/inbox/contacts?${params}`);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -1111,6 +1118,72 @@ function attachDMContactsInfiniteScrollEventListener() {
   }, { rootMargin: '300px' });
 
   observer.observe(sentinel);
+}
+
+function attachDMContactSearchEventListener() {
+  const searchInput = document.getElementById('dm-contact-search');
+  const contactList = document.getElementById('dm-contact-list');
+  if (!searchInput || !contactList) return;
+
+  const ibUID = contactList.dataset.ibUid;
+  const ibUser = contactList.dataset.ibUser;
+  if (!ibUID || !ibUser) return;
+
+  let debounceTimer = null;
+
+  searchInput.addEventListener('input', () => {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+
+    debounceTimer = setTimeout(async () => {
+      try {
+        const searchVal = searchInput.value.trim();
+        const params = new URLSearchParams({
+          ib_uid: ibUID,
+          ib_user: ibUser,
+          offset: '0',
+          limit: '20'
+        });
+        if (searchVal) {
+          params.append('search', searchVal);
+        }
+
+        const resp = await fetch(`/api/v1/inbox/contacts?${params}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+
+        // Clear existing list but retain the sentinel format logic
+        contactList.innerHTML = data.contacts_html || '';
+
+        let sentinel = document.getElementById('dm-contacts-load-sentinel');
+        if (data.has_more) {
+          if (!sentinel) {
+            sentinel = document.createElement('div');
+            sentinel.id = 'dm-contacts-load-sentinel';
+            contactList.appendChild(sentinel);
+            // Re-attach infinite scroll observer to new sentinel by calling the function again
+            attachDMContactsInfiniteScrollEventListener();
+          }
+        } else if (sentinel) {
+          sentinel.remove();
+        }
+
+        contactList.dataset.contactsOffset = String(data.next_offset || 0);
+
+        const dmButtons = contactList.querySelectorAll('.open-dm');
+        const dmPanel = document.getElementById('dm-panel');
+        const dmTargetLabel = document.getElementById('dm-target-user');
+        const dmTargetInput = document.getElementById('dm-target-user-input');
+        if (dmPanel && dmTargetLabel && dmTargetInput) {
+          attachDMOpenButtons(dmButtons, dmPanel, dmTargetLabel, dmTargetInput);
+        }
+
+      } catch (e) {
+        console.error('dm-contacts-search-error:', e);
+      }
+    }, 300);
+  });
 }
 
 function attachSSEListener() {

@@ -310,6 +310,7 @@ pub struct InboxContactsPageQuery {
   pub ib_user: String,
   pub offset: Option<i64>,
   pub limit: Option<i64>,
+  pub search: Option<String>,
 }
 
 #[derive(Deserialize)]

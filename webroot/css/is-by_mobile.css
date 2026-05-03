@@ -860,3 +860,22 @@ textarea {
   margin-bottom: 5px;
   font-style: italic;
 }
+
+#dm-contacts-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.dm-contact-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: #e6edf3;
+  font-size: 14px;
+}
