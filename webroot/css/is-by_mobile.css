@@ -288,6 +288,10 @@ body {
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
 }
 
+.update-banner[hidden] {
+  display: none !important;
+}
+
 .update-banner-copy strong {
   display: block;
   color: #f0f6fc;
