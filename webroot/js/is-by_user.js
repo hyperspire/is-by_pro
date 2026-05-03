@@ -536,17 +536,23 @@ function urlBase64ToUint8Array(base64String) {
 
 async function initPushNotifications() {
   try {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    if (!('serviceWorker' in navigator)) {
+      alert('Push init failed: No serviceWorker support.');
+      return;
+    }
+    if (!('PushManager' in window)) {
+      alert('Push init failed: No PushManager support. If you are in a WebView or incognito, push is not supported.');
       return;
     }
 
     if (Notification.permission === 'denied') {
+      alert('Push init failed: Notifications are blocked in your browser settings.');
       return;
     }
 
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') {
-      console.log('Push notification permission denied.');
+      alert('Push init failed: Permission was not granted by the user.');
       return;
     }
 
@@ -555,7 +561,7 @@ async function initPushNotifications() {
       registration = await navigator.serviceWorker.register('/sw.js');
       await navigator.serviceWorker.ready;
     } catch (e) {
-      console.error('Service worker registration failed:', e);
+      alert('Push init failed: Service worker registration failed: ' + e.message);
       return;
     }
 
@@ -568,7 +574,7 @@ async function initPushNotifications() {
 
     const keyResponse = await fetch('/v1/push/public-key');
     if (!keyResponse.ok) {
-      console.error('Failed to fetch VAPID public key');
+      alert('Push init failed: Failed to fetch VAPID public key from server. Status: ' + keyResponse.status);
       return;
     }
     const vapidPublicKey = await keyResponse.text();
@@ -609,13 +615,14 @@ async function initPushNotifications() {
       body: JSON.stringify(payload)
     });
 
-    if (subscribeResponse.ok) {
-      console.log('Push subscription saved successfully.');
+    if (!subscribeResponse.ok) {
+      alert('Push init failed: Failed to save push subscription on server. Status: ' + subscribeResponse.status);
     } else {
-      console.error('Failed to save push subscription to backend.');
+      // Temporarily alert success so we know it completed
+      alert('Push subscription successful! Endpoint saved to database.');
     }
-  } catch (error) {
-    console.error('Failed to initialize push notifications:', error);
+  } catch (e) {
+    alert('Push init critical failure: ' + e.message);
   }
 }
 
