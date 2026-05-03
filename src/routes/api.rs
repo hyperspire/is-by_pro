@@ -2817,7 +2817,7 @@ pub async fn ads_paypal_webhook(
 
 #[get("/v1/push/public-key")]
 pub async fn get_vapid_public_key(state: web::Data<AppState>) -> impl Responder {
-  HttpResponse::Ok().body(state.vapid_public_key.clone())
+  HttpResponse::Ok().body(state.vapid_public_key.trim().to_string())
 }
 
 #[post("/v1/push/subscribe")]

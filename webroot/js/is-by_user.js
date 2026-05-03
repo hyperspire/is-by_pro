@@ -543,8 +543,12 @@ async function initPushNotifications() {
       return;
     }
 
-    const registration = await navigator.serviceWorker.ready;
-    if (!registration) {
+    let registration;
+    try {
+      registration = await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+    } catch (e) {
+      console.error('Service worker registration failed:', e);
       return;
     }
 
@@ -561,7 +565,7 @@ async function initPushNotifications() {
       return;
     }
     const vapidPublicKey = await keyResponse.text();
-    const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
+    const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey.trim());
 
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,

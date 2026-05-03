@@ -50,7 +50,7 @@ pub async fn send_push_notification(
         );
 
         let mut sig_builder = match VapidSignatureBuilder::from_base64(
-            &state.vapid_private_key,
+            state.vapid_private_key.trim(),
             &subscription_info,
         ) {
             Ok(builder) => builder,
@@ -82,6 +82,31 @@ pub async fn send_push_notification(
                 }
             }
             Err(e) => eprintln!("Push message build error: {:?}", e),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_web_push_builder() {
+        let vapid_private = "o2ofH9CSnF7OLqxZCwWBv3T90PoKX31YKlZKJ9-zpx8";
+        let subscription_info = SubscriptionInfo::new(
+            "https://fcm.googleapis.com/fcm/send/fake".to_string(),
+            "BMkY5".to_string(),
+            "xyz".to_string()
+        );
+
+        let sig_builder = VapidSignatureBuilder::from_base64(
+            vapid_private,
+            &subscription_info,
+        );
+
+        match sig_builder {
+            Ok(_) => println!("Builder OK!"),
+            Err(e) => println!("Builder Error: {:?}", e),
         }
     }
 }

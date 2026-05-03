@@ -1,6 +1,6 @@
 const APP_PANELS = ['home', 'mission', 'access'];
-const SHELL_CACHE_NAME = 'is-by-mobile-shell-v10';
-const SHELL_VERSION = 'mobile-shell-v10';
+const SHELL_CACHE_NAME = 'is-by-mobile-shell-v11';
+const SHELL_VERSION = 'mobile-shell-v11';
 const UPDATE_BANNER_SUPPRESS_KEY = 'is-by-mobile-update-banner-suppressed';
 const UPDATE_BANNER_SUPPRESS_VERSION_KEY = 'is-by-mobile-update-banner-suppressed-version';
 
@@ -364,7 +364,7 @@ async function initPushNotifications(registration) {
       return;
     }
     const vapidPublicKey = await keyResponse.text();
-    const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
+    const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey.trim());
 
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
