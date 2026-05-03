@@ -109,4 +109,66 @@ mod tests {
             Err(e) => println!("Builder Error: {:?}", e),
         }
     }
+
+    #[tokio::test]
+    async fn test_real_push() {
+        let _ = dotenvy::from_path(".env/MYSQL.env");
+        let _ = dotenvy::from_path(".env/VAPID.env");
+        
+        let vapid_private = std::env::var("VAPID_PRIVATE_KEY").unwrap_or_default();
+        let mysql_password = std::env::var("MYSQL_PASSWORD").unwrap_or_default();
+        let mysql_host = std::env::var("MYSQL_HOST").unwrap_or_default();
+        let mysql_user = std::env::var("MYSQL_USER").unwrap_or_default();
+        let mysql_db = std::env::var("MYSQL_DATABASE").unwrap_or_else(|_| "is-by".to_string());
+        
+        let db_url = format!("mysql://{}:{}@{}:3306/{}", mysql_user, mysql_password, mysql_host, mysql_db);
+        let pool = sqlx::mysql::MySqlPoolOptions::new().connect(&db_url).await.unwrap();
+
+        let subs = sqlx::query_as::<_, PushSubscriptionRow>(
+            "SELECT endpoint, p256dh, auth FROM push_subscriptions LIMIT 1"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        if subs.is_empty() {
+            println!("No subscriptions found in database!");
+            return;
+        }
+
+        let sub = &subs[0];
+        println!("Sending to endpoint: {}", sub.endpoint);
+
+        let subscription_info = SubscriptionInfo::new(
+            sub.endpoint.clone(),
+            sub.p256dh.clone(),
+            sub.auth.clone()
+        );
+
+        let mut sig_builder = VapidSignatureBuilder::from_base64(
+            vapid_private.trim(),
+            &subscription_info,
+        ).unwrap();
+        sig_builder.add_claim("sub", "mailto:admin@is-by.pro");
+        let vapid_sig = sig_builder.build().unwrap();
+
+        let payload_str = serde_json::json!({
+            "title": "Test from CLI",
+            "body": "This is a test web push notification.",
+            "url": "/"
+        }).to_string();
+
+        let mut builder = WebPushMessageBuilder::new(&subscription_info);
+        builder.set_payload(web_push::ContentEncoding::Aes128Gcm, payload_str.as_bytes());
+        builder.set_vapid_signature(vapid_sig);
+        builder.set_ttl(86400);
+
+        let message = builder.build().unwrap();
+        let client = IsahcWebPushClient::new().unwrap();
+
+        match client.send(message).await {
+            Ok(_) => println!("PUSH SENT SUCCESSFULLY!"),
+            Err(e) => println!("PUSH FAILED: {:?}", e),
+        }
+    }
 }

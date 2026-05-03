@@ -567,10 +567,23 @@ async function initPushNotifications() {
     const vapidPublicKey = await keyResponse.text();
     const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey.trim());
 
-    const subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: applicationServerKey
-    });
+    let subscription;
+    try {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: applicationServerKey
+      });
+    } catch (subError) {
+      console.warn('Subscribe failed, attempting to unsubscribe existing and retry:', subError);
+      const existingSub = await registration.pushManager.getSubscription();
+      if (existingSub) {
+        await existingSub.unsubscribe();
+      }
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: applicationServerKey
+      });
+    }
 
     const subJson = subscription.toJSON();
     const payload = {
