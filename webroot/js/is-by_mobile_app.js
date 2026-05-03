@@ -1,6 +1,6 @@
 const APP_PANELS = ['home', 'mission', 'access'];
-const SHELL_CACHE_NAME = 'is-by-mobile-shell-v11';
-const SHELL_VERSION = 'mobile-shell-v11';
+const SHELL_CACHE_NAME = 'is-by-mobile-shell-v12';
+const SHELL_VERSION = 'mobile-shell-v12';
 const UPDATE_BANNER_SUPPRESS_KEY = 'is-by-mobile-update-banner-suppressed';
 const UPDATE_BANNER_SUPPRESS_VERSION_KEY = 'is-by-mobile-update-banner-suppressed-version';
 
@@ -82,35 +82,9 @@ function clearUpdateBannerSuppression() {
   }
 }
 
-function suppressUpdateBannerForCurrentShellVersion() {
-  try {
-    window.sessionStorage.setItem(UPDATE_BANNER_SUPPRESS_VERSION_KEY, SHELL_VERSION);
-  } catch (_error) {
-    // Ignore storage exceptions in strict/private modes.
-  }
 
-  try {
-    window.localStorage.setItem(UPDATE_BANNER_SUPPRESS_VERSION_KEY, SHELL_VERSION);
-  } catch (_error) {
-    // Ignore storage exceptions in strict/private modes.
-  }
-}
 
-function isUpdateBannerSuppressedForCurrentShellVersion() {
-  try {
-    if (window.localStorage.getItem(UPDATE_BANNER_SUPPRESS_VERSION_KEY) === SHELL_VERSION) {
-      return true;
-    }
-  } catch (_error) {
-    // Ignore storage exceptions in strict/private modes.
-  }
 
-  try {
-    return window.sessionStorage.getItem(UPDATE_BANNER_SUPPRESS_VERSION_KEY) === SHELL_VERSION;
-  } catch (_error) {
-    return false;
-  }
-}
 
 function suppressUpdateBannerForSession(registration) {
   const waitingUrl = registration?.waiting?.scriptURL || '';
@@ -171,7 +145,7 @@ function showUpdateBanner(registration) {
   const updateBanner = document.getElementById('update-banner');
   const updateButton = document.getElementById('update-banner-action');
   reconcileUpdateBannerSuppression(registration);
-  if (!updateBanner || !updateButton || !registration?.waiting || isUpdateBannerSuppressedForSession(registration) || isUpdateBannerSuppressedForCurrentShellVersion()) {
+  if (!updateBanner || !updateButton || !registration?.waiting || isUpdateBannerSuppressedForSession(registration)) {
     return;
   }
 
@@ -193,7 +167,6 @@ function showUpdateBanner(registration) {
         updateBanner.hidden = true;
       }
       // Optionally, still do the SW update logic
-      suppressUpdateBannerForCurrentShellVersion();
       if (registration.waiting) {
         suppressUpdateBannerForSession(registration);
         suppressUpdateBannerForReloadCycle();
@@ -206,14 +179,6 @@ function showUpdateBanner(registration) {
 
 function hasNewWaitingWorker(registration) {
   if (!registration || !registration.waiting) {
-    return false;
-  }
-
-  const waitingUrl = registration.waiting.scriptURL || '';
-  const activeUrl = registration.active?.scriptURL || '';
-
-  // Show the banner only when the waiting worker is different from active.
-  if (activeUrl && waitingUrl === activeUrl) {
     return false;
   }
 
@@ -236,7 +201,7 @@ function watchServiceWorkerRegistration(registration) {
   reconcileUpdateBannerSuppression(registration);
 
   if (hasNewWaitingWorker(registration)) {
-    if (isUpdateBannerSuppressedForSession(registration) || isUpdateBannerSuppressedForCurrentShellVersion()) {
+    if (isUpdateBannerSuppressedForSession(registration)) {
       hideUpdateBanner();
     } else {
       setInstallStatus('An updated shell is ready. Reload the page to apply it.');
@@ -255,7 +220,7 @@ function watchServiceWorkerRegistration(registration) {
     installingWorker.addEventListener('statechange', () => {
       if (installingWorker.state === 'installed' && navigator.serviceWorker.controller && hasNewWaitingWorker(registration)) {
         reconcileUpdateBannerSuppression(registration);
-        if (isUpdateBannerSuppressedForSession(registration) || isUpdateBannerSuppressedForCurrentShellVersion()) {
+        if (isUpdateBannerSuppressedForSession(registration)) {
           hideUpdateBanner();
         } else {
           setInstallStatus('An updated shell is ready. Refresh the page to apply it.');
@@ -528,7 +493,6 @@ function bindRefreshFallback() {
     if (updateBanner) {
       updateBanner.hidden = true;
     }
-    suppressUpdateBannerForCurrentShellVersion();
     let didUpdate = false;
     try {
       const registration = await navigator.serviceWorker.getRegistration('/');
