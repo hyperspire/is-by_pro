@@ -1346,6 +1346,7 @@ async function renderGithubCard(card) {
 
 document.addEventListener("DOMContentLoaded", function () {
   document.querySelectorAll('.github-repo-card').forEach(renderGithubCard);
+  document.querySelectorAll('.generic-link-preview').forEach(renderGenericLinkPreview);
 
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
@@ -1354,7 +1355,11 @@ document.addEventListener("DOMContentLoaded", function () {
           if (node.classList && node.classList.contains('github-repo-card')) {
             renderGithubCard(node);
           }
+          if (node.classList && node.classList.contains('generic-link-preview')) {
+            renderGenericLinkPreview(node);
+          }
           node.querySelectorAll('.github-repo-card').forEach(renderGithubCard);
+          node.querySelectorAll('.generic-link-preview').forEach(renderGenericLinkPreview);
         }
       });
     });
@@ -1362,3 +1367,38 @@ document.addEventListener("DOMContentLoaded", function () {
 
   observer.observe(document.body, { childList: true, subtree: true });
 });
+
+async function renderGenericLinkPreview(element) {
+  if (element.hasAttribute('data-rendered')) return;
+  element.setAttribute('data-rendered', 'true');
+  const url = element.getAttribute('data-url');
+  if (!url) return;
+
+  try {
+    const res = await fetch(`/v1/og_preview?url=${encodeURIComponent(url)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.success) return;
+
+    let html = `<a href="${data.url}" target="_blank" rel="noopener" class="generic-link-preview-card">`;
+    if (data.image) {
+      html += `<img src="${data.image}" class="generic-link-preview-image" alt="Preview Image" onerror="this.style.display='none'">`;
+    }
+    html += `<div class="generic-link-preview-content">`;
+    if (data.title) {
+      html += `<h4 class="generic-link-preview-title">${data.title}</h4>`;
+    }
+    if (data.description) {
+      html += `<p class="generic-link-preview-desc">${data.description}</p>`;
+    }
+    try {
+      const urlObj = new URL(data.url);
+      html += `<span class="generic-link-preview-domain">${urlObj.hostname}</span>`;
+    } catch(e) {}
+    html += `</div></a>`;
+
+    element.innerHTML = html;
+  } catch(e) {
+    console.error('OG preview error:', e);
+  }
+}

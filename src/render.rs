@@ -5408,6 +5408,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
   let mut skip_link_content = false;
   let mut in_link = false;
   let mut current_link_html = String::new();
+  let mut current_generic_url: Option<String> = None;
 
   let mut new_events = Vec::new();
 
@@ -5473,6 +5474,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
             skip_link_content = true;
             current_link_html = format!(r#"<div class="github-repo-card" data-repo="{}"></div>"#, escape_html(&repo));
         } else {
+            current_generic_url = Some(dest_str.clone());
             new_events.push(Event::Start(Tag::Link { link_type, dest_url, title, id }));
         }
       }
@@ -5483,6 +5485,12 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
             new_events.push(Event::Html(std::mem::take(&mut current_link_html).into()));
         } else {
             new_events.push(Event::End(TagEnd::Link));
+            if let Some(url) = current_generic_url.take() {
+                if url.starts_with("http") && !url.contains("imgur.com") && !url.contains("youtube.com") && !url.contains("youtu.be") && !url.contains("github.com") && !url.contains("rumble.com") {
+                    let preview_html = format!(r#"<div class="generic-link-preview" data-url="{}"></div>"#, escape_html(&url));
+                    new_events.push(Event::Html(preview_html.into()));
+                }
+            }
         }
       }
       Event::Text(_text) if skip_link_content => {
@@ -5569,7 +5577,10 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
                       } else if let Some(is_by_html) = extract_is_by_info(url) {
                           new_events.push(Event::Html(is_by_html.into()));
                       } else {
-                          let link_html = format!(r#"<a class="post-link" href="{url}" target="_blank" rel="noopener">{url}</a>"#, url=escape_html(url));
+                          let mut link_html = format!(r#"<a class="post-link" href="{url}" target="_blank" rel="noopener">{url}</a>"#, url=escape_html(url));
+                          if url.starts_with("http") && !url.contains("imgur.com") && !url.contains("youtube.com") && !url.contains("youtu.be") && !url.contains("github.com") && !url.contains("rumble.com") {
+                              link_html.push_str(&format!(r#"<div class="generic-link-preview" data-url="{}"></div>"#, escape_html(url)));
+                          }
                           new_events.push(Event::Html(link_html.into()));
                       }
                       

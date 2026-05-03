@@ -68,6 +68,9 @@ pub mod models;
 pub use models::*;
 pub mod db;
 pub use db::*;
+
+pub mod push;
+pub mod og_preview;
 pub mod auth;
 pub use auth::*;
 pub mod paypal;
@@ -253,6 +256,7 @@ async fn main() -> std::io::Result<()> {
       .service(subscribe_push)
       .service(block_user)
       .service(unblock_user)
+      .service(og_preview::get_og_preview)
       .service(get_war_room_posts_page)
       .service(search_users)
       .service(search_posts)

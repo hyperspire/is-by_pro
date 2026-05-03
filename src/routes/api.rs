@@ -2238,6 +2238,23 @@ pub async fn send_direct_message(
         message: "You have a new direct message.".to_string(),
       });
 
+      let state_clone = state.clone();
+      let msg_preview = if message.len() > 50 {
+          format!("{}...", &message[..47])
+      } else {
+          message.to_string()
+      };
+      
+      actix_web::rt::spawn(async move {
+          crate::push::send_push_notification(
+              &state_clone,
+              target_uid,
+              "New Direct Message",
+              &msg_preview,
+              "/dm",
+          ).await;
+      });
+
       let current_username = match sqlx::query_as::<_, SessionUserRow>(
         "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
       )
