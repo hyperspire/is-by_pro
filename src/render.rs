@@ -5203,7 +5203,15 @@ fn extract_imgur_info(url: &str) -> Option<String> {
             return Some(format!(r#"<div class="imgur-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><a href="https://i.imgur.com/{0}.jpg" target="_blank" rel="noopener"><img src="https://i.imgur.com/{0}.jpg" style="max-width: 100%; max-height: 500px; border-radius: 8px;" alt="Imgur Preview"></a></div>"#, escape_html(path)));
         }
     } else {
-        return Some(format!(r#"<div class="imgur-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><iframe scrolling="no" src="https://imgur.com/{}/embed?pub=true" style="width: 100%; max-width: 560px; height: 500px; border: none; border-radius: 8px;" allowfullscreen="true"></iframe></div>"#, escape_html(path)));
+        let id = if path.starts_with("gallery/") {
+            let gallery_id = &path["gallery/".len()..];
+            gallery_id.rsplit('-').next().unwrap_or(gallery_id)
+        } else if path.starts_with("a/") {
+            &path["a/".len()..]
+        } else {
+            path
+        };
+        return Some(format!(r#"<div class="imgur-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><iframe scrolling="no" src="https://imgur.com/a/{}/embed?pub=true" style="width: 100%; max-width: 560px; height: 500px; border: none; border-radius: 8px;" allowfullscreen="true"></iframe></div>"#, escape_html(id)));
     }
   }
   None
