@@ -5402,6 +5402,19 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
   options.remove(Options::ENABLE_WIKILINKS);
   let parser = Parser::new_ext(raw_text, options);
 
+  let mut merged_events: Vec<Event> = Vec::new();
+  for event in parser {
+      if let Event::Text(text) = &event {
+          if let Some(Event::Text(last_text)) = merged_events.last_mut() {
+              let mut new_string = last_text.to_string();
+              new_string.push_str(text);
+              *last_text = new_string.into();
+              continue;
+          }
+      }
+      merged_events.push(event);
+  }
+
   let mut in_code_block = false;
   let mut code_language = String::new();
   let mut code_content = String::new();
@@ -5412,7 +5425,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
 
   let mut new_events = Vec::new();
 
-  for event in parser {
+  for event in merged_events {
     match event {
       Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(lang))) => {
         in_code_block = true;
