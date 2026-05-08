@@ -43,6 +43,7 @@
                 <input class="post-submit" type="submit" value="Post">
             </form>
         </div>
+        {{ trending_posts_html | safe }}
         {{ war_room_content | safe }}
         {{ sentinel_html | safe }}
     </div>

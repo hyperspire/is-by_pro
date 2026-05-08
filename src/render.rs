@@ -3740,6 +3740,75 @@ pub async fn render_profile_followers_chunk(
   })
 }
 
+pub async fn render_trending_posts_chunk(
+  state: &AppState,
+  ib_uid: i64,
+  ib_user: &str,
+  session_uid: Option<i64>,
+) -> Result<String, String> {
+  let rows = sqlx::query_as::<_, PostRow>(
+    "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.parentid = '' AND post.timestamp >= NOW() - INTERVAL 7 DAY ORDER BY post.acknowledged_count DESC, post.timestamp DESC LIMIT 5"
+  )
+  .fetch_all(&state.db_pool)
+  .await
+  .map_err(|e| format!("Trending posts query failed: {}", e))?;
+
+  if rows.is_empty() {
+    return Ok(String::new());
+  }
+
+  let mut post_html = String::new();
+  let mut row_post_ids = Vec::new();
+  let mut display_rows = Vec::new();
+
+  for row in rows {
+    let is_blocked = crate::db::is_blocked(state, session_uid, row.ib_uid.parse::<i64>().ok()).await;
+    if !is_blocked {
+      row_post_ids.push(row.postid.clone());
+      display_rows.push(row);
+    }
+  }
+
+  let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &row_post_ids).await;
+
+  post_html += r#"<div id="trending-posts-section" class="post-section" style="margin-bottom: 24px;">"#;
+  post_html += r#"<div class="notice"><p><em>:[[ :trending-posts: 7d: ]]:</em></p></div>"#;
+
+  for row in display_rows {
+    post_html += &format!(
+      r#"<div class="post" data-postid="{post_id}" data-timestamp="{post_timestamp}">
+        {post_meta}
+        <div class="post-content">{post_body}</div>
+        <div class="post-actions">
+          {ack_controls}
+          <form class="show-post-form" action="https://{DOMAIN}/v1/showpost" method="GET">
+            <input type="hidden" name="ib_uid" value="{post_owner_uid}">
+            <input type="hidden" name="ib_user" value="{post_owner_user}">
+            <input type="hidden" name="pid" value="{post_id}">
+          </form>
+          <a href="javascript:void(0);" class="show-post">:[[ :show-post: ]]:</a>
+        </div>
+        <p class="acknowledged-count">Acknowleged {acknowledged_count} times.</p>
+      </div>"#,
+      post_id = escape_html(&row.postid),
+      post_timestamp = escape_html(&row.timestamp),
+      post_meta = render_post_meta(&row.ib_uid, &row.username, &row.timestamp, row.user_total_acks),
+      post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user),
+      ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&row.postid) {
+        render_ack_disabled()
+      } else {
+        render_ack_controls(ib_uid, ib_user, &row.postid)
+      },
+      acknowledged_count = row.acknowledged_count,
+      post_owner_uid = escape_html(&row.ib_uid),
+      post_owner_user = escape_html(&row.username)
+    );
+  }
+  
+  post_html += "</div>";
+  Ok(post_html)
+}
+
 pub async fn render_war_room_html(
   state: &AppState,
   ib_uid: i64,
@@ -3748,6 +3817,7 @@ pub async fn render_war_room_html(
 ) -> Result<String, String> {
   let mut context = Context::new();
   let advert_html = render_advert_html(state).await;
+  let trending_posts_html = render_trending_posts_chunk(state, ib_uid, ib_user, session_uid).await.unwrap_or_default();
 
   let war_room_chunk = render_war_room_posts_chunk(state, ib_uid, ib_user, session_uid, 0, 20).await?;
 
@@ -3815,14 +3885,16 @@ pub async fn render_war_room_html(
   let war_room_html = format!(
     r#"<div id="selected-user-posts-section" class="post-section" data-feed-type="warroom" data-ib-uid="{ib_uid}" data-ib-user="{ib_user}" data-war-room-offset="{war_room_offset}">
         <div class="notice"><p><em>:[[ :war-room: ]]:</em></p></div>
+        {trending_posts_html}
         {war_room_content}
         {sentinel_html}
       </div>"#,
-    ib_uid = ib_uid,
-    ib_user = escape_html(ib_user),
-    war_room_content = war_room_content,
-    war_room_offset = war_room_chunk.next_offset,
-    sentinel_html = sentinel_html
+      ib_uid = ib_uid,
+      ib_user = escape_html(ib_user),
+      war_room_offset = war_room_chunk.next_offset,
+      trending_posts_html = trending_posts_html,
+      war_room_content = war_room_content,
+      sentinel_html = sentinel_html
   );
 
   let ib_pro = sqlx::query_as::<_, ProRow>(
@@ -3949,6 +4021,7 @@ pub async fn render_war_room_mobile_html(
 ) -> Result<String, String> {
   let mut context = Context::new();
   let advert_html = render_advert_html(state).await;
+  let trending_posts_html = render_trending_posts_chunk(state, ib_uid, ib_user, session_uid).await.unwrap_or_default();
 
   let war_room_chunk = render_war_room_posts_chunk(state, ib_uid, ib_user, session_uid, 0, 20).await?;
 
@@ -4078,6 +4151,7 @@ pub async fn render_war_room_mobile_html(
   context.insert("ib_user", &escape_html(ib_user));
   context.insert("domain", &DOMAIN);
   context.insert("advert_html", &advert_html);
+  context.insert("trending_posts_html", &trending_posts_html);
   context.insert("war_room_content", &war_room_content);
   context.insert("sentinel_html", &sentinel_html);
   context.insert("navigation_links", &navigation_links);
