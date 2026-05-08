@@ -779,6 +779,7 @@ body {
 }
 
 .reply-post {
+  margin: 10px auto 6px auto !important;
   width: calc(100% - 28px) !important;
   max-width: calc(100% - 28px) !important;
   box-sizing: border-box !important;

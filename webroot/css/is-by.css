@@ -658,7 +658,7 @@ a:hover {
 }
 
 .reply-post {
-    margin-left: 28px;
+    margin: 10px auto 6px auto;
     width: 332px !important;
     max-width: calc(100% - 28px) !important;
     box-sizing: border-box;
