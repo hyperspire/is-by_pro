@@ -1508,6 +1508,21 @@ pub async fn quick_response_force_project(
       event_type: "reinforcement".to_string(),
       message: format!("{} responded to your reinforcements request!", session_username),
     });
+
+    let state_clone = state.clone();
+    let push_target_uid = project_row.ib_uid;
+    let push_msg = format!("{} responded to your reinforcements request!", session_username);
+    let push_url = format!("/v1/projects?ib_uid={}", push_target_uid);
+    
+    actix_web::rt::spawn(async move {
+        crate::push::send_push_notification(
+            &state_clone,
+            push_target_uid,
+            "Reinforcements Arrived",
+            &push_msg,
+            &push_url,
+        ).await;
+    });
   }
 
   let fallback_location = format!(
