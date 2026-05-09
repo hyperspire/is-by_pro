@@ -485,3 +485,30 @@ pub async fn mobile_shell_service_worker() -> impl Responder {
     .content_type("text/javascript; charset=utf-8")
     .body(include_str!("../../webroot/sw.js"))
 }
+
+#[derive(serde::Deserialize)]
+pub struct ModerationQuery {
+  pub error: Option<String>,
+  pub success: Option<String>,
+}
+
+#[get("/v1/admin/moderation")]
+pub async fn moderation_portal_html(
+  req: HttpRequest,
+  query: web::Query<ModerationQuery>,
+) -> impl Responder {
+  let session_uid = match get_session_uid(&req) {
+    Some(uid) => uid,
+    None => return HttpResponse::SeeOther().insert_header(("Location", "/")).finish(),
+  };
+
+  if session_uid != crate::AD_ADMIN_UID {
+    return HttpResponse::SeeOther().insert_header(("Location", "/")).finish();
+  }
+
+  let html = render_moderation_portal_html(crate::AD_ADMIN_UID, crate::AD_ADMIN_USER, query.error.as_deref(), query.success.as_deref());
+
+  HttpResponse::Ok()
+    .content_type("text/html; charset=utf-8")
+    .body(html)
+}

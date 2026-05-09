@@ -450,17 +450,45 @@ pub async fn render_profile_html(
     String::new()
   };
   
+  let ban_form_html = if session_uid == Some(crate::AD_ADMIN_UID) && !show_edit_profile_link {
+    format!(
+      r#"<form id="ban-form" action="https://{DOMAIN}/v1/admin/moderation/ban" method="POST">
+        <input type="hidden" name="username" value="{target_user}">
+        <input class="post-cancel" type="submit" value="Ban User" style="background-color: darkred; color: white;">
+      </form>"#,
+      target_user = escape_html(&viewed_username)
+    )
+  } else {
+    String::new()
+  };
+
+  let report_form_html = if session_uid.is_some() && !show_edit_profile_link {
+    format!(
+      r#"<form id="report-form" action="https://{DOMAIN}/v1/report" method="POST">
+        <input type="hidden" name="target_user" value="{target_user}">
+        <input class="post-cancel" type="submit" value="Report Profile">
+      </form>"#,
+      target_user = escape_html(&viewed_username)
+    )
+  } else {
+    String::new()
+  };
+
   let follow_section_html = &format!(
       r#"<div id="follow-section" style="display:flex; gap:10px; align-items:center;">
       {follow_form_html}
       {unfollow_form_html}
       {block_form_html}
       {unblock_form_html}
+      {report_form_html}
+      {ban_form_html}
     </div>"#,
       follow_form_html = follow_form_html,
       unfollow_form_html = unfollow_form_html,
       block_form_html = block_form_html,
-      unblock_form_html = unblock_form_html
+      unblock_form_html = unblock_form_html,
+      report_form_html = report_form_html,
+      ban_form_html = ban_form_html
     );
 
   let show_edit_profile_link = session_username
@@ -504,7 +532,7 @@ pub async fn render_profile_html(
     )
   } else {
     let ib_post_results_length: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM post WHERE post.ib_uid = ? AND (post.parentid = \"\" OR post.parentid IS NULL)"
+        "SELECT COUNT(*) FROM post WHERE post.ib_uid = ? AND post.ib_uid NOT IN (SELECT ib_uid FROM banned_user) AND (post.parentid = \"\" OR post.parentid IS NULL)"
       )
       .bind(ib_uid)
       .fetch_one(&state.db_pool)
@@ -512,7 +540,7 @@ pub async fn render_profile_html(
       .unwrap_or(0);
 
     let ib_post_results = sqlx::query_as::<_, PostRow>(
-        "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = \"\" OR post.parentid IS NULL) ORDER BY (post.postid = user.pinned_postid) DESC, post.timestamp DESC LIMIT 21"
+        "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.ib_uid NOT IN (SELECT ib_uid FROM banned_user) AND (post.parentid = \"\" OR post.parentid IS NULL) ORDER BY (post.postid = user.pinned_postid) DESC, post.timestamp DESC LIMIT 21"
       )
       .bind(ib_uid)
       .fetch_all(&state.db_pool)
@@ -820,7 +848,7 @@ pub async fn render_profile_mobile_html(
   let github_identity_html = render_github_identity_html(state, ib_user).await;
 
   let ib_post_results_length: i64 = sqlx::query_scalar(
-      "SELECT COUNT(*) FROM post WHERE post.ib_uid = ? AND (post.parentid = \"\" OR post.parentid IS NULL)"
+      "SELECT COUNT(*) FROM post WHERE post.ib_uid = ? AND post.ib_uid NOT IN (SELECT ib_uid FROM banned_user) AND (post.parentid = \"\" OR post.parentid IS NULL)"
     )
     .bind(ib_uid)
     .fetch_one(&state.db_pool)
@@ -831,7 +859,7 @@ pub async fn render_profile_mobile_html(
     vec![]
   } else {
     sqlx::query_as::<_, PostRow>(
-        "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = \"\" OR post.parentid IS NULL) ORDER BY (post.postid = user.pinned_postid) DESC, post.timestamp DESC LIMIT 21"
+        "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.ib_uid NOT IN (SELECT ib_uid FROM banned_user) AND (post.parentid = \"\" OR post.parentid IS NULL) ORDER BY (post.postid = user.pinned_postid) DESC, post.timestamp DESC LIMIT 21"
       )
       .bind(ib_uid)
       .fetch_all(&state.db_pool)
@@ -1050,17 +1078,45 @@ pub async fn render_profile_mobile_html(
     String::new()
   };
 
+  let ban_form_html = if session_uid == Some(crate::AD_ADMIN_UID) && !show_edit_profile_link {
+    format!(
+      r#"<form id="ban-form" action="https://{DOMAIN}/v1/admin/moderation/ban" method="POST">
+        <input type="hidden" name="username" value="{target_user}">
+        <input class="post-cancel" type="submit" value="Ban User" style="background-color: darkred; color: white;">
+      </form>"#,
+      target_user = escape_html(&viewed_username)
+    )
+  } else {
+    String::new()
+  };
+
+  let report_form_html = if session_uid.is_some() && !show_edit_profile_link {
+    format!(
+      r#"<form id="report-form" action="https://{DOMAIN}/v1/report" method="POST">
+        <input type="hidden" name="target_user" value="{target_user}">
+        <input class="post-cancel" type="submit" value="Report Profile">
+      </form>"#,
+      target_user = escape_html(&viewed_username)
+    )
+  } else {
+    String::new()
+  };
+
   let follow_section_html = &format!(
-      r#"<div id="follow-section" style="display:flex; gap:10px; align-items:center;">
+      r#"<div id="follow-section" style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
       {follow_form_html}
       {unfollow_form_html}
       {block_form_html}
       {unblock_form_html}
+      {report_form_html}
+      {ban_form_html}
     </div>"#,
       follow_form_html = follow_form_html,
       unfollow_form_html = unfollow_form_html,
       block_form_html = block_form_html,
-      unblock_form_html = unblock_form_html
+      unblock_form_html = unblock_form_html,
+      report_form_html = report_form_html,
+      ban_form_html = ban_form_html
     );
 
   let session_nav_uid = session_uid.unwrap_or(ib_uid);
@@ -1639,7 +1695,7 @@ pub async fn render_search_posts_mobile_html(
 
   if let Some(tag) = normalized_tag.clone() {
     let rows = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci JOIN post_tag pt ON pt.postid = post.postid WHERE pt.tag = ? ORDER BY post.timestamp DESC LIMIT 200"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci JOIN post_tag pt ON pt.postid = post.postid WHERE pt.tag = ? AND post.ib_uid NOT IN (SELECT ib_uid FROM banned_user) ORDER BY post.timestamp DESC LIMIT 200"
       )
       .bind(&tag)
       .fetch_all(&state.db_pool)
@@ -1835,7 +1891,7 @@ pub async fn render_search_posts_html(
 
   let search_results_html = if let Some(tag) = normalized_tag.clone() {
     let rows = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci JOIN post_tag pt ON pt.postid = post.postid WHERE pt.tag = ? ORDER BY post.timestamp DESC LIMIT 200"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci JOIN post_tag pt ON pt.postid = post.postid WHERE pt.tag = ? AND post.ib_uid NOT IN (SELECT ib_uid FROM banned_user) ORDER BY post.timestamp DESC LIMIT 200"
       )
       .bind(&tag)
       .fetch_all(&state.db_pool)
@@ -3605,7 +3661,7 @@ pub async fn render_war_room_posts_chunk(
 
   for selected_follower in selected_followers {
     let post_row = sqlx::query_as::<_, PostRow>(
-        "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) = LOWER(?) AND (post.parentid = '' OR post.parentid IS NULL) ORDER BY post.timestamp DESC LIMIT 1"
+        "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) = LOWER(?) AND post.ib_uid NOT IN (SELECT ib_uid FROM banned_user) AND (post.parentid = '' OR post.parentid IS NULL) ORDER BY post.timestamp DESC LIMIT 1"
       )
       .bind(selected_follower)
       .fetch_optional(&state.db_pool)
@@ -3747,7 +3803,7 @@ pub async fn render_trending_posts_chunk(
   session_uid: Option<i64>,
 ) -> Result<String, String> {
   let rows = sqlx::query_as::<_, PostRow>(
-    "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.parentid = '' AND post.timestamp >= NOW() - INTERVAL 7 DAY ORDER BY post.acknowledged_count DESC, post.timestamp DESC LIMIT 5"
+    "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.parentid = '' AND post.ib_uid NOT IN (SELECT ib_uid FROM banned_user) AND post.timestamp >= NOW() - INTERVAL 7 DAY ORDER BY post.acknowledged_count DESC, post.timestamp DESC LIMIT 5"
   )
   .fetch_all(&state.db_pool)
   .await
@@ -4615,7 +4671,7 @@ pub async fn render_single_post_html(
   };
 
   let post = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.postid = ? LIMIT 1"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.ib_uid NOT IN (SELECT ib_uid FROM banned_user) AND post.postid = ? LIMIT 1"
     )
     .bind(ib_uid)
     .bind(pid)
@@ -4629,7 +4685,7 @@ pub async fn render_single_post_html(
   };
 
   let replies = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.parentid = ? ORDER BY post.timestamp ASC"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.parentid = ? AND post.ib_uid NOT IN (SELECT ib_uid FROM banned_user) ORDER BY post.timestamp ASC"
     )
     .bind(pid)
     .fetch_all(&state.db_pool)
@@ -4893,7 +4949,7 @@ pub async fn render_single_post_mobile_html(
   let advert_html = render_advert_html(state).await;
 
   let post = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.postid = ? LIMIT 1"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.ib_uid NOT IN (SELECT ib_uid FROM banned_user) AND post.postid = ? LIMIT 1"
     )
     .bind(ib_uid)
     .bind(pid)
@@ -4907,7 +4963,7 @@ pub async fn render_single_post_mobile_html(
   };
 
   let replies = sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.parentid = ? ORDER BY post.timestamp ASC"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.parentid = ? AND post.ib_uid NOT IN (SELECT ib_uid FROM banned_user) ORDER BY post.timestamp ASC"
     )
     .bind(pid)
     .fetch_all(&state.db_pool)
@@ -5152,7 +5208,7 @@ pub async fn render_embed_post_response(
   pid: &str,
 ) -> HttpResponse {
   let post = match sqlx::query_as::<_, PostRow>(
-      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.postid = ? LIMIT 1"
+      "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks, user.pinned_postid FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.ib_uid NOT IN (SELECT ib_uid FROM banned_user) AND post.postid = ? LIMIT 1"
     )
     .bind(ib_uid)
     .bind(pid)
@@ -5883,6 +5939,69 @@ pub async fn related_users(state: &AppState, session_uid: Option<i64>) -> String
 
   html
 }
+pub fn render_moderation_portal_html(ib_uid: i64, ib_user: &str, error_message: Option<&str>, success_message: Option<&str>) -> String {
+  let mut context = tera::Context::new();
+  context.insert("domain", crate::DOMAIN);
+  context.insert("ib_uid", &ib_uid);
+  context.insert("ib_user", ib_user);
+
+  let nav_html = format!(
+    r#"<div id="navigation">
+        <a class="pro-home-display" href="https://{DOMAIN}/v1/profile/{ib_user}">:[[ :profile-home: ]]:</a>
+        <a class="war-room-display" href="https://{DOMAIN}/v1/warroom?ib_uid={ib_uid}&ib_user={ib_user}">:[[ :war-room: ]]:</a>
+    </div>"#,
+    DOMAIN = crate::DOMAIN,
+    ib_uid = ib_uid,
+    ib_user = escape_html(ib_user)
+  );
+
+  let mut body_content = String::from("<h1>Moderation Portal</h1>");
+
+  if let Some(err) = error_message {
+    body_content.push_str(&format!("<div class=\"notice\" style=\"background-color: darkred; color: white;\"><p>{}</p></div><br>", escape_html(err)));
+  }
+
+  if let Some(succ) = success_message {
+    body_content.push_str(&format!("<div class=\"notice\" style=\"background-color: darkgreen; color: white;\"><p>{}</p></div><br>", escape_html(succ)));
+  }
+
+  body_content.push_str(&format!(
+    r#"
+    <div class="content">
+      <h2>Ban a User</h2>
+      <p>Enter the username of the user you wish to permanently ban. This action instantly revokes their session and hides their posts from the platform globally.</p>
+      <form action="https://{domain}/v1/admin/moderation/ban" method="POST">
+        <label for="username">Username:</label><br>
+        <input type="text" id="username" name="username" class="post" style="width: 100%; max-width: 400px; padding: 8px; margin-bottom: 10px;" required><br>
+        <input class="post-submit" type="submit" value="Ban User" style="background-color: darkred;">
+      </form>
+    </div>
+    "#,
+    domain = crate::DOMAIN
+  ));
+
+  format!(
+    r#"<!DOCTYPE html>
+<html lang="en-US">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <link rel="stylesheet" type="text/css" href="/css/is-by.css">
+  <link rel="stylesheet" type="text/css" href="/css/is-by_mobile.css">
+  <title>Moderation Portal</title>
+</head>
+<body>
+  <div class="content">
+    {body}
+  </div>
+  {nav}
+</body>
+</html>"#,
+    body = body_content,
+    nav = nav_html
+  )
+}
+
 
 #[cfg(test)]
 mod tests {

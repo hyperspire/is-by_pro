@@ -1188,7 +1188,7 @@ pub async fn get_posts_page(
 
   let ib_post_results = if let Some(before_ts) = &query.before_timestamp {
     sqlx::query_as::<_, PostRow>(
-        "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = '' OR post.parentid IS NULL) AND post.timestamp < ? ORDER BY post.timestamp DESC LIMIT 21"
+        "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.ib_uid NOT IN (SELECT ib_uid FROM banned_user) AND (post.parentid = '' OR post.parentid IS NULL) AND post.timestamp < ? ORDER BY post.timestamp DESC LIMIT 21"
       )
       .bind(ib_uid)
       .bind(before_ts)
@@ -1196,7 +1196,7 @@ pub async fn get_posts_page(
       .await
   } else {
     sqlx::query_as::<_, PostRow>(
-        "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND (post.parentid = '' OR post.parentid IS NULL) ORDER BY post.timestamp DESC LIMIT 21"
+        "SELECT CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) AS ib_uid, CAST(COALESCE(CONVERT(user.username USING utf8mb4), CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4)) AS CHAR CHARACTER SET utf8mb4) AS username, post.postid, post.post, post.timestamp, COALESCE(post.acknowledged_count, 0) AS acknowledged_count, COALESCE(user.total_acknowledgments, 0) AS user_total_acks FROM post AS post LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(post.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE post.ib_uid = ? AND post.ib_uid NOT IN (SELECT ib_uid FROM banned_user) AND (post.parentid = '' OR post.parentid IS NULL) ORDER BY post.timestamp DESC LIMIT 21"
       )
       .bind(ib_uid)
       .fetch_all(&state.db_pool)
@@ -2929,4 +2929,110 @@ pub async fn get_github_repo_info(
         }
         Err(_) => HttpResponse::InternalServerError().body("Failed to connect to GitHub"),
     }
+}
+
+#[derive(serde::Deserialize)]
+pub struct BanUserForm {
+    pub username: String,
+}
+
+#[post("/v1/admin/moderation/ban")]
+pub async fn admin_ban_user(
+    req: HttpRequest,
+    state: web::Data<crate::AppState>,
+    form: web::Form<BanUserForm>,
+) -> impl Responder {
+    let session_uid = match get_session_uid(&req) {
+        Some(uid) => uid,
+        None => return HttpResponse::SeeOther().insert_header(("Location", "/")).finish(),
+    };
+
+    if session_uid != crate::AD_ADMIN_UID {
+        return HttpResponse::SeeOther().insert_header(("Location", "/")).finish();
+    }
+
+    let target_username = form.username.trim();
+    if target_username.is_empty() {
+        return HttpResponse::SeeOther().insert_header(("Location", "/v1/admin/moderation")).finish();
+    }
+
+    if let Ok(Some((target_uid, actual_username))) = lookup_user_by_username(&state, target_username).await {
+        let _ = sqlx::query("INSERT IGNORE INTO banned_user (ib_uid, username) VALUES (?, ?)")
+            .bind(target_uid)
+            .bind(actual_username)
+            .execute(&state.db_pool)
+            .await;
+        
+        return HttpResponse::SeeOther()
+            .insert_header(("Location", "/v1/admin/moderation?success=User+has+been+banned"))
+            .finish();
+    }
+
+    HttpResponse::SeeOther()
+        .insert_header(("Location", "/v1/admin/moderation?error=User+not+found"))
+        .finish()
+}
+
+#[derive(serde::Deserialize)]
+pub struct ReportProfileForm {
+    pub target_user: String,
+}
+
+#[post("/v1/report")]
+pub async fn report_profile(
+    req: HttpRequest,
+    state: web::Data<crate::AppState>,
+    form: web::Form<ReportProfileForm>,
+) -> impl Responder {
+    let session_uid = match get_session_uid(&req) {
+        Some(uid) => uid,
+        None => return HttpResponse::SeeOther().insert_header(("Location", "/")).finish(),
+    };
+
+    let target_user = form.target_user.trim();
+    if target_user.is_empty() {
+        return HttpResponse::SeeOther().insert_header(("Location", "/")).finish();
+    }
+
+    let report_message = format!("I am reporting the user profile: https://{}/v1/profile/{}", crate::DOMAIN, crate::utils::url_encode_component(target_user));
+    
+    // Insert DM from user to AD_ADMIN_UID
+    if let Ok(_) = sqlx::query("INSERT INTO dm (sender_uid, recipient_uid, message, created_at) VALUES (?, ?, ?, NOW())")
+        .bind(session_uid)
+        .bind(crate::AD_ADMIN_UID)
+        .bind(&report_message)
+        .execute(&state.db_pool)
+        .await 
+    {
+        // Send a push notification if they have any push subscriptions
+        let state_data = state.clone();
+        let report_message_clone = report_message.clone();
+        actix_web::rt::spawn(async move {
+            let _ = crate::push::send_push_notification(
+                &state_data,
+                crate::AD_ADMIN_UID,
+                "Profile Report Received",
+                &report_message_clone,
+                &format!("https://{}/v1/dm", crate::DOMAIN)
+            ).await;
+        });
+
+        // Broadcast to SSE if they are connected to war room or DM
+        let broadcast_msg = serde_json::json!({
+            "type": "dm_received",
+            "sender_uid": session_uid,
+            "message": report_message,
+        }).to_string();
+
+        let _ = state.sse_sender.send(crate::models::SseEvent {
+            target_uid: crate::AD_ADMIN_UID,
+            event_type: "dm_received".to_string(),
+            message: broadcast_msg,
+        });
+    }
+
+    // Redirect back to profile
+    HttpResponse::SeeOther()
+        .insert_header(("Location", format!("/v1/profile/{}", crate::utils::url_encode_component(target_user))))
+        .finish()
 }

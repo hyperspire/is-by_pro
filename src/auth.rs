@@ -37,6 +37,17 @@ pub async fn is_ad_admin_session(req: &HttpRequest, state: &AppState) -> bool {
 pub async fn get_session_identity(req: &HttpRequest, state: &AppState) -> Option<(i64, String)> {
   let session_uid = get_session_uid(req)?;
 
+  let is_banned = sqlx::query_scalar::<_, i64>("SELECT 1 FROM banned_user WHERE ib_uid = ? LIMIT 1")
+    .bind(session_uid)
+    .fetch_optional(&state.db_pool)
+    .await
+    .unwrap_or(None)
+    .is_some();
+
+  if is_banned {
+    return None;
+  }
+
   let username = match sqlx::query_as::<_, SessionUserRow>(
     "SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1",
   )

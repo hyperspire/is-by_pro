@@ -252,6 +252,12 @@ pub async fn ensure_database_schema(pool: &MySqlPool) -> Result<(), sqlx::Error>
   .execute(pool)
   .await?;
 
+  sqlx::query(
+    "CREATE TABLE IF NOT EXISTS banned_user (ib_uid BIGINT PRIMARY KEY, username VARCHAR(255) NOT NULL, banned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+  )
+  .execute(pool)
+  .await?;
+
   Ok(())
 }
 pub async fn replace_post_tags(pool: &MySqlPool, postid: &str, post_text: &str) -> Result<(), sqlx::Error> {
