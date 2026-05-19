@@ -1,9 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
-
 body {
     color: #AFAFAF;
     background-color: #1C1C1C;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: Arial, Helvetica, sans-serif;
     font-weight: medium;
     text-wrap: wrap;
     word-wrap: break-word;
@@ -960,7 +958,7 @@ a:hover {
     color: #AFAFAF;
     font-size: 10px;
     font-weight: normal;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: Arial, Helvetica, sans-serif;
     margin: 0;
     word-wrap: break-word;
 }
@@ -971,7 +969,7 @@ a:hover {
     color: #AFAFAF;
     font-size: 10px;
     font-weight: normal;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: Arial, Helvetica, sans-serif;
     display: inline;
 }
 
@@ -980,7 +978,7 @@ a:hover {
     display: inherit;
     font-size: 24px;
     font-weight: bolder;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: Arial, Helvetica, sans-serif;
     font-style: italic;
     align-items: inherit;
     vertical-align: inherit;
@@ -996,7 +994,7 @@ a:hover {
     display: inherit;
     font-size: 11px;
     font-weight: medium;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: Arial, Helvetica, sans-serif;
     align-items: inherit;
     vertical-align: inherit;
     justify-content: inherit;
@@ -1011,7 +1009,7 @@ a:hover {
     display: inherit;
     font-size: 12px;
     font-weight: normal;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: Arial, Helvetica, sans-serif;
     align-items: inherit;
     vertical-align: inherit;
     justify-content: inherit;
@@ -1214,7 +1212,7 @@ a:hover {
     flex-direction: column;
     gap: 8px;
     max-width: 500px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
 }
 
 .github-repo-card-header {
@@ -1290,7 +1288,7 @@ pre::-webkit-scrollbar-track {
 }
 
 code {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 .post-content {
