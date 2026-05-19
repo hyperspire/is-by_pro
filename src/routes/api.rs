@@ -163,7 +163,7 @@ pub async fn create_reply(
 ) -> impl Responder {
   const MAX_POST_LEN: usize = 4096;
 
-  let Some((session_uid, _)) = get_session_identity(&req, &state).await else {
+  let Some((session_uid, session_username)) = get_session_identity(&req, &state).await else {
     return HttpResponse::Unauthorized().body("Login required");
   };
 
@@ -192,6 +192,36 @@ pub async fn create_reply(
     Ok(_) => {
       if let Err(err) = replace_post_tags(&state.db_pool, &replyid, &payload.post).await {
         eprintln!("Reply tag sync failed for {}: {}", replyid, err);
+      }
+
+      let target_uid = payload.ib_uid;
+      if target_uid != session_uid {
+        let dm_message = format!(
+          "{} replied to your post:\n\n{}\n\n|||LINK|||https://{}/v1/showpost?ib_uid={}&ib_user={}&pid={}|||View Post|||",
+          session_username,
+          payload.post,
+          DOMAIN,
+          payload.ib_uid,
+          url_encode_component(&payload.ib_user),
+          payload.pid
+        );
+
+        match encode_dm_message_for_storage(&dm_message) {
+          Ok(stored_dm_message) => {
+            if let Err(err) = sqlx::query(
+              "INSERT INTO dm (sender_uid, recipient_uid, message) VALUES (?, ?, ?)",
+            )
+            .bind(session_uid)
+            .bind(target_uid)
+            .bind(stored_dm_message)
+            .execute(&state.db_pool)
+            .await
+            {
+              eprintln!("Reply DM send failed from {} to {}: {}", session_uid, target_uid, err);
+            }
+          }
+          Err(err) => eprintln!("Reply DM encryption failed: {}", err),
+        }
       }
 
       HttpResponse::SeeOther()
