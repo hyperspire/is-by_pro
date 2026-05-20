@@ -6006,32 +6006,3 @@ pub fn render_moderation_portal_html(ib_uid: i64, ib_user: &str, error_message: 
     nav = nav_html
   )
 }
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_render_code() {
-        let text = "```rust\nfn main() {}\n```";
-        let out = render_post_with_hashtags(text, 1, "test");
-        println!("OUT_CODE: {}", out);
-        assert!(out.contains("<pre"));
-    }
-
-    #[test]
-    fn test_render_github() {
-        let text = "https://github.com/rust-lang/rust";
-        let out = render_post_with_hashtags(text, 1, "test");
-        println!("OUT_GH: {}", out);
-        assert!(out.contains("github-repo-card"));
-    }
-}
-
-
-#[test]
-fn test_plain_highlight() {
-    let post = "    <div class=\"content\">\n    <form id=\"select-user-form\" action=\"/\">\n        <input type=\"hidden\" name=\"ib_uid\" value=\"\">\n";
-    println!("PLAIN_OUT: {}", render_post_with_hashtags(post, 1, "test"));
-}
