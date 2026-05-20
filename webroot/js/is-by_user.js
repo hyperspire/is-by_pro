@@ -473,17 +473,11 @@ async function loadDMThread(targetUser) {
     } else {
       dmThread.innerHTML = data.messages.map((message) => {
         const senderClass = message.is_mine ? 'dm-message dm-message-mine' : 'dm-message dm-message-theirs';
-        // First escape the entire message
-        let processedMessage = escapeHTML(message.message);
-        // Then replace escaped marker patterns with actual links
-        processedMessage = processedMessage.replace(/\|\|\|LINK\|\|\|([^|]*)\|\|\|([^|]*)\|\|\|/g,
-          (match, url, text) => `<a href="${url}" target="_blank">${text}</a>`
-        );
         const readReceipt = (message.is_mine && message.is_read) ? '<span class="read-receipt">✓✓</span>' : '';
         return `
           <div class="${senderClass}">
             <p class="dm-message-meta"><strong>${escapeHTML(message.sender_user)}</strong> <span>${escapeHTML(message.timestamp)}</span> ${readReceipt}</p>
-            <p class="dm-message-body">${processedMessage}</p>
+            <div class="dm-message-body" style="word-wrap: break-word;">${message.message}</div>
           </div>`;
       }).join('');
       dmThread.scrollTop = dmThread.scrollHeight;
@@ -541,7 +535,7 @@ function attachGlobalPushInitializer() {
     document.removeEventListener('click', initPushOnFirstClick);
     document.removeEventListener('touchstart', initPushOnFirstClick);
   };
-  
+
   // Attach to the very first interaction to satisfy strict browser gesture requirements
   document.addEventListener('click', initPushOnFirstClick);
   document.addEventListener('touchstart', initPushOnFirstClick, { passive: true });
@@ -1431,11 +1425,11 @@ async function renderGenericLinkPreview(element) {
     try {
       const urlObj = new URL(data.url);
       html += `<span class="generic-link-preview-domain">${urlObj.hostname}</span>`;
-    } catch(e) {}
+    } catch (e) { }
     html += `</div></a>`;
 
     element.innerHTML = html;
-  } catch(e) {
+  } catch (e) {
     console.error('OG preview error:', e);
   }
 }

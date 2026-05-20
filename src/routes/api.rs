@@ -2551,11 +2551,14 @@ pub async fn direct_messages(
     .map(|row| {
       let decrypted_message = decode_dm_message_from_storage(&row.message)
         .unwrap_or_else(|_| "[DECRYPTION FAILED]".to_string());
+        
+      let rendered_message = crate::render::render_post_with_hashtags(&decrypted_message, row.sender_uid, &row.sender_username);
+
       DMMessageResponseItem {
         id: row.id,
         sender_user: row.sender_username,
         recipient_user: row.recipient_username,
-        message: decrypted_message,
+        message: rendered_message,
         timestamp: row.created_at,
         is_mine: row.sender_uid == session_uid,
         is_read: row.read_at.is_some(),
