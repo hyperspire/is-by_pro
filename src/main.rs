@@ -1,6 +1,6 @@
 // is-by_pro: An open sourced social network for serious open source software enthusiasts.
 
-// :[[ :HyperSpire-Foundation: OPEN-SOURCE-SOFTWARE: LICENSE: VERSION: 1: ]]:
+// :[[ :HyperSpire-Foundation: OPEN-SOURCE-SOFTWARE: LICENSE: VERSION: is-by: 1: ]]:
 // [[ "This Open Source Software is licensed
 // under the terms and conditions of this contract." ]]
 // [[ "We do not warrant that this software will be
