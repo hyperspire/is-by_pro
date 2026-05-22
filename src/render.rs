@@ -5535,6 +5535,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
 
   let mut options = Options::all();
   options.remove(Options::ENABLE_WIKILINKS);
+  options.remove(Options::ENABLE_SMART_PUNCTUATION);
   let parser = Parser::new_ext(raw_text, options);
 
   let mut merged_events: Vec<Event> = Vec::new();
