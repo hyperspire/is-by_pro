@@ -5335,13 +5335,13 @@ pub fn extract_meta_tags_from_post(raw_text: &str) -> String {
       if let Some(video_id) = extract_youtube_video_id(&href) {
         return format!(
           r#"<meta property="og:type" content="video.other">
-<meta property="og:video:url" content="https://www.youtube.com/embed/{video_id}">
-<meta property="og:video:secure_url" content="https://www.youtube.com/embed/{video_id}">
+<meta property="og:video:url" content="https://www.youtube-nocookie.com/embed/{video_id}">
+<meta property="og:video:secure_url" content="https://www.youtube-nocookie.com/embed/{video_id}">
 <meta property="og:video:type" content="text/html">
 <meta property="og:video:width" content="1280">
 <meta property="og:video:height" content="720">
 <meta name="twitter:card" content="player">
-<meta name="twitter:player" content="https://www.youtube.com/embed/{video_id}">
+<meta name="twitter:player" content="https://www.youtube-nocookie.com/embed/{video_id}">
 <meta name="twitter:player:width" content="1280">
 <meta name="twitter:player:height" content="720">"#,
           video_id = escape_html(&video_id)
@@ -5525,7 +5525,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
         if let Some(video_id) = extract_youtube_video_id(&dest_str) {
             skip_link_content = true;
             current_link_html = format!(
-                r#"<span class="youtube-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><span class="youtube-preview-container" style="width:100%; max-width:560px; margin: 0 auto; display: block; position: relative; overflow: hidden; padding-bottom: 56.25%; height: 0; border-radius: 8px;"><iframe src="https://www.youtube.com/embed/{video_id}" title="YouTube video player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen width="100%" height="100%" style="border:0; position:absolute; top:0; left:0; width:100%; height:100%;"></iframe></span></span>"#,
+                r#"<span class="youtube-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><span class="youtube-preview-container" style="width:100%; max-width:560px; margin: 0 auto; display: block; position: relative; overflow: hidden; padding-bottom: 56.25%; height: 0; border-radius: 8px;"><iframe src="https://www.youtube-nocookie.com/embed/{video_id}" title="YouTube video player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen width="100%" height="100%" style="border:0; position:absolute; top:0; left:0; width:100%; height:100%;"></iframe></span></span>"#,
                 video_id = escape_html(&video_id)
             );
         } else if let Some(imgur_html) = extract_imgur_info(&dest_str) {
@@ -5633,7 +5633,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
                       
                       if let Some(video_id) = extract_youtube_video_id(url) {
                           let current_link_html = format!(
-                              r#"<span class="youtube-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><span class="youtube-preview-container" style="width:100%; max-width:560px; margin: 0 auto; display: block; position: relative; overflow: hidden; padding-bottom: 56.25%; height: 0; border-radius: 8px;"><iframe src="https://www.youtube.com/embed/{video_id}" title="YouTube video player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen width="100%" height="100%" style="border:0; position:absolute; top:0; left:0; width:100%; height:100%;"></iframe></span></span>"#,
+                              r#"<span class="youtube-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><span class="youtube-preview-container" style="width:100%; max-width:560px; margin: 0 auto; display: block; position: relative; overflow: hidden; padding-bottom: 56.25%; height: 0; border-radius: 8px;"><iframe src="https://www.youtube-nocookie.com/embed/{video_id}" title="YouTube video player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen width="100%" height="100%" style="border:0; position:absolute; top:0; left:0; width:100%; height:100%;"></iframe></span></span>"#,
                               video_id = escape_html(&video_id)
                           );
                           new_events.push(Event::Html(current_link_html.into()));
