@@ -55,7 +55,8 @@ use is_by_pro::{
 
 use actix_cors::Cors;
 use actix_files::Files;
-use actix_web::{dev::Service, http::Method, web, App, HttpResponse, HttpServer};
+use actix_web::{dev::Service, http::Method, middleware::Logger, web, App, HttpResponse, HttpServer};
+use env_logger::Env;
 
 use rustls::{ServerConfig, pki_types::CertificateDer};
 use rustls_pemfile::{certs, private_key};
@@ -101,6 +102,8 @@ fn load_rustls_config() -> ServerConfig {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+  env_logger::init_from_env(Env::default().default_filter_or("info"));
+
   rustls::crypto::aws_lc_rs::default_provider()
     .install_default()
     .expect("Failed to install rustls crypto provider");
@@ -156,7 +159,9 @@ async fn main() -> std::io::Result<()> {
   };
 
   let http_server = HttpServer::new(|| {
-    App::new().default_service(web::to(redirect_to_https))
+    App::new()
+      .wrap(Logger::default())
+      .default_service(web::to(redirect_to_https))
   })
   .bind(("0.0.0.0", HTTP_PORT))?
   .run();
@@ -170,6 +175,7 @@ async fn main() -> std::io::Result<()> {
 
     App::new()
       .wrap(cors)
+      .wrap(Logger::default())
       .wrap_fn(move |req, srv| {
         let method = req.method().clone();
         let host = req
