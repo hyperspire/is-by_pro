@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily rotation of is-by_pro log file
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target

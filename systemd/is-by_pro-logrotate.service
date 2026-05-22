@@ -1,0 +1,7 @@
+[Unit]
+Description=Rotate is-by_pro log file
+
+[Service]
+Type=oneshot
+User=opc
+ExecStart=/bin/bash -c 'if [ -f /home/opc/logs/is-by_pro.log ]; then cp /home/opc/logs/is-by_pro.log "/home/opc/logs/is-by_pro-$(date +%%Y-%%m-%%d).log" && truncate -s 0 /home/opc/logs/is-by_pro.log; fi'
