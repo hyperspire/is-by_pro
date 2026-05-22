@@ -13,6 +13,8 @@ Restart=on-failure
 RestartSec=5
 MemoryMax=18GiB
 CPUAccounting=true
+StandardOutput=append:/home/opc/logs/is-by_pro.log
+StandardError=append:/home/opc/logs/is-by_pro.log
 
 [Install]
 WantedBy=multi-user.target
