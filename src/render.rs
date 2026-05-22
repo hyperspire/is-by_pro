@@ -51,26 +51,17 @@ pub async fn render_related_userlist_html(
     return "<p><em>:[[ :for-the: related-users: is-by: none: ]]:</em></p>".to_string();
   }
 
-  let regex_terms: Vec<String> = interests
-    .iter()
-    .map(|term| escape_mysql_regex_token(term))
-    .collect();
-  let pattern = format!("({})", regex_terms.join("|"));
+  let boolean_query = interests.iter().map(|w| format!("{}*", w)).collect::<Vec<_>>().join(" ");
   let source_uid_text = source_uid.to_string();
 
   let related_rows = sqlx::query_as::<_, RelatedUsernameRankRow>(
-      "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments FROM user AS user LEFT JOIN pro AS candidate ON CONVERT(candidate.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci WHERE CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci <> ? COLLATE utf8mb4_unicode_ci AND LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) <> '' AND (LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) REGEXP ? OR LOWER(COALESCE(candidate.github, '')) REGEXP ? OR LOWER(COALESCE(candidate.ibp, '')) REGEXP ? OR LOWER(COALESCE(candidate.pro, '')) REGEXP ? OR LOWER(COALESCE(candidate.services, '')) REGEXP ? OR LOWER(COALESCE(candidate.location, '')) REGEXP ? OR LOWER(COALESCE(candidate.website, '')) REGEXP ?) ORDER BY RAND() LIMIT 5"
-    )
-    .bind(&source_uid_text)
-    .bind(&pattern)
-    .bind(&pattern)
-    .bind(&pattern)
-    .bind(&pattern)
-    .bind(&pattern)
-    .bind(&pattern)
-    .bind(&pattern)
-    .fetch_all(&state.db_pool)
-    .await;
+    "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments FROM pro AS candidate LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci <> ? COLLATE utf8mb4_unicode_ci AND LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) <> '' AND (MATCH(user.username) AGAINST(? IN BOOLEAN MODE) OR MATCH(candidate.ibp, candidate.pro, candidate.services, candidate.location, candidate.website, candidate.github) AGAINST(? IN BOOLEAN MODE)) LIMIT 50"
+  )
+  .bind(&source_uid_text)
+  .bind(&boolean_query)
+  .bind(&boolean_query)
+  .fetch_all(&state.db_pool)
+  .await;
 
   let mut related_rows: Vec<RelatedUsernameRankRow> = match related_rows {
     Ok(rows) => rows
@@ -80,91 +71,14 @@ pub async fn render_related_userlist_html(
     Err(e) => return format!("<p><em>:[[ :related-user-lookup: failed: {} ]]:</em></p>", e),
   };
 
-  if related_rows.is_empty() {
-    let mut sql = String::from(
-      "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments FROM user AS user LEFT JOIN pro AS candidate ON CONVERT(candidate.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci WHERE CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci <> ? COLLATE utf8mb4_unicode_ci AND LOWER(COALESCE(CONVERT(user.username USING utf8mb4), '')) <> '' AND ("
-    );
-
-    for index in 0..interests.len() {
-      if index > 0 {
-        sql.push_str(" OR ");
-      }
-      sql.push_str("LOWER(COALESCE(CONVERT(user.username USING utf8mb4), \"\")) LIKE ? OR LOWER(COALESCE(candidate.github, \"\")) LIKE ? OR LOWER(COALESCE(candidate.ibp, \"\")) LIKE ? OR LOWER(COALESCE(candidate.pro, \"\")) LIKE ? OR LOWER(COALESCE(candidate.services, \"\")) LIKE ? OR LOWER(COALESCE(candidate.location, \"\")) LIKE ? OR LOWER(COALESCE(candidate.website, \"\")) LIKE ?");
-    }
-
-    sql.push_str(") ORDER BY RAND() LIMIT 5");
-
-    let mut query = sqlx::query_as::<_, RelatedUsernameRankRow>(&sql).bind(&source_uid_text);
-    for term in &interests {
-      let token = format!("%{}%", escape_mysql_like_token(term));
-      query = query
-        .bind(token.clone())
-        .bind(token.clone())
-        .bind(token.clone())
-        .bind(token.clone())
-        .bind(token.clone())
-        .bind(token.clone())
-        .bind(token);
-    }
-
-    related_rows = match query.fetch_all(&state.db_pool).await {
-      Ok(rows) => rows
-        .into_iter()
-        .filter(|row| !excluded_usernames.contains(&row.username.to_lowercase()))
-        .collect(),
-      Err(e) => return format!("<p><em>:[[ :related-user-lookup: failed: {} ]]:</em></p>", e),
-    };
-  }
+  use rand::seq::SliceRandom;
+  let mut rng = rand::thread_rng();
+  related_rows.shuffle(&mut rng);
+  related_rows.truncate(5);
 
   if related_rows.is_empty() {
-    let candidates = match sqlx::query_as::<_, RelatedCandidateRow>(
-      "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments, COALESCE(candidate.github, '') AS github, COALESCE(candidate.ibp, '') AS ibp, COALESCE(candidate.pro, '') AS pro, COALESCE(candidate.services, '') AS services, COALESCE(candidate.location, '') AS location, COALESCE(candidate.website, '') AS website FROM user AS user LEFT JOIN pro AS candidate ON CONVERT(candidate.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci WHERE CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci <> ? COLLATE utf8mb4_unicode_ci ORDER BY RAND() LIMIT 250"
-    )
-    .bind(&source_uid_text)
-    .fetch_all(&state.db_pool)
-    .await
-    {
-      Ok(rows) => rows,
-      Err(_) => return "<p><em>:[[ :related-user-lookup: failed: ]]:</em></p>".to_string(),
-    };
-
-    for candidate in candidates {
-      if candidate.username.trim().is_empty() {
-        continue;
-      }
-
-      let haystack = format!(
-        "{} {} {} {} {} {} {}",
-        candidate.username,
-        candidate.github,
-        candidate.ibp,
-        candidate.pro,
-        candidate.services,
-        candidate.location,
-        candidate.website
-      )
-      .to_lowercase();
-
-      if interests.iter().any(|term| haystack.contains(term)) {
-        if excluded_usernames.contains(&candidate.username.to_lowercase()) {
-          continue;
-        }
-
-        related_rows.push(RelatedUsernameRankRow {
-          username: candidate.username,
-          total_acknowledgments: candidate.total_acknowledgments,
-        });
-
-        if related_rows.len() >= 5 {
-          break;
-        }
-      }
-    }
-  }
-
-  if related_rows.is_empty() {
-    related_rows = match sqlx::query_as::<_, RelatedUsernameRankRow>(
-      "SELECT CAST(COALESCE(CONVERT(username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(total_acknowledgments, 0) AS total_acknowledgments FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci <> ? COLLATE utf8mb4_unicode_ci AND LOWER(COALESCE(CONVERT(username USING utf8mb4), '')) <> '' ORDER BY RAND() LIMIT 5"
+    let mut fallback_rows: Vec<RelatedUsernameRankRow> = match sqlx::query_as::<_, RelatedUsernameRankRow>(
+      "SELECT CAST(COALESCE(CONVERT(username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(total_acknowledgments, 0) AS total_acknowledgments FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci <> ? COLLATE utf8mb4_unicode_ci AND LOWER(COALESCE(CONVERT(username USING utf8mb4), '')) <> '' LIMIT 250"
     )
     .bind(&source_uid_text)
     .fetch_all(&state.db_pool)
@@ -176,6 +90,10 @@ pub async fn render_related_userlist_html(
         .collect(),
       Err(_) => return "<p><em>:[[ :related-user-lookup: failed: ]]:</em></p>".to_string(),
     };
+
+    fallback_rows.shuffle(&mut rng);
+    fallback_rows.truncate(5);
+    related_rows = fallback_rows;
   }
 
   let mut related_html = String::new();
@@ -1239,7 +1157,7 @@ pub async fn render_search_users_html(
   let search_results_html = if raw_query.trim().is_empty() {
     "<p><em>:[[ :search-users: empty-query: ]]:</em></p>".to_string()
   } else {
-    let sql = "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments, COALESCE(candidate.ibp, '') AS ibp FROM pro AS candidate LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE MATCH(user.username) AGAINST(? IN BOOLEAN MODE) OR MATCH(candidate.ibp, candidate.pro, candidate.services, candidate.location, candidate.website, candidate.github) AGAINST(? IN BOOLEAN MODE) ORDER BY RAND() LIMIT 200";
+    let sql = "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments, COALESCE(candidate.ibp, '') AS ibp FROM pro AS candidate LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE MATCH(user.username) AGAINST(? IN BOOLEAN MODE) OR MATCH(candidate.ibp, candidate.pro, candidate.services, candidate.location, candidate.website, candidate.github) AGAINST(? IN BOOLEAN MODE) LIMIT 200";
 
     // Transform raw_query to add '*' to each word for prefix matching
     let boolean_query = raw_query.split_whitespace().map(|w| format!("{}*", w)).collect::<Vec<_>>().join(" ");
@@ -1508,7 +1426,7 @@ pub async fn render_search_users_mobile_html(
   let search_results_html = if raw_query.trim().is_empty() {
     "<p><em>:[[ :search-users: empty-query: ]]:</em></p>".to_string()
   } else {
-    let sql = "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments, COALESCE(candidate.ibp, '') AS ibp FROM pro AS candidate LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE MATCH(user.username) AGAINST(? IN BOOLEAN MODE) OR MATCH(candidate.ibp, candidate.pro, candidate.services, candidate.location, candidate.website, candidate.github) AGAINST(? IN BOOLEAN MODE) ORDER BY RAND() LIMIT 200";
+    let sql = "SELECT CAST(COALESCE(CONVERT(user.username USING utf8mb4), '') AS CHAR CHARACTER SET utf8mb4) AS username, COALESCE(user.total_acknowledgments, 0) AS total_acknowledgments, COALESCE(candidate.ibp, '') AS ibp FROM pro AS candidate LEFT JOIN user AS user ON CONVERT(user.ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(candidate.ib_uid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci WHERE MATCH(user.username) AGAINST(? IN BOOLEAN MODE) OR MATCH(candidate.ibp, candidate.pro, candidate.services, candidate.location, candidate.website, candidate.github) AGAINST(? IN BOOLEAN MODE) LIMIT 200";
 
     // Transform raw_query to add '*' to each word for prefix matching
     let boolean_query = raw_query.split_whitespace().map(|w| format!("{}*", w)).collect::<Vec<_>>().join(" ");
@@ -5360,7 +5278,7 @@ fn extract_rumble_info(url: &str) -> Option<String> {
         let end = rest[..end].find('?').unwrap_or(end);
         let id = &rest[..end];
         if !id.is_empty() {
-            return Some(format!(r#"<div class="youtube-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><div class="youtube-preview-container" style="width:100%; max-width:560px; margin: 0 auto; display: block; position: relative; overflow: hidden; padding-bottom: 56.25%; height: 0; border-radius: 8px;"><iframe src="https://rumble.com/embed/{}/" title="Rumble video player" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen width="100%" height="100%" style="border:0; position:absolute; top:0; left:0; width:100%; height:100%;"></iframe></div></div>"#, escape_html(id)));
+            return Some(format!(r#"<span class="youtube-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><span class="youtube-preview-container" style="width:100%; max-width:560px; margin: 0 auto; display: block; position: relative; overflow: hidden; padding-bottom: 56.25%; height: 0; border-radius: 8px;"><iframe src="https://rumble.com/embed/{}/" title="Rumble video player" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen width="100%" height="100%" style="border:0; position:absolute; top:0; left:0; width:100%; height:100%;"></iframe></span></span>"#, escape_html(id)));
         }
     }
     None
@@ -5607,7 +5525,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
         if let Some(video_id) = extract_youtube_video_id(&dest_str) {
             skip_link_content = true;
             current_link_html = format!(
-                r#"<div class="youtube-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><div class="youtube-preview-container" style="width:100%; max-width:560px; margin: 0 auto; display: block; position: relative; overflow: hidden; padding-bottom: 56.25%; height: 0; border-radius: 8px;"><iframe src="https://www.youtube.com/embed/{video_id}" title="YouTube video player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen width="100%" height="100%" style="border:0; position:absolute; top:0; left:0; width:100%; height:100%;"></iframe></div></div>"#,
+                r#"<span class="youtube-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><span class="youtube-preview-container" style="width:100%; max-width:560px; margin: 0 auto; display: block; position: relative; overflow: hidden; padding-bottom: 56.25%; height: 0; border-radius: 8px;"><iframe src="https://www.youtube.com/embed/{video_id}" title="YouTube video player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen width="100%" height="100%" style="border:0; position:absolute; top:0; left:0; width:100%; height:100%;"></iframe></span></span>"#,
                 video_id = escape_html(&video_id)
             );
         } else if let Some(imgur_html) = extract_imgur_info(&dest_str) {
@@ -5621,7 +5539,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
             current_link_html = is_by_html;
         } else if let Some(repo) = extract_github_repo(&dest_str) {
             skip_link_content = true;
-            current_link_html = format!(r#"<div class="github-repo-card" data-repo="{}"></div>"#, escape_html(&repo));
+            current_link_html = format!(r#"<span class="github-repo-card" data-repo="{}"></span>"#, escape_html(&repo));
         } else {
             current_generic_url = Some(dest_str.clone());
             new_events.push(Event::Start(Tag::Link { link_type, dest_url, title, id }));
@@ -5636,7 +5554,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
             new_events.push(Event::End(TagEnd::Link));
             if let Some(url) = current_generic_url.take() {
                 if url.starts_with("http") && !url.contains("imgur.com") && !url.contains("youtube.com") && !url.contains("youtu.be") && !url.contains("github.com") && !url.contains("rumble.com") {
-                    let preview_html = format!(r#"<div class="generic-link-preview" data-url="{}"></div>"#, escape_html(&url));
+                    let preview_html = format!(r#"<span class="generic-link-preview" data-url="{}"></span>"#, escape_html(&url));
                     new_events.push(Event::Html(preview_html.into()));
                 }
             }
@@ -5715,7 +5633,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
                       
                       if let Some(video_id) = extract_youtube_video_id(url) {
                           let current_link_html = format!(
-                              r#"<div class="youtube-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><div class="youtube-preview-container" style="width:100%; max-width:560px; margin: 0 auto; display: block; position: relative; overflow: hidden; padding-bottom: 56.25%; height: 0; border-radius: 8px;"><iframe src="https://www.youtube.com/embed/{video_id}" title="YouTube video player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen width="100%" height="100%" style="border:0; position:absolute; top:0; left:0; width:100%; height:100%;"></iframe></div></div>"#,
+                              r#"<span class="youtube-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><span class="youtube-preview-container" style="width:100%; max-width:560px; margin: 0 auto; display: block; position: relative; overflow: hidden; padding-bottom: 56.25%; height: 0; border-radius: 8px;"><iframe src="https://www.youtube.com/embed/{video_id}" title="YouTube video player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen width="100%" height="100%" style="border:0; position:absolute; top:0; left:0; width:100%; height:100%;"></iframe></span></span>"#,
                               video_id = escape_html(&video_id)
                           );
                           new_events.push(Event::Html(current_link_html.into()));
@@ -5728,7 +5646,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
                       } else {
                           let mut link_html = format!(r#"<a class="post-link" href="{url}" target="_blank" rel="noopener">{url}</a>"#, url=escape_html(url));
                           if url.starts_with("http") && !url.contains("imgur.com") && !url.contains("youtube.com") && !url.contains("youtu.be") && !url.contains("github.com") && !url.contains("rumble.com") {
-                              link_html.push_str(&format!(r#"<div class="generic-link-preview" data-url="{}"></div>"#, escape_html(url)));
+                              link_html.push_str(&format!(r#"<span class="generic-link-preview" data-url="{}"></span>"#, escape_html(url)));
                           }
                           new_events.push(Event::Html(link_html.into()));
                       }
@@ -5755,7 +5673,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
                   let owner = gh_cap.get(1).unwrap().as_str();
                   let repo = gh_cap.get(2).unwrap().as_str();
                   let repo_str = format!("{}/{}", owner, repo);
-                  let link_html = format!(r#"<div class="github-repo-card" data-repo="{}"></div>"#, escape_html(&repo_str));
+                  let link_html = format!(r#"<span class="github-repo-card" data-repo="{}"></span>"#, escape_html(&repo_str));
                   new_events.push(Event::Html(link_html.into()));
                   
                   last_gh = gh_m.end();
