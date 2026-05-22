@@ -7,9 +7,12 @@ Wants=network-online.target
 Type=simple
 User=opc
 WorkingDirectory=/usr/local/bin
+Environment="RUST_LOG=info"
 ExecStart=/usr/local/bin/is-by_pro
 Restart=on-failure
 RestartSec=5
+MemoryMax=18GiB
+CPUAccounting=true
 
 [Install]
 WantedBy=multi-user.target
