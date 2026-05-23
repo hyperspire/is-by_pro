@@ -6,12 +6,12 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=opc
-WorkingDirectory=/usr/local/bin
+WorkingDirectory=/home/opc/is-by_pro
 Environment="RUST_LOG=info"
-ExecStart=/usr/local/bin/is-by_pro
+ExecStart=/home/opc/is-by_pro/target/release/is-by_pro
 Restart=on-failure
 RestartSec=5
-MemoryMax=18GiB
+MemoryMax=8GiB
 CPUAccounting=true
 StandardOutput=append:/home/opc/logs/is-by_pro.log
 StandardError=append:/home/opc/logs/is-by_pro.log
