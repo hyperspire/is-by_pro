@@ -1432,3 +1432,7 @@ textarea.post {
     align-items: center;
     gap: 4px;
 }
+.youtube-rich-preview:hover {
+    transform: none !important;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4) !important;
+}
