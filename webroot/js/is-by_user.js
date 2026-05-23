@@ -1378,6 +1378,7 @@ async function renderGithubCard(card) {
 document.addEventListener("DOMContentLoaded", function () {
   document.querySelectorAll('.github-repo-card').forEach(renderGithubCard);
   document.querySelectorAll('.generic-link-preview').forEach(renderGenericLinkPreview);
+  document.querySelectorAll('.youtube-rich-preview').forEach(renderYoutubeRichPreview);
 
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
@@ -1389,8 +1390,12 @@ document.addEventListener("DOMContentLoaded", function () {
           if (node.classList && node.classList.contains('generic-link-preview')) {
             renderGenericLinkPreview(node);
           }
+          if (node.classList && node.classList.contains('youtube-rich-preview')) {
+            renderYoutubeRichPreview(node);
+          }
           node.querySelectorAll('.github-repo-card').forEach(renderGithubCard);
           node.querySelectorAll('.generic-link-preview').forEach(renderGenericLinkPreview);
+          node.querySelectorAll('.youtube-rich-preview').forEach(renderYoutubeRichPreview);
         }
       });
     });
@@ -1398,6 +1403,40 @@ document.addEventListener("DOMContentLoaded", function () {
 
   observer.observe(document.body, { childList: true, subtree: true });
 });
+
+async function renderYoutubeRichPreview(element) {
+  if (element.hasAttribute('data-rendered')) return;
+  element.setAttribute('data-rendered', 'true');
+  const url = element.getAttribute('data-url');
+  if (!url) return;
+
+  try {
+    const res = await fetch(`/v1/og_preview?url=${encodeURIComponent(url)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.success) return;
+
+    const metaContainer = element.querySelector('.youtube-meta-container');
+    if (metaContainer) {
+      let html = '';
+      if (data.title) {
+        html += `<h4 class="generic-link-preview-title"><a href="${data.url}" target="_blank" rel="noopener" style="color: inherit; text-decoration: none;">${data.title}</a></h4>`;
+      }
+      if (data.description) {
+        html += `<p class="generic-link-preview-desc">${data.description}</p>`;
+      }
+      try {
+        const urlObj = new URL(data.url);
+        html += `<span class="generic-link-preview-domain">${urlObj.hostname}</span>`;
+      } catch (e) {}
+      
+      metaContainer.innerHTML = html;
+      metaContainer.style.display = 'flex';
+    }
+  } catch (e) {
+    console.error('YouTube preview error:', e);
+  }
+}
 
 async function renderGenericLinkPreview(element) {
   if (element.hasAttribute('data-rendered')) return;
