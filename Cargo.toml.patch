@@ -1,0 +1,10 @@
+--- Cargo.toml
++++ Cargo.toml
+@@ -21,6 +21,7 @@
+ redis = "0.25.3"
+ regex = "1.10.4"
+ reqwest = "0.12.4"
++serde_urlencoded = "0.7.1"
+ rustls = "0.23.5"
+ rustls-pemfile = "2.1.2"
+ serde = { version = "1.0.200", features = ["derive"] }

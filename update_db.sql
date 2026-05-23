@@ -1,0 +1,2 @@
+CREATE TABLE IF NOT EXISTS project_dm (id BIGINT PRIMARY KEY AUTO_INCREMENT, project_id BIGINT NOT NULL, sender_uid BIGINT NOT NULL, message TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX idx_project_dm_time (project_id, created_at));
+CREATE TABLE IF NOT EXISTS project_dm_read (project_id BIGINT NOT NULL, ib_uid BIGINT NOT NULL, last_read_message_id BIGINT NOT NULL, PRIMARY KEY (project_id, ib_uid));

@@ -248,6 +248,43 @@ function attachDirectMessageEventListeners() {
   const dmInboxLinks = document.querySelectorAll('.dm-inbox-display');
   const dmButtons = document.querySelectorAll('.open-dm');
 
+  const inviteForms = document.querySelectorAll('.invite-reinforcement-form, #invite-reinforcement-form');
+  inviteForms.forEach((inviteForm) => {
+    if (inviteForm.dataset.inviteSubmitBound !== '1') {
+      inviteForm.dataset.inviteSubmitBound = '1';
+      inviteForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        
+        const formData = new URLSearchParams(new FormData(inviteForm));
+        const submitBtn = inviteForm.querySelector('input[type="submit"]');
+        if (submitBtn) submitBtn.disabled = true;
+
+        try {
+          const response = await fetch(inviteForm.action, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Accept': 'application/json',
+            },
+            body: formData,
+          });
+          
+          const data = await response.json();
+          if (data.success) {
+            alert('Project invite sent!');
+          } else {
+            alert('Failed to send invite: ' + (data.message || 'Unknown error'));
+          }
+        } catch (error) {
+          console.error('invite-error:', error);
+          alert('An error occurred while sending the invite.');
+        } finally {
+          if (submitBtn) submitBtn.disabled = false;
+        }
+      });
+    }
+  });
+
   if (dmUnreadCount) {
     updateUnreadDMCount();
     window.dmUnreadInterval = window.setInterval(updateUnreadDMCount, 5000);
@@ -277,6 +314,12 @@ function attachDirectMessageEventListeners() {
     const targetUser = dmTargetInput.value.trim();
     dmPanel.style.display = 'block';
     dmTargetLabel.textContent = targetUser;
+    
+    const inviteTargetInput = document.getElementById('invite-target-user-input');
+    if (inviteTargetInput) {
+      inviteTargetInput.value = targetUser;
+    }
+    
     loadDMThread(targetUser);
     if (window.dmThreadInterval) {
       window.clearInterval(window.dmThreadInterval);
@@ -285,6 +328,8 @@ function attachDirectMessageEventListeners() {
   }
 
   attachDMOpenButtons(dmButtons, dmPanel, dmTargetLabel, dmTargetInput);
+
+
 
   if (dmForm.dataset.dmSubmitBound === '1') {
     return;
@@ -306,21 +351,31 @@ function attachDirectMessageEventListeners() {
     const messageField = document.getElementById('dm-message-input');
     const message = messageField?.value.trim() || '';
     const ibUID = getCurrentIBUID();
+    const projectIdInput = document.getElementById('dm-project-id-input');
+    const projectId = projectIdInput ? projectIdInput.value.trim() : '';
 
-    if (!targetUser || !message || Number.isNaN(ibUID)) {
-      setDMStatus(dmStatus, false, 'Target user and message are required');
+    if ((!targetUser && !projectId) || !message || Number.isNaN(ibUID)) {
+      setDMStatus(dmStatus, false, 'Target user/project and message are required');
       return;
     }
 
+    let action = dmForm.action;
+    let payload = { target_user: targetUser, message: message };
+
+    if (projectId) {
+      action = '/v1/project/dm/send';
+      payload = { project_id: parseInt(projectId, 10), message: message };
+    }
+
     try {
-      const response = await fetch(dmForm.action, {
+      const response = await fetch(action, {
         method: dmForm.method,
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           'ib-uid': String(ibUID),
         },
-        body: JSON.stringify({ target_user: targetUser, message: message }),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
@@ -409,6 +464,12 @@ function attachDMOpenButtons(buttons, dmPanel, dmTargetLabel, dmTargetInput) {
       dmPanel.style.display = 'block';
       dmTargetLabel.textContent = targetUser;
       dmTargetInput.value = targetUser;
+      
+      const inviteTargetInput = document.getElementById('invite-target-user-input');
+      if (inviteTargetInput) {
+        inviteTargetInput.value = targetUser;
+      }
+      
       loadDMThread(targetUser);
       if (window.dmThreadInterval) {
         window.clearInterval(window.dmThreadInterval);
@@ -447,14 +508,20 @@ async function updateUnreadDMCount() {
 async function loadDMThread(targetUser) {
   const dmThread = document.getElementById('dm-thread');
   const ibUID = getCurrentIBUID();
+  const projectIdInput = document.getElementById('dm-project-id-input');
+  const projectId = projectIdInput ? projectIdInput.value.trim() : '';
 
-  if (!dmThread || !targetUser || Number.isNaN(ibUID)) {
+  if (!dmThread || (!targetUser && !projectId) || Number.isNaN(ibUID)) {
     return;
   }
 
   try {
-    const params = new URLSearchParams({ target_user: targetUser });
-    const response = await fetch(`/v1/dm/messages?${params.toString()}`, {
+    let endpoint = `/v1/dm/messages?target_user=${encodeURIComponent(targetUser)}`;
+    if (projectId) {
+      endpoint = `/v1/project/dm/messages?project_id=${projectId}`;
+    }
+
+    const response = await fetch(endpoint, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -1470,5 +1537,45 @@ async function renderGenericLinkPreview(element) {
     element.innerHTML = html;
   } catch (e) {
     console.error('OG preview error:', e);
+  }
+}
+
+async function acceptProjectInvite(projectId) {
+  const ibUID = getCurrentIBUID();
+  const ibUserField = document.querySelector('input[name="ib_user"]');
+  const ibUser = ibUserField ? ibUserField.value : '';
+  
+  if (!projectId || Number.isNaN(ibUID)) return;
+
+  try {
+    const response = await fetch('/v1/project/invite/accept', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'ib-uid': String(ibUID),
+      },
+      body: new URLSearchParams({ 
+        project_id: projectId,
+        ib_uid: String(ibUID),
+        ib_user: ibUser 
+      }),
+    });
+    
+    if (!response.ok) {
+      const errText = await response.text();
+      alert('Server Error (' + response.status + '): ' + errText);
+      return;
+    }
+
+    const data = await response.json();
+    if (data.success) {
+      alert('Project invite accepted!');
+      window.location.reload();
+    } else {
+      alert('Failed to accept invite: ' + (data.message || 'Unknown error'));
+    }
+  } catch (error) {
+    console.error('accept-invite-error:', error);
+    alert('An error occurred while accepting the invite: ' + error.message);
   }
 }

@@ -277,6 +277,38 @@ pub struct QuickResponseForceRequest {
 }
 
 #[derive(Deserialize)]
+pub struct ProjectInviteRequest {
+  pub ib_uid: i64,
+  pub ib_user: String,
+  pub project_id: i64,
+  pub target_user: String,
+}
+
+#[derive(Deserialize)]
+pub struct ProjectInviteAcceptRequest {
+  pub ib_uid: Option<i64>,
+  pub ib_user: Option<String>,
+  pub project_id: i64,
+}
+
+#[derive(Deserialize)]
+pub struct ProjectDMMessageRequest {
+  pub ib_uid: i64,
+  pub ib_user: String,
+  pub project_id: i64,
+  pub message: String,
+}
+
+#[derive(Deserialize)]
+pub struct ProjectDMMessagesRequest {
+  pub ib_uid: i64,
+  pub ib_user: String,
+  pub project_id: i64,
+  pub before_id: Option<i64>,
+}
+
+
+#[derive(Deserialize)]
 pub struct WarRoomRequest {
   pub ib_uid: i64,
   pub ib_user: String,
@@ -302,6 +334,7 @@ pub struct InboxRequest {
   pub ib_uid: i64,
   pub ib_user: String,
   pub target_user: Option<String>,
+  pub project_id: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -518,6 +551,16 @@ pub struct ConversationUsernameRow {
 }
 
 #[derive(sqlx::FromRow)]
+pub struct ProjectDMMessageRow {
+  pub id: i64,
+  pub sender_uid: i64,
+  pub sender_username: String,
+  pub message: Vec<u8>,
+  pub created_at: String,
+}
+
+
+#[derive(sqlx::FromRow)]
 pub struct ProjectProfileRow {
   pub id: i64,
   pub ib_uid: i64,
@@ -574,6 +617,22 @@ pub struct DMMessagesResponse {
 pub struct DMUnreadCountResponse {
   pub success: bool,
   pub unread_count: i64,
+}
+
+#[derive(Serialize)]
+pub struct ProjectDMMessageResponseItem {
+  pub id: i64,
+  pub sender_user: String,
+  pub message: String,
+  pub timestamp: String,
+  pub is_mine: bool,
+}
+
+#[derive(Serialize)]
+pub struct ProjectDMMessagesResponse {
+  pub success: bool,
+  pub messages: Vec<ProjectDMMessageResponseItem>,
+  pub has_more: bool,
 }
 
 pub static TEMPLATES: LazyLock<Tera> = LazyLock::new(|| {

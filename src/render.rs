@@ -409,6 +409,46 @@ pub async fn render_profile_html(
       ban_form_html = ban_form_html
     );
 
+  let user_projects = if let Some(uid) = session_uid {
+      sqlx::query_as::<_, (i64, String)>(
+          "SELECT id, project FROM project_profile WHERE ib_uid = ?"
+      )
+      .bind(uid)
+      .fetch_all(&state.db_pool)
+      .await
+      .unwrap_or_default()
+  } else {
+      vec![]
+  };
+
+  let invite_project_form = if !user_projects.is_empty() && !show_edit_profile_link {
+      let mut options = String::new();
+      for (id, name) in user_projects {
+          options.push_str(&format!("<option value=\"{}\">{}</option>", id, escape_html(&name)));
+      }
+      format!(
+          r#"<form class="invite-reinforcement-form" action="https://{DOMAIN}/v1/project/invite" method="POST" style="margin-top: 10px;">
+              <input type="hidden" name="ib_uid" value="{ib_uid}">
+              <input type="hidden" name="ib_user" value="{ib_user}">
+              <input type="hidden" name="target_user" value="{target_user}">
+              <select name="project_id" required style="padding: 2px;">
+                  <option value="" disabled selected>Select Project...</option>
+                  {options}
+              </select>
+              <input class="post-submit" type="submit" value="Invite to Project" style="padding: 2px 6px; width: auto !important; height: auto !important; font-size: 11px;">
+          </form>"#,
+          DOMAIN = DOMAIN,
+          ib_uid = session_uid.unwrap(),
+          ib_user = escape_html(&session_username.clone().unwrap_or_default()),
+          target_user = escape_html(&viewed_username),
+          options = options
+      )
+  } else {
+      String::new()
+  };
+
+  let follow_section_html = format!("{}\n{}", follow_section_html, invite_project_form);
+
   let show_edit_profile_link = session_username
     .as_ref()
     .map(|username| username.eq_ignore_ascii_case(&viewed_username))
@@ -1036,6 +1076,46 @@ pub async fn render_profile_mobile_html(
       report_form_html = report_form_html,
       ban_form_html = ban_form_html
     );
+
+  let user_projects = if let Some(uid) = session_uid {
+      sqlx::query_as::<_, (i64, String)>(
+          "SELECT id, project FROM project_profile WHERE ib_uid = ?"
+      )
+      .bind(uid)
+      .fetch_all(&state.db_pool)
+      .await
+      .unwrap_or_default()
+  } else {
+      vec![]
+  };
+
+  let invite_project_form = if !user_projects.is_empty() && !show_edit_profile_link {
+      let mut options = String::new();
+      for (id, name) in user_projects {
+          options.push_str(&format!("<option value=\"{}\">{}</option>", id, escape_html(&name)));
+      }
+      format!(
+          r#"<form class="invite-reinforcement-form" action="https://{DOMAIN}/v1/project/invite" method="POST" style="margin-top: 10px;">
+              <input type="hidden" name="ib_uid" value="{ib_uid}">
+              <input type="hidden" name="ib_user" value="{ib_user}">
+              <input type="hidden" name="target_user" value="{target_user}">
+              <select name="project_id" required style="padding: 2px;">
+                  <option value="" disabled selected>Select Project...</option>
+                  {options}
+              </select>
+              <input class="post-submit" type="submit" value="Invite to Project" style="padding: 2px 6px; width: auto !important; height: auto !important; font-size: 11px;">
+          </form>"#,
+          DOMAIN = DOMAIN,
+          ib_uid = session_uid.unwrap(),
+          ib_user = escape_html(&session_username.clone().unwrap_or_default()),
+          target_user = escape_html(&viewed_username),
+          options = options
+      )
+  } else {
+      String::new()
+  };
+
+  let follow_section_html = format!("{}\n{}", follow_section_html, invite_project_form);
 
   let session_nav_uid = session_uid.unwrap_or(ib_uid);
   let session_nav_user = session_username.as_deref().unwrap_or(ib_user);
@@ -2094,6 +2174,17 @@ pub async fn render_projects_html(
                 <input type="checkbox" name="reinforcements_request" value="yes" {reinforcements_request_checked}>
                 <input class="post-submit" type="submit" value="Save Project">
               </form>
+              <br>
+              <form class="invite-reinforcement-form" action="https://{DOMAIN}/v1/project/invite" method="POST">
+                <input type="hidden" name="ib_uid" value="{ib_uid}">
+                <input type="hidden" name="ib_user" value="{ib_user}">
+                <input type="hidden" name="project_id" value="{project_id}">
+                <p><strong>Invite Reinforcement:</strong></p>
+                <input class="post" type="text" name="target_user" placeholder="Username" required style="width: 200px; display: inline-block;">
+                <input class="post-submit" type="submit" value="Send Invite" style="display: inline-block; width: auto; margin-left: 10px;">
+              </form>
+              <br>
+              <button class="post-submit" onclick="window.location.href='https://{DOMAIN}/v1/inbox?project_id={project_id}'">Open Project Chat</button>
             </div>"#,
             owner_link = owner_link,
             updated_at = escape_html(&row.updated_at),
@@ -2167,6 +2258,12 @@ pub async fn render_projects_html(
           } else {
             String::new()
           };
+          let chat_button = if already_reinforcing {
+            format!(r#"<br><button class="post-submit" onclick="window.location.href='https://{DOMAIN}/v1/inbox?project_id={project_id}'">Open Project Chat</button>"#,
+                    project_id = row.id)
+          } else {
+            String::new()
+          };
           format!(
             r#"<br><div class="post">
               <div class="post-meta">{owner_link}<span class="post-timestamp">{updated_at}</span></div>
@@ -2176,6 +2273,7 @@ pub async fn render_projects_html(
               {reinforcements_section}
               {reinforcements_badge}
               {quick_response_form}
+              {chat_button}
             </div>"#,
             owner_link = owner_link,
             updated_at = escape_html(&row.updated_at),
@@ -2199,7 +2297,8 @@ pub async fn render_projects_html(
               String::new()
             },
             reinforcements_badge = reinforcements_badge,
-            quick_response_form = quick_response_form
+            quick_response_form = quick_response_form,
+            chat_button = chat_button
           )
         }
       })
@@ -2507,6 +2606,17 @@ pub async fn render_projects_mobile_html(
                 <input type="checkbox" name="reinforcements_request" value="yes" {reinforcements_request_checked}>
                 <input class="post-submit" type="submit" value="Save Project">
               </form>
+              <br>
+              <form class="invite-reinforcement-form" action="https://{DOMAIN}/v1/project/invite" method="POST">
+                <input type="hidden" name="ib_uid" value="{ib_uid}">
+                <input type="hidden" name="ib_user" value="{ib_user}">
+                <input type="hidden" name="project_id" value="{project_id}">
+                <p><strong>Invite Reinforcement:</strong></p>
+                <input class="post" type="text" name="target_user" placeholder="Username" required style="width: 200px; display: inline-block;">
+                <input class="post-submit" type="submit" value="Send Invite" style="display: inline-block; width: auto; margin-left: 10px;">
+              </form>
+              <br>
+              <button class="post-submit" onclick="window.location.href='https://{DOMAIN}/v1/inbox?project_id={project_id}'">Open Project Chat</button>
             </div>"#,
             owner_link = owner_link,
             updated_at = escape_html(&row.updated_at),
@@ -2589,6 +2699,7 @@ pub async fn render_projects_mobile_html(
               {reinforcements_section}
               {reinforcements_badge}
               {quick_response_form}
+              {project_chat_button}
             </div>"#,
             owner_link = owner_link,
             updated_at = escape_html(&row.updated_at),
@@ -2612,7 +2723,12 @@ pub async fn render_projects_mobile_html(
               String::new()
             },
             reinforcements_badge = reinforcements_badge,
-            quick_response_form = quick_response_form
+            quick_response_form = quick_response_form,
+            project_chat_button = if already_reinforcing {
+              format!("<br><button class=\"post-submit\" onclick=\"window.location.href='https://{DOMAIN}/v1/inbox?project_id={}'\">Open Project Chat</button>", row.id, DOMAIN = crate::DOMAIN)
+            } else {
+              String::new()
+            }
           )
         }
       })
@@ -4151,6 +4267,7 @@ pub async fn render_inbox_html(
   ib_user: &str,
   session_uid: Option<i64>,
   requested_target_user: Option<&str>,
+  project_id: Option<i64>,
 ) -> Result<String, String> {
   let mut context = Context::new();
   let advert_html = render_advert_html(state).await;
@@ -4218,6 +4335,44 @@ pub async fn render_inbox_html(
     String::new()
   };
 
+  let user_projects = if let Some(uid) = session_uid {
+      sqlx::query_as::<_, (i64, String)>(
+          "SELECT id, project FROM project_profile WHERE ib_uid = ?"
+      )
+      .bind(uid)
+      .fetch_all(&state.db_pool)
+      .await
+      .unwrap_or_default()
+  } else {
+      vec![]
+  };
+
+  let invite_project_form = if !user_projects.is_empty() {
+      let mut options = String::new();
+      for (id, name) in user_projects {
+          options.push_str(&format!("<option value=\"{}\">{}</option>", id, escape_html(&name)));
+      }
+      format!(
+          r#"<form id="invite-reinforcement-form" action="https://{DOMAIN}/v1/project/invite" method="POST" style="display:inline-block; margin-left: 15px;">
+              <input type="hidden" name="ib_uid" value="{ib_uid}">
+              <input type="hidden" name="ib_user" value="{ib_user}">
+              <input type="hidden" id="invite-target-user-input" name="target_user" value="{default_target_user}">
+              <select name="project_id" required style="padding: 2px;">
+                  <option value="" disabled selected>Select Project...</option>
+                  {options}
+              </select>
+              <input class="post-submit" type="submit" value="Invite to Project" style="padding: 2px 6px; font-size: 0.9em; width: auto;">
+          </form>"#,
+          DOMAIN = DOMAIN,
+          ib_uid = session_uid.unwrap(),
+          ib_user = escape_html(session_username.as_deref().unwrap_or("")),
+          default_target_user = escape_html(&default_target_user),
+          options = options
+      )
+  } else {
+      String::new()
+  };
+
   let dm_inbox_html = format!(
     r#"<div id="selected-user-posts-section" class="post-section">
         <div class="notice"><p><em>:[[ :direct-message-inbox: ]]:</em></p></div>
@@ -4226,13 +4381,17 @@ pub async fn render_inbox_html(
           <input type="search" id="dm-contact-search" class="dm-contact-search" placeholder="Search contacts..." autocomplete="off">
           <div id="dm-contact-list" data-ib-uid="{ib_uid}" data-ib-user="{ib_user}" data-contacts-offset="{contacts_next_offset}">{contact_list_html}{contacts_sentinel_html}</div>
         </div>
-          <div id="dm-panel" style="display:block;">
-            <p><strong>:[[ :direct-messages: <span id="dm-target-user">{default_target_user}</span>: ]]:</strong></p>
+          <div id="dm-panel" style="display:block;" data-project-id="{project_id}">
+            <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
+              <p style="margin: 0;"><strong>:[[ :direct-messages: <span id="dm-target-user">{default_target_user}</span>: ]]:</strong></p>
+              {invite_project_form}
+            </div>
             <div id="dm-message-status"></div>
             <div id="dm-thread"></div>
             <div id="dm-typing-indicator" style="display: none;" class="typing-indicator"><em>User is typing...</em></div>
             <form id="dm-form" action="https://{DOMAIN}/v1/dm/send" method="POST">
               <input type="hidden" id="dm-target-user-input" name="target_user" value="{default_target_user}">
+              <input type="hidden" id="dm-project-id-input" name="project_id" value="{project_id}">
               <div class="dm-input-container">
                 <input type="text" id="dm-message-input" name="message" maxlength="1024" placeholder="Type a direct message" required>
                 <div class="dm-action-row">
@@ -4252,7 +4411,8 @@ pub async fn render_inbox_html(
     contacts_next_offset = contacts_next_offset,
     contact_list_html = contact_list_html,
     contacts_sentinel_html = contacts_sentinel_html,
-    default_target_user = escape_html(&default_target_user)
+    default_target_user = escape_html(&default_target_user),
+    project_id = project_id.map(|id| id.to_string()).unwrap_or_default()
   );
 
   let ib_pro_result = sqlx::query_as::<_, ProRow>(
@@ -4376,6 +4536,7 @@ pub async fn render_inbox_mobile_html(
   ib_user: &str,
   session_uid: Option<i64>,
   requested_target_user: Option<&str>,
+  project_id: Option<i64>,
 ) -> Result<String, String> {
   let mut context = Context::new();
   let advert_html = render_advert_html(state).await;
@@ -4426,13 +4587,14 @@ pub async fn render_inbox_mobile_html(
           <input type="search" id="dm-contact-search" class="dm-contact-search" placeholder="Search contacts..." autocomplete="off">
           <div id="dm-contact-list" data-ib-uid="{ib_uid}" data-ib-user="{ib_user}" data-contacts-offset="{contacts_next_offset}">{contact_list_html}{contacts_sentinel_html}</div>
         </div>
-        <div id="dm-panel" style="display:block;">
+        <div id="dm-panel" style="display:block;" data-project-id="{project_id}">
           <p><strong>:[[ :direct-messages: <span id="dm-target-user">{default_target_user}</span>: ]]:</strong></p>
           <div id="dm-message-status"></div>
           <div id="dm-thread"></div>
           <div id="dm-typing-indicator" style="display: none;" class="typing-indicator"><em>User is typing...</em></div>
           <form id="dm-form" action="https://{DOMAIN}/v1/dm/send" method="POST">
             <input type="hidden" id="dm-target-user-input" name="target_user" value="{default_target_user}">
+            <input type="hidden" id="dm-project-id-input" name="project_id" value="{project_id}">
             <div class="dm-input-container">
               <input type="text" id="dm-message-input" name="message" maxlength="1024" placeholder="Type a direct message" required>
               <div class="dm-action-row">
@@ -4453,6 +4615,7 @@ pub async fn render_inbox_mobile_html(
     contact_list_html = contact_list_html,
     contacts_sentinel_html = contacts_sentinel_html,
     default_target_user = escape_html(&default_target_user),
+    project_id = project_id.map(|id| id.to_string()).unwrap_or_default()
   );
 
   let unread_dm_count = if let Some(uid) = session_uid {
@@ -5278,7 +5441,17 @@ fn extract_rumble_info(url: &str) -> Option<String> {
         let end = rest[..end].find('?').unwrap_or(end);
         let id = &rest[..end];
         if !id.is_empty() {
-            return Some(format!(r#"<span class="youtube-preview-wrapper" style="display:flex; justify-content:center; width:100%; margin: 10px 0;"><span class="youtube-preview-container" style="width:100%; max-width:560px; margin: 0 auto; display: block; position: relative; overflow: hidden; padding-bottom: 56.25%; height: 0; border-radius: 8px;"><iframe src="https://rumble.com/embed/{}/" title="Rumble video player" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen width="100%" height="100%" style="border:0; position:absolute; top:0; left:0; width:100%; height:100%;"></iframe></span></span>"#, escape_html(id)));
+            let original_url = format!("https://rumble.com/embed/{}/", id);
+            return Some(format!(
+                r#"<span class="youtube-rich-preview generic-link-preview-card" data-url="{}" style="margin: 10px 0; display: flex; flex-direction: column;">
+                    <span style="width:100%; position: relative; overflow: hidden; padding-bottom: 56.25%; height: 0; display: block;">
+                        <iframe src="https://rumble.com/embed/{}/" title="Rumble video player" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen width="100%" height="100%" style="border:0; position:absolute; top:0; left:0; width:100%; height:100%;"></iframe>
+                    </span>
+                    <span class="youtube-meta-container generic-link-preview-content" style="display: none;"></span>
+                </span>"#,
+                escape_html(&original_url),
+                escape_html(id)
+            ));
         }
     }
     None
@@ -5449,6 +5622,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
     static ref MENTION_TAG_REGEX: Regex = Regex::new(r"([#@][\w_]+)").unwrap();
     static ref GITHUB_URL_REGEX: Regex = Regex::new(r"https://github\.com/([\w\-\.]+)/([\w\-\.]+)").unwrap();
     static ref GENERAL_URL_REGEX: Regex = Regex::new(r"https?://[^\s<]+").unwrap();
+    static ref PROJECT_INVITE_REGEX: Regex = Regex::new(r":?\[\[ :project-invite: (\d+) \]\]:").unwrap();
   }
 
   let mut options = Options::all();
@@ -5559,7 +5733,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
         } else {
             new_events.push(Event::End(TagEnd::Link));
             if let Some(url) = current_generic_url.take() {
-                if url.starts_with("http") && !url.contains("imgur.com") && !url.contains("youtube.com") && !url.contains("youtu.be") && !url.contains("github.com") && !url.contains("rumble.com") {
+                if url.starts_with("http") && !url.contains("imgur.com") && !url.contains("youtube.com") && !url.contains("youtu.be") && !url.contains("github.com") {
                     let preview_html = format!(r#"<span class="generic-link-preview" data-url="{}"></span>"#, escape_html(&url));
                     new_events.push(Event::Html(preview_html.into()));
                 }
@@ -5657,7 +5831,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
                           new_events.push(Event::Html(is_by_html.into()));
                       } else {
                           let mut link_html = format!(r#"<a class="post-link" href="{url}" target="_blank" rel="noopener">{url}</a>"#, url=escape_html(url));
-                          if url.starts_with("http") && !url.contains("imgur.com") && !url.contains("youtube.com") && !url.contains("youtu.be") && !url.contains("github.com") && !url.contains("rumble.com") {
+                          if url.starts_with("http") && !url.contains("imgur.com") && !url.contains("youtube.com") && !url.contains("youtu.be") && !url.contains("github.com") {
                               link_html.push_str(&format!(r#"<span class="generic-link-preview" data-url="{}"></span>"#, escape_html(url)));
                           }
                           new_events.push(Event::Html(link_html.into()));
@@ -5693,6 +5867,35 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
               if last_gh < text.len() {
                   process_urls_and_mentions(&text[last_gh..], ib_uid, ib_user, &mut new_events);
               }
+              
+              // Apply project invite replacement on all Text events at the end
+              let mut final_events = Vec::new();
+              for ev in new_events {
+                  if let Event::Text(t) = ev {
+                      let t_str = t.into_string();
+                      if PROJECT_INVITE_REGEX.is_match(&t_str) {
+                          let mut last_inv = 0;
+                          for inv_cap in PROJECT_INVITE_REGEX.captures_iter(&t_str) {
+                              let inv_m = inv_cap.get(0).unwrap();
+                              if inv_m.start() > last_inv {
+                                  final_events.push(Event::Text(t_str[last_inv..inv_m.start()].to_string().into()));
+                              }
+                              let project_id = inv_cap.get(1).unwrap().as_str();
+                              let html = format!(r#"<button class="post-submit" onclick="acceptProjectInvite({})" style="width: auto !important; min-width: 133px; height: auto !important; min-height: 33px; padding: 6px 12px !important; line-height: 1.2; font-size: 14px !important;">Accept Project Invite</button>"#, escape_html(project_id));
+                              final_events.push(Event::Html(html.into()));
+                              last_inv = inv_m.end();
+                          }
+                          if last_inv < t_str.len() {
+                              final_events.push(Event::Text(t_str[last_inv..].to_string().into()));
+                          }
+                      } else {
+                          final_events.push(Event::Text(t_str.into()));
+                      }
+                  } else {
+                      final_events.push(ev);
+                  }
+              }
+              new_events = final_events;
           }
       }
       Event::Html(html) => {

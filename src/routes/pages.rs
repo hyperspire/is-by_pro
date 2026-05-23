@@ -425,9 +425,9 @@ pub async fn inbox(
   }
 
   let html_result = if is_mobile_device(&req) {
-    render_inbox_mobile_html(&state, query.ib_uid, &query.ib_user, session_uid, query.target_user.as_deref()).await
+    render_inbox_mobile_html(&state, query.ib_uid, &query.ib_user, session_uid, query.target_user.as_deref(), query.project_id).await
   } else {
-    render_inbox_html(&state, query.ib_uid, &query.ib_user, session_uid, query.target_user.as_deref()).await
+    render_inbox_html(&state, query.ib_uid, &query.ib_user, session_uid, query.target_user.as_deref(), query.project_id).await
   };
 
   match html_result {
