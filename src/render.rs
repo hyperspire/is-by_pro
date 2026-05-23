@@ -5300,21 +5300,6 @@ fn extract_is_by_info(url: &str) -> Option<String> {
     None
 }
 
-fn extract_substack_info(url: &str) -> Option<String> {
-    if url.contains("substack.com/") {
-        let id = format!("embed_{}", uuid::Uuid::new_v4().simple());
-        let encoded_url = crate::url_encode_component(url);
-        
-        return Some(format!(
-            r#"<div class="substack-preview-wrapper" style="width:100%; margin: 10px 0;">
-                <iframe id="{}" src="https://substack.com/embed?url={}" style="width: 100%; border: 1px solid #3F3F3F; border-radius: 8px; min-height: 400px; max-height: 600px; overflow-y: auto; background: white;" scrolling="yes"></iframe>
-            </div>"#,
-            id, escape_html(&encoded_url)
-        ));
-    }
-    None
-}
-
 pub fn extract_meta_tags_from_post(raw_text: &str) -> String {
   let chars: Vec<(usize, char)> = raw_text.char_indices().collect();
   let mut index = 0usize;
@@ -5552,9 +5537,6 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
         } else if let Some(is_by_html) = extract_is_by_info(&dest_str) {
             skip_link_content = true;
             current_link_html = is_by_html;
-        } else if let Some(substack_html) = extract_substack_info(&dest_str) {
-            skip_link_content = true;
-            current_link_html = substack_html;
         } else if let Some(repo) = extract_github_repo(&dest_str) {
             skip_link_content = true;
             current_link_html = format!(r#"<span class="github-repo-card" data-repo="{}"></span>"#, escape_html(&repo));
@@ -5571,7 +5553,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
         } else {
             new_events.push(Event::End(TagEnd::Link));
             if let Some(url) = current_generic_url.take() {
-                if url.starts_with("http") && !url.contains("imgur.com") && !url.contains("youtube.com") && !url.contains("youtu.be") && !url.contains("github.com") && !url.contains("rumble.com") && !url.contains("substack.com") {
+                if url.starts_with("http") && !url.contains("imgur.com") && !url.contains("youtube.com") && !url.contains("youtu.be") && !url.contains("github.com") && !url.contains("rumble.com") {
                     let preview_html = format!(r#"<span class="generic-link-preview" data-url="{}"></span>"#, escape_html(&url));
                     new_events.push(Event::Html(preview_html.into()));
                 }
@@ -5661,11 +5643,9 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
                           new_events.push(Event::Html(rumble_html.into()));
                       } else if let Some(is_by_html) = extract_is_by_info(url) {
                           new_events.push(Event::Html(is_by_html.into()));
-                      } else if let Some(substack_html) = extract_substack_info(url) {
-                          new_events.push(Event::Html(substack_html.into()));
                       } else {
                           let mut link_html = format!(r#"<a class="post-link" href="{url}" target="_blank" rel="noopener">{url}</a>"#, url=escape_html(url));
-                          if url.starts_with("http") && !url.contains("imgur.com") && !url.contains("youtube.com") && !url.contains("youtu.be") && !url.contains("github.com") && !url.contains("rumble.com") && !url.contains("substack.com") {
+                          if url.starts_with("http") && !url.contains("imgur.com") && !url.contains("youtube.com") && !url.contains("youtu.be") && !url.contains("github.com") && !url.contains("rumble.com") {
                               link_html.push_str(&format!(r#"<span class="generic-link-preview" data-url="{}"></span>"#, escape_html(url)));
                           }
                           new_events.push(Event::Html(link_html.into()));
