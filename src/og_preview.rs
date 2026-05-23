@@ -40,7 +40,34 @@ pub async fn get_og_preview(
         .build()
         .unwrap_or_default();
         
-    let res = match client.get(&url).send().await {
+    if url.contains("youtube.com/") || url.contains("youtu.be/") {
+        if let Ok(oembed_url) = reqwest::Url::parse_with_params("https://www.youtube.com/oembed", &[("url", url.as_str()), ("format", "json")]) {
+            if let Ok(res) = client.get(oembed_url).send().await {
+            if let Ok(json) = res.json::<serde_json::Value>().await {
+                let title = json.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let author = json.get("author_name").and_then(|v| v.as_str()).map(|s| format!("YouTube Channel: {}", s));
+                let image = json.get("thumbnail_url").and_then(|v| v.as_str()).map(|s| s.to_string());
+                
+                let response = OgPreviewResponse {
+                    success: title.is_some() || image.is_some(),
+                    title,
+                    description: author,
+                    image,
+                    url: url.clone(),
+                };
+                
+                if response.success {
+                    if let Ok(json_str) = serde_json::to_string(&response) {
+                        let _: Result<(), _> = redis_conn.set_ex(&cache_key, json_str, 7 * 24 * 3600).await;
+                    }
+                }
+                return HttpResponse::Ok().json(response);
+            }
+        }
+    }
+}
+        
+let res = match client.get(&url).send().await {
         Ok(r) => r,
         Err(_) => {
             return HttpResponse::Ok().json(OgPreviewResponse {
