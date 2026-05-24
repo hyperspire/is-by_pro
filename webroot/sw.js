@@ -1,14 +1,14 @@
-const SHELL_CACHE = 'is-by-mobile-shell-v15';
+const SHELL_CACHE = 'is-by-mobile-shell-v16';
 const SHELL_ASSETS = [
   '/mobile.html',
-  '/css/is-by_mobile.css?v=mobile-shell-v15',
-  '/js/is-by_mobile_app.js?v=mobile-shell-v15',
+  '/css/is-by_mobile.css?v=mobile-shell-v16',
+  '/js/is-by_mobile_app.js?v=mobile-shell-v16',
   '/images/Death_Angel-555x222.png',
   '/images/is-by_app_icon.svg',
-  '/images/is-by_app_icon-192.png?v=mobile-shell-v15',
-  '/images/is-by_app_icon-512.png?v=mobile-shell-v15',
+  '/images/is-by_app_icon-192.png?v=mobile-shell-v16',
+  '/images/is-by_app_icon-512.png?v=mobile-shell-v16',
   '/favicon.ico',
-  '/app.webmanifest?v=mobile-shell-v15'
+  '/app.webmanifest?v=mobile-shell-v16'
 ];
 
 self.addEventListener('install', (event) => {
@@ -16,7 +16,7 @@ self.addEventListener('install', (event) => {
     caches.open(SHELL_CACHE).then((cache) => {
       const requests = SHELL_ASSETS.map(url => new Request(url, { cache: 'reload' }));
       return cache.addAll(requests);
-    }).then(() => self.skipWaiting())
+    })
   );
 });
 
