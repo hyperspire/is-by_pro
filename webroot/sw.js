@@ -1,14 +1,14 @@
-const SHELL_CACHE = 'is-by-mobile-shell-v13';
+const SHELL_CACHE = 'is-by-mobile-shell-v14';
 const SHELL_ASSETS = [
   '/mobile.html',
-  '/css/is-by_mobile.css?v=mobile-shell-v13',
-  '/js/is-by_mobile_app.js?v=mobile-shell-v13',
+  '/css/is-by_mobile.css?v=mobile-shell-v14',
+  '/js/is-by_mobile_app.js?v=mobile-shell-v14',
   '/images/Death_Angel-555x222.png',
   '/images/is-by_app_icon.svg',
-  '/images/is-by_app_icon-192.png?v=mobile-shell-v13',
-  '/images/is-by_app_icon-512.png?v=mobile-shell-v13',
+  '/images/is-by_app_icon-192.png?v=mobile-shell-v14',
+  '/images/is-by_app_icon-512.png?v=mobile-shell-v14',
   '/favicon.ico',
-  '/app.webmanifest?v=mobile-shell-v13'
+  '/app.webmanifest?v=mobile-shell-v14'
 ];
 
 self.addEventListener('install', (event) => {
