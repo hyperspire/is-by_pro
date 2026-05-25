@@ -6,3 +6,4 @@
 /ssl
 /.env
 /tmp
+/node_modules
