@@ -3,14 +3,28 @@ use crate::{models::*, utils::*, auth::*, render::*};
 use is_by_pro::COPYRIGHT;
 use crate::{DOMAIN, AD_ADMIN_UID, AD_ADMIN_USER};
 
+pub async fn root_view_profile(
+  req: HttpRequest,
+  path: web::Path<String>,
+  state: web::Data<AppState>,
+) -> impl Responder {
+  handle_view_profile(req, path.into_inner(), state).await
+}
+
 #[get("/v1/profile/{ib_user}")]
 pub async fn view_profile(
   req: HttpRequest,
   path: web::Path<String>,
   state: web::Data<AppState>,
 ) -> impl Responder {
-  let ib_user = path.into_inner();
+  handle_view_profile(req, path.into_inner(), state).await
+}
 
+async fn handle_view_profile(
+  req: HttpRequest,
+  ib_user: String,
+  state: web::Data<AppState>,
+) -> HttpResponse {
   if let Some(stripped) = ib_user.strip_prefix('@') {
     return HttpResponse::PermanentRedirect()
       .insert_header(("Location", format!("/v1/profile/{}", stripped)))

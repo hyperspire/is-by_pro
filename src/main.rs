@@ -249,6 +249,13 @@ async fn main() -> std::io::Result<()> {
       .service(update_post)
       .service(acknowledge_post)
       .service(view_profile)
+      .service(
+        web::resource("/{ib_user}")
+          .guard(actix_web::guard::fn_guard(|req| {
+            !req.head().uri.path().contains('.')
+          }))
+          .route(web::get().to(root_view_profile))
+      )
       .service(get_posts_page)
       .service(get_followers_page)
       .service(user_hover_card_data)
