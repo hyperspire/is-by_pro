@@ -3186,11 +3186,28 @@ pub async fn accept_project_invite(
 
 #[post("/v1/project/dm/send")]
 pub async fn send_project_dm(
+    req_http: HttpRequest,
     state: web::Data<AppState>,
-    req: web::Form<ProjectDMMessageRequest>,
+    payload: actix_web::Either<web::Json<ProjectDMMessageRequest>, web::Form<ProjectDMMessageRequest>>,
 ) -> impl Responder {
-    let session_uid = req.ib_uid;
-    let session_user = req.ib_user.trim().to_string();
+    let req = match payload {
+        actix_web::Either::Left(json_payload) => json_payload.into_inner(),
+        actix_web::Either::Right(form_payload) => form_payload.into_inner(),
+    };
+
+    let session_uid = match get_session_uid(&req_http) {
+        Some(uid) => uid,
+        None => return HttpResponse::Unauthorized().json(DMSendResponse { success: false, message: "Unauthorized".to_string() }),
+    };
+
+    let session_user = match sqlx::query_scalar::<_, String>("SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1")
+        .bind(session_uid.to_string())
+        .fetch_optional(&state.db_pool)
+        .await
+    {
+        Ok(Some(u)) => u,
+        _ => return HttpResponse::Unauthorized().json(DMSendResponse { success: false, message: "User not found".to_string() }),
+    };
 
     let project_row = sqlx::query_as::<_, ProjectProfileRow>(
         "SELECT id, ib_uid, CAST(COALESCE(ib_uid, '') AS CHAR) AS username, 0 AS total_acknowledgments, project, description, languages, CAST(updated_at AS CHAR) AS updated_at, reinforcements, reinforcements_request FROM project_profile WHERE id = ? LIMIT 1"
@@ -3234,11 +3251,23 @@ pub async fn send_project_dm(
 
 #[get("/v1/project/dm/messages")]
 pub async fn get_project_dm_messages(
+    req_http: HttpRequest,
     state: web::Data<AppState>,
     req: web::Query<ProjectDMMessagesRequest>,
 ) -> impl Responder {
-    let session_uid = req.ib_uid;
-    let session_user = req.ib_user.trim().to_string();
+    let session_uid = match get_session_uid(&req_http) {
+        Some(uid) => uid,
+        None => return HttpResponse::Unauthorized().json(ProjectDMMessagesResponse { success: false, messages: vec![], has_more: false }),
+    };
+
+    let session_user = match sqlx::query_scalar::<_, String>("SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1")
+        .bind(session_uid.to_string())
+        .fetch_optional(&state.db_pool)
+        .await
+    {
+        Ok(Some(u)) => u,
+        _ => return HttpResponse::Unauthorized().json(ProjectDMMessagesResponse { success: false, messages: vec![], has_more: false }),
+    };
 
     let project_row = sqlx::query_as::<_, ProjectProfileRow>(
         "SELECT id, ib_uid, CAST(COALESCE(ib_uid, '') AS CHAR) AS username, 0 AS total_acknowledgments, project, description, languages, CAST(updated_at AS CHAR) AS updated_at, reinforcements, reinforcements_request FROM project_profile WHERE id = ? LIMIT 1"

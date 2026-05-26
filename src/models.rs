@@ -293,16 +293,12 @@ pub struct ProjectInviteAcceptRequest {
 
 #[derive(Deserialize)]
 pub struct ProjectDMMessageRequest {
-  pub ib_uid: i64,
-  pub ib_user: String,
   pub project_id: i64,
   pub message: String,
 }
 
 #[derive(Deserialize)]
 pub struct ProjectDMMessagesRequest {
-  pub ib_uid: i64,
-  pub ib_user: String,
   pub project_id: i64,
   pub before_id: Option<i64>,
 }
