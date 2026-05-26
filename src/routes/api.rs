@@ -3222,7 +3222,7 @@ pub async fn send_project_dm(
     };
 
     let is_owner = project.ib_uid == session_uid;
-    let current_reinforcements = project.reinforcements.unwrap_or_default();
+    let current_reinforcements = project.reinforcements.clone().unwrap_or_default();
     let is_reinforcement = current_reinforcements.split(',').any(|s| s.trim().eq_ignore_ascii_case(&session_user));
 
     if !is_owner && !is_reinforcement {
@@ -3244,7 +3244,61 @@ pub async fn send_project_dm(
     .await;
 
     match result {
-        Ok(_) => HttpResponse::Ok().json(DMSendResponse { success: true, message: "Message sent".to_string() }),
+        Ok(_) => {
+            let mut recipients = Vec::new();
+            if project.ib_uid != session_uid {
+                recipients.push(project.ib_uid);
+            }
+            let current_reinforcements = project.reinforcements.unwrap_or_default();
+            for r in current_reinforcements.split(',') {
+                let r = r.trim();
+                if !r.is_empty() && !r.eq_ignore_ascii_case(&session_user) {
+                    if let Ok(Some((uid, _))) = lookup_user_by_username(&state, r).await {
+                        recipients.push(uid);
+                    }
+                }
+            }
+            
+            let notification_msg = format!("*[Sent a message in project **{}**]*\n\n[Open Project Chat](https://{}/v1/inbox?project_id={})", project.project, crate::DOMAIN, project.id);
+            if let Ok(encrypted_notification) = encode_dm_message_for_storage(&notification_msg) {
+                for recipient_uid in recipients {
+                    let _ = sqlx::query(
+                        "INSERT INTO dm (sender_uid, recipient_uid, message, created_at) VALUES (?, ?, ?, NOW())"
+                    )
+                    .bind(session_uid)
+                    .bind(recipient_uid)
+                    .bind(&encrypted_notification)
+                    .execute(&state.db_pool)
+                    .await;
+                    
+                    let broadcast_msg = serde_json::json!({
+                        "type": "dm_received",
+                        "sender_uid": session_uid,
+                        "message": notification_msg,
+                    }).to_string();
+
+                    let _ = state.sse_sender.send(crate::models::SseEvent {
+                        target_uid: recipient_uid,
+                        event_type: "dm_received".to_string(),
+                        message: broadcast_msg,
+                    });
+                    
+                    let state_data = state.clone();
+                    let notification_msg_clone = notification_msg.clone();
+                    let project_id = project.id;
+                    actix_web::rt::spawn(async move {
+                        let _ = crate::push::send_push_notification(
+                            &state_data,
+                            recipient_uid,
+                            "New Project Message",
+                            &notification_msg_clone,
+                            &format!("https://{}/v1/inbox?project_id={}", crate::DOMAIN, project_id)
+                        ).await;
+                    });
+                }
+            }
+            HttpResponse::Ok().json(DMSendResponse { success: true, message: "Message sent".to_string() })
+        },
         Err(_) => HttpResponse::InternalServerError().json(DMSendResponse { success: false, message: "Failed to send message".to_string() }),
     }
 }
