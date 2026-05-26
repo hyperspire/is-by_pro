@@ -2184,7 +2184,7 @@ pub async fn render_projects_html(
                 <input class="post-submit" type="submit" value="Send Invite" style="display: inline-block; width: auto; margin-left: 10px;">
               </form>
               <br>
-              <button class="post-submit" onclick="window.location.href='https://{DOMAIN}/v1/inbox?project_id={project_id}'">Open Project Chat</button>
+              <button class="post-submit" style="width: auto !important; height: auto !important; min-width: 133px; min-height: 33px;" onclick="window.location.href='https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}&project_id={project_id}'">Open Project Chat</button>
             </div>"#,
             owner_link = owner_link,
             updated_at = escape_html(&row.updated_at),
@@ -2259,8 +2259,8 @@ pub async fn render_projects_html(
             String::new()
           };
           let chat_button = if already_reinforcing {
-            format!(r#"<br><button class="post-submit" onclick="window.location.href='https://{DOMAIN}/v1/inbox?project_id={project_id}'">Open Project Chat</button>"#,
-                    project_id = row.id)
+            format!(r#"<br><button class="post-submit" style="width: auto !important; height: auto !important; min-width: 133px; min-height: 33px;" onclick="window.location.href='https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}&project_id={project_id}'">Open Project Chat</button>"#,
+                    ib_uid = ib_uid, ib_user = escape_html(ib_user), project_id = row.id)
           } else {
             String::new()
           };
@@ -2616,7 +2616,7 @@ pub async fn render_projects_mobile_html(
                 <input class="post-submit" type="submit" value="Send Invite" style="display: inline-block; width: auto; margin-left: 10px;">
               </form>
               <br>
-              <button class="post-submit" onclick="window.location.href='https://{DOMAIN}/v1/inbox?project_id={project_id}'">Open Project Chat</button>
+              <button class="post-submit" style="width: auto !important; height: auto !important; min-width: 133px; min-height: 33px;" onclick="window.location.href='https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}&project_id={project_id}'">Open Project Chat</button>
             </div>"#,
             owner_link = owner_link,
             updated_at = escape_html(&row.updated_at),
@@ -2725,7 +2725,7 @@ pub async fn render_projects_mobile_html(
             reinforcements_badge = reinforcements_badge,
             quick_response_form = quick_response_form,
             project_chat_button = if already_reinforcing {
-              format!("<br><button class=\"post-submit\" onclick=\"window.location.href='https://{DOMAIN}/v1/inbox?project_id={}'\">Open Project Chat</button>", row.id, DOMAIN = crate::DOMAIN)
+              format!("<br><button class=\"post-submit\" style=\"width: auto !important; height: auto !important; min-width: 133px; min-height: 33px;\" onclick=\"window.location.href='https://{DOMAIN}/v1/inbox?ib_uid={ib_uid}&ib_user={ib_user}&project_id={project_id}'\">Open Project Chat</button>", DOMAIN = crate::DOMAIN, ib_uid = ib_uid, ib_user = escape_html(ib_user), project_id = row.id)
             } else {
               String::new()
             }
