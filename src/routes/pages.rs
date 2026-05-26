@@ -438,10 +438,23 @@ pub async fn inbox(
     return HttpResponse::Unauthorized().body("Login required");
   }
 
+  let actual_uid = query.ib_uid.unwrap_or(session_uid.unwrap());
+  let actual_user = match query.ib_user.clone() {
+      Some(u) => u,
+      None => match sqlx::query_scalar::<_, String>("SELECT username FROM user WHERE CONVERT(ib_uid USING utf8mb4) COLLATE utf8mb4_unicode_ci = ? LIMIT 1")
+          .bind(actual_uid.to_string())
+          .fetch_optional(&state.db_pool)
+          .await
+      {
+          Ok(Some(u)) => u,
+          _ => return HttpResponse::Unauthorized().body("User not found"),
+      }
+  };
+
   let html_result = if is_mobile_device(&req) {
-    render_inbox_mobile_html(&state, query.ib_uid, &query.ib_user, session_uid, query.target_user.as_deref(), query.project_id).await
+    render_inbox_mobile_html(&state, actual_uid, &actual_user, session_uid, query.target_user.as_deref(), query.project_id).await
   } else {
-    render_inbox_html(&state, query.ib_uid, &query.ib_user, session_uid, query.target_user.as_deref(), query.project_id).await
+    render_inbox_html(&state, actual_uid, &actual_user, session_uid, query.target_user.as_deref(), query.project_id).await
   };
 
   match html_result {

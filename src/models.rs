@@ -327,8 +327,8 @@ pub struct FollowersPageQuery {
 
 #[derive(Deserialize)]
 pub struct InboxRequest {
-  pub ib_uid: i64,
-  pub ib_user: String,
+  pub ib_uid: Option<i64>,
+  pub ib_user: Option<String>,
   pub target_user: Option<String>,
   pub project_id: Option<i64>,
 }
