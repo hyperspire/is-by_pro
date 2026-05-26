@@ -26,6 +26,7 @@ function attachEventListeners() {
     attachDMContactSearchEventListener,
     attachSSEListener,
     attachGlobalPushInitializer,
+    attachRichPreviewsEventListener,
   ];
 
   listeners.forEach((setup) => {
@@ -1453,12 +1454,16 @@ async function renderGithubCard(card) {
   }
 }
 
-document.addEventListener("DOMContentLoaded", function () {
+function attachRichPreviewsEventListener() {
   document.querySelectorAll('.github-repo-card').forEach(renderGithubCard);
   document.querySelectorAll('.generic-link-preview').forEach(renderGenericLinkPreview);
   document.querySelectorAll('.youtube-rich-preview').forEach(renderYoutubeRichPreview);
 
-  const observer = new MutationObserver((mutations) => {
+  if (window.richPreviewObserver) {
+    window.richPreviewObserver.disconnect();
+  }
+
+  window.richPreviewObserver = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
       mutation.addedNodes.forEach((node) => {
         if (node.nodeType === 1) {
@@ -1479,8 +1484,8 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   });
 
-  observer.observe(document.body, { childList: true, subtree: true });
-});
+  window.richPreviewObserver.observe(document.body, { childList: true, subtree: true });
+}
 
 async function renderYoutubeRichPreview(element) {
   if (element.hasAttribute('data-rendered')) return;
