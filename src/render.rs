@@ -4347,13 +4347,31 @@ pub async fn render_inbox_html(
       vec![]
   };
 
+  let project_name = if let Some(pid) = project_id {
+      sqlx::query_scalar::<_, String>("SELECT project FROM project_profile WHERE id = ?")
+          .bind(pid)
+          .fetch_optional(&state.db_pool)
+          .await
+          .unwrap_or_default()
+  } else {
+      None
+  };
+
+  let (dm_title_display, proj_title_display) = if project_name.is_some() {
+      ("none", "inline")
+  } else {
+      ("inline", "none")
+  };
+  let project_name_str = project_name.as_deref().unwrap_or("");
+
   let invite_project_form = if !user_projects.is_empty() {
       let mut options = String::new();
       for (id, name) in user_projects {
           options.push_str(&format!("<option value=\"{}\">{}</option>", id, escape_html(&name)));
       }
+      let invite_display = if project_id.is_none() { "inline-block" } else { "none" };
       format!(
-          r#"<form id="invite-reinforcement-form" action="https://{DOMAIN}/v1/project/invite" method="POST" style="display:inline-block; margin-left: 15px;">
+          r#"<form id="invite-reinforcement-form" action="https://{DOMAIN}/v1/project/invite" method="POST" style="display:{invite_display}; margin-left: 15px;">
               <input type="hidden" name="ib_uid" value="{ib_uid}">
               <input type="hidden" name="ib_user" value="{ib_user}">
               <input type="hidden" id="invite-target-user-input" name="target_user" value="{default_target_user}">
@@ -4383,7 +4401,10 @@ pub async fn render_inbox_html(
         </div>
           <div id="dm-panel" style="display:block;" data-project-id="{project_id}">
             <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
-              <p style="margin: 0;"><strong>:[[ :direct-messages: <span id="dm-target-user">{default_target_user}</span>: ]]:</strong></p>
+              <p style="margin: 0;">
+                <strong id="dm-title-wrapper" style="display:{dm_title_display};">:[[ :direct-messages: <span id="dm-target-user">{default_target_user}</span>: ]]:</strong>
+                <strong id="proj-title-wrapper" style="display:{proj_title_display};">:[[ :project-messages: <span id="dm-target-project">{project_name_str}</span>: ]]:</strong>
+              </p>
               {invite_project_form}
             </div>
             <div id="dm-message-status"></div>
@@ -4579,6 +4600,23 @@ pub async fn render_inbox_mobile_html(
   let session_nav_uid = session_uid.unwrap_or(ib_uid);
   let session_nav_user = session_username.as_deref().unwrap_or(ib_user);
 
+  let project_name = if let Some(pid) = project_id {
+      sqlx::query_scalar::<_, String>("SELECT project FROM project_profile WHERE id = ?")
+          .bind(pid)
+          .fetch_optional(&state.db_pool)
+          .await
+          .unwrap_or_default()
+  } else {
+      None
+  };
+
+  let (dm_title_display, proj_title_display) = if project_name.is_some() {
+      ("none", "block")
+  } else {
+      ("block", "none")
+  };
+  let project_name_str = project_name.as_deref().unwrap_or("");
+
   let dm_inbox_html = format!(
     r#"<div class="glass-card">
       <div class="notice"><p><em>:[[ :direct-message-inbox: ]]:</em></p></div>
@@ -4588,7 +4626,10 @@ pub async fn render_inbox_mobile_html(
           <div id="dm-contact-list" data-ib-uid="{ib_uid}" data-ib-user="{ib_user}" data-contacts-offset="{contacts_next_offset}">{contact_list_html}{contacts_sentinel_html}</div>
         </div>
         <div id="dm-panel" style="display:block;" data-project-id="{project_id}">
-          <p><strong>:[[ :direct-messages: <span id="dm-target-user">{default_target_user}</span>: ]]:</strong></p>
+          <p style="margin: 0;">
+            <strong id="dm-title-wrapper" style="display:{dm_title_display};">:[[ :direct-messages: <span id="dm-target-user">{default_target_user}</span>: ]]:</strong>
+            <strong id="proj-title-wrapper" style="display:{proj_title_display};">:[[ :project-messages: <span id="dm-target-project">{project_name_str}</span>: ]]:</strong>
+          </p>
           <div id="dm-message-status"></div>
           <div id="dm-thread"></div>
           <div id="dm-typing-indicator" style="display: none;" class="typing-indicator"><em>User is typing...</em></div>

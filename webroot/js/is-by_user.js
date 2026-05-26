@@ -465,6 +465,17 @@ function attachDMOpenButtons(buttons, dmPanel, dmTargetLabel, dmTargetInput) {
       dmTargetLabel.textContent = targetUser;
       dmTargetInput.value = targetUser;
       
+      const dmTitleWrapper = document.getElementById('dm-title-wrapper');
+      const projTitleWrapper = document.getElementById('proj-title-wrapper');
+      if (dmTitleWrapper) dmTitleWrapper.style.display = '';
+      if (projTitleWrapper) projTitleWrapper.style.display = 'none';
+
+      const projectIdInput = document.getElementById('dm-project-id-input');
+      if (projectIdInput) projectIdInput.value = '';
+
+      const inviteForm = document.getElementById('invite-reinforcement-form');
+      if (inviteForm) inviteForm.style.display = 'inline-block';
+      
       const inviteTargetInput = document.getElementById('invite-target-user-input');
       if (inviteTargetInput) {
         inviteTargetInput.value = targetUser;
