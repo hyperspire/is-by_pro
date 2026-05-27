@@ -5419,6 +5419,11 @@ fn extract_youtube_video_id(url: &str) -> Option<String> {
     let rest = &url[start..];
     let end = rest.find('?').unwrap_or(rest.len());
     Some(rest[..end].to_string())
+  } else if let Some(pos) = url.find("youtube.com/live/") {
+    let start = pos + "youtube.com/live/".len();
+    let rest = &url[start..];
+    let end = rest.find('?').unwrap_or(rest.len());
+    Some(rest[..end].to_string())
   } else {
     None
   }
