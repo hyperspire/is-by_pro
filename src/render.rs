@@ -48,7 +48,7 @@ pub async fn render_related_userlist_html(
   };
 
   if interests.is_empty() {
-    return "<p><em>:[[ :for-the: related-users: is-by: none: ]]:</em></p>".to_string();
+    return "<p><em>:[[ :for-the: [[ related-users: is-by: none: ]]: ]]:</em></p>".to_string();
   }
 
   let boolean_query = interests.iter().map(|w| format!("{}*", w)).collect::<Vec<_>>().join(" ");
@@ -110,7 +110,7 @@ pub async fn render_related_userlist_html(
   }
 
   let html = if related_html.is_empty() {
-    "<p><em>:[[ :for-the: related-users: is-by: none: ]]:</em></p>".to_string()
+    "<p><em>:[[ :for-the: [[ related-users: is-by: none: ]]: ]]:</em></p>".to_string()
   } else {
     related_html
   };
@@ -198,7 +198,7 @@ pub async fn render_trending_tags_html(state: &AppState, ib_uid: i64, ib_user: &
     .await;
 
   let html = match rows {
-    Ok(rows) if rows.is_empty() => "<p><em>:[[ :for-the: trending-tags: is-by: none: ]]:</em></p>".to_string(),
+    Ok(rows) if rows.is_empty() => "<p><em>:[[ :for-the: [[ trending-tags: is-by: none: ]]: ]]:</em></p>".to_string(),
     Ok(rows) => rows
       .iter()
       .map(|row| {
@@ -509,7 +509,7 @@ pub async fn render_profile_html(
     let display_rows = &ib_post_results[..ib_post_results.len().min(20)];
 
     let mut selected_user_posts_response_content = format!(
-      r#"<br><div class="notice"><p><em>:[[ :for-the: posts: is-by: {ib_post_results_length}: is-with: showing-latest-results: ]]:</em></p></div>"#,
+      r#"<br><div class="notice"><p><em>:[[ :for-the: [[ posts: is-by: {ib_post_results_length}: is-with: showing-latest-results: ]]: ]]:</em></p></div>"#,
       ib_post_results_length = ib_post_results_length,
     );
 
@@ -834,7 +834,7 @@ pub async fn render_profile_mobile_html(
     )
   } else {
     format!(
-      r#"<br><div class="notice"><p><em>:[[ :for-the: posts: is-by: {ib_post_results_length}: is-with: showing-latest-results: ]]:</em></p></div>"#,
+      r#"<br><div class="notice"><p><em>:[[ :for-the: [[ posts: is-by: {ib_post_results_length}: is-with: showing-latest-results: ]]: ]]:</em></p></div>"#,
       ib_post_results_length = ib_post_results_length,
     )
   };
@@ -2130,7 +2130,7 @@ pub async fn render_projects_html(
     .map_err(|e| format!("Projects query failed: {}", e))?;
 
   let projects_html = if rows.is_empty() {
-    r#"<br><div class="notice"><p><em>:[[ :for-the: user-projects: is-by: none: ]]:</em></p></div>"#.to_string()
+    r#"<br><div class="notice"><p><em>:[[ :for-the: [[ user-projects: is-by: none: ]]: ]]:</em></p></div>"#.to_string()
   } else {
     let reinforcement_names: HashSet<String> = rows
       .iter()
@@ -2562,7 +2562,7 @@ pub async fn render_projects_mobile_html(
     .map_err(|e| format!("Projects query failed: {}", e))?;
 
   let projects_html = if rows.is_empty() {
-    r#"<br><div class="notice"><p><em>:[[ :for-the: projects: is-by: none: ]]:</em></p></div>"#.to_string()
+    r#"<br><div class="notice"><p><em>:[[ :for-the: [[ projects: is-by: none: ]]: ]]:</em></p></div>"#.to_string()
   } else {
     let reinforcement_names: HashSet<String> = rows
       .iter()
@@ -6093,7 +6093,7 @@ pub fn render_ack_disabled() -> String {
 
 pub fn render_inbox_contacts_html(inbox_users: &[String]) -> String {
   if inbox_users.is_empty() {
-    return "<p><em>:[[ :for-the: direct-message-contacts: is-by: none: ]]:</em></p>".to_string();
+    return "<p><em>:[[ :for-the: [[ direct-message-contacts: is-by: none: ]]: ]]:</em></p>".to_string();
   }
 
   inbox_users
@@ -6109,7 +6109,7 @@ pub fn render_inbox_contacts_html(inbox_users: &[String]) -> String {
 }
 
 pub async fn related_users(state: &AppState, session_uid: Option<i64>) -> String {
-  let empty_result = "<p><em>:[[ :for-the: related-users: is-by: none: ]]:</em></p>".to_string();
+  let empty_result = "<p><em>:[[ :for-the: [[ related-users: is-by: none: ]]: ]]:</em></p>".to_string();
 
   let uid = match session_uid {
     Some(id) => id,
