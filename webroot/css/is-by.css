@@ -5,7 +5,7 @@ body {
     font-weight: medium;
     text-wrap: wrap;
     word-wrap: break-word;
-    font-size: 12px;
+    font-size: 16px;
 }
 
 #main-section {
@@ -95,7 +95,7 @@ body {
 .is-with {
     display: inline-block;
     width: 100%;
-    font-size: 12px;
+    font-size: 16px;
     align-items: flex-start;
     vertical-align: top;
     justify-content: center;
@@ -373,7 +373,7 @@ a:hover {
     color: #cccccc !important;
     text-decoration: none;
     font-weight: bold;
-    font-size: 11px;
+    font-size: 16px;
     display: inline-block;
     appearance: none;
     background-color: #1C1C1C !important;
@@ -560,7 +560,7 @@ a:hover {
     text-decoration: none;
     font-weight: bold;
     text-align: left !important;
-    font-size: 11px;
+    font-size: 16px;
     background-color: #1C1C1C !important;
     border: 1px solid #3E3E3E !important;
     border-radius: 4px;
@@ -575,7 +575,7 @@ a:hover {
     color: #AFAFAF !important;
     text-decoration: none;
     font-weight: bold;
-    font-size: 11px;
+    font-size: 16px;
     align-items: center;
     vertical-align: middle;
     justify-content: center;
@@ -893,7 +893,7 @@ a:hover {
     color: #AFAFAF !important;
     text-decoration: none;
     font-weight: bold;
-    font-size: 11px;
+    font-size: 16px;
     align-items: center;
     vertical-align: middle;
     justify-content: center;
@@ -992,7 +992,7 @@ a:hover {
 .paragraph {
     color: #9f8942;
     display: inherit;
-    font-size: 11px;
+    font-size: 16px;
     font-weight: medium;
     font-family: Arial, Helvetica, sans-serif;
     align-items: inherit;
@@ -1432,6 +1432,7 @@ textarea.post {
     align-items: center;
     gap: 4px;
 }
+
 .youtube-rich-preview:hover {
     transform: none !important;
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4) !important;
