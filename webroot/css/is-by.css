@@ -588,6 +588,13 @@ a:hover {
     margin-top: 10px;
 }
 
+.post a,
+.post a:active,
+.post a:visited {
+    font-size: 11px !important;
+    font-weight: bold !important;
+}
+
 .youtube-preview-wrapper {
     display: flex;
     justify-content: center;
