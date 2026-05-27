@@ -5503,6 +5503,46 @@ fn extract_rumble_info(url: &str) -> Option<String> {
     None
 }
 
+fn extract_bitchute_video_id(url: &str) -> Option<String> {
+    if let Some(pos) = url.find("bitchute.com/video/") {
+        let start = pos + "bitchute.com/video/".len();
+        let rest = &url[start..];
+        let end = rest.find('/').unwrap_or(rest.len());
+        let end = rest[..end].find('?').unwrap_or(end);
+        let id = &rest[..end];
+        if !id.is_empty() {
+            return Some(id.to_string());
+        }
+    } else if let Some(pos) = url.find("bitchute.com/embed/") {
+        let start = pos + "bitchute.com/embed/".len();
+        let rest = &url[start..];
+        let end = rest.find('/').unwrap_or(rest.len());
+        let end = rest[..end].find('?').unwrap_or(end);
+        let id = &rest[..end];
+        if !id.is_empty() {
+            return Some(id.to_string());
+        }
+    }
+    None
+}
+
+fn extract_bitchute_info(url: &str) -> Option<String> {
+    if let Some(id) = extract_bitchute_video_id(url) {
+        let original_url = format!("https://www.bitchute.com/embed/{}/", id);
+        return Some(format!(
+            r#"<span class="youtube-rich-preview generic-link-preview-card" data-url="{}" style="margin: 10px 0; display: flex; flex-direction: column;">
+                <span style="width:100%; position: relative; overflow: hidden; padding-bottom: 56.25%; height: 0; display: block;">
+                    <iframe scrolling="no" src="https://www.bitchute.com/embed/{}/" title="BitChute video player" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen width="100%" height="100%" style="border:0; position:absolute; top:0; left:0; width:100%; height:100%;"></iframe>
+                </span>
+                <span class="youtube-meta-container generic-link-preview-content" style="display: none;"></span>
+            </span>"#,
+            escape_html(&original_url),
+            escape_html(&id)
+        ));
+    }
+    None
+}
+
 fn extract_is_by_info(url: &str) -> Option<String> {
     if let Some(pos) = url.find("is-by.pro/v1/showpost?") {
         let start = pos + "is-by.pro/v1/showpost?".len();
@@ -5654,7 +5694,22 @@ pub fn extract_meta_tags_from_post(raw_text: &str) -> String {
                 rumble_id = escape_html(id)
               );
           }
+      } else if let Some(bitchute_id) = extract_bitchute_video_id(&href) {
+          return format!(
+            r#"<meta property="og:type" content="video.other">
+<meta property="og:video:url" content="https://www.bitchute.com/embed/{bitchute_id}/">
+<meta property="og:video:secure_url" content="https://www.bitchute.com/embed/{bitchute_id}/">
+<meta property="og:video:type" content="text/html">
+<meta property="og:video:width" content="1280">
+<meta property="og:video:height" content="720">
+<meta name="twitter:card" content="player">
+<meta name="twitter:player" content="https://www.bitchute.com/embed/{bitchute_id}/">
+<meta name="twitter:player:width" content="1280">
+<meta name="twitter:player:height" content="720">"#,
+            bitchute_id = escape_html(&bitchute_id)
+          );
       }
+
     }
     index += 1;
   }
@@ -5760,6 +5815,9 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
         } else if let Some(rumble_html) = extract_rumble_info(&dest_str) {
             skip_link_content = true;
             current_link_html = rumble_html;
+        } else if let Some(bitchute_html) = extract_bitchute_info(&dest_str) {
+            skip_link_content = true;
+            current_link_html = bitchute_html;
         } else if let Some(is_by_html) = extract_is_by_info(&dest_str) {
             skip_link_content = true;
             current_link_html = is_by_html;
@@ -5873,6 +5931,8 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
                           new_events.push(Event::Html(imgur_html.into()));
                       } else if let Some(rumble_html) = extract_rumble_info(url) {
                           new_events.push(Event::Html(rumble_html.into()));
+                      } else if let Some(bitchute_html) = extract_bitchute_info(url) {
+                          new_events.push(Event::Html(bitchute_html.into()));
                       } else if let Some(is_by_html) = extract_is_by_info(url) {
                           new_events.push(Event::Html(is_by_html.into()));
                       } else {
