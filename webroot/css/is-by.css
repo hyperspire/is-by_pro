@@ -120,6 +120,7 @@ body {
     text-align: center;
     text-wrap: wrap;
     word-wrap: break-word;
+    font-size: 11px !important;
     text-overflow: inherit;
     padding: 6px;
     margin: 6px auto;
