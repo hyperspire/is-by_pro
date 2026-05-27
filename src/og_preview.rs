@@ -92,7 +92,19 @@ pub async fn get_og_preview(
         }
     }
 
-    let res = match client.get(&url).send().await {
+    let mut fetch_url = url.clone();
+    if url.contains("bitchute.com/embed/") {
+        if let Some(pos) = url.find("bitchute.com/embed/") {
+            let start = pos + "bitchute.com/embed/".len();
+            let rest = &url[start..];
+            let end = rest.find('/').unwrap_or(rest.len());
+            let end = rest[..end].find('?').unwrap_or(end);
+            let id = &rest[..end];
+            fetch_url = format!("https://www.bitchute.com/video/{}/", id);
+        }
+    }
+
+    let res = match client.get(&fetch_url).send().await {
         Ok(r) => r,
         Err(_) => {
             return HttpResponse::Ok().json(OgPreviewResponse {
