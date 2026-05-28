@@ -709,6 +709,9 @@ function attachCopyLinkEventListener() {
   const copyLinks = document.querySelectorAll('.copy-link');
 
   copyLinks.forEach((link) => {
+    if (link.dataset.listenerBound === '1') return;
+    link.dataset.listenerBound = '1';
+
     link.addEventListener('click', async (event) => {
       event.preventDefault();
 
@@ -834,6 +837,9 @@ function attachAcknowledgePostEventListener() {
   const acknowledgeLinks = document.querySelectorAll('.ack-post');
 
   acknowledgeLinks.forEach((link) => {
+    if (link.dataset.listenerBound === '1') return;
+    link.dataset.listenerBound = '1';
+
     link.addEventListener('click', (event) => {
       event.preventDefault();
 
@@ -849,6 +855,9 @@ function attachSelectPostEventListener() {
   const selectPostLinks = document.querySelectorAll('.show-post');
 
   selectPostLinks.forEach((link) => {
+    if (link.dataset.listenerBound === '1') return;
+    link.dataset.listenerBound = '1';
+
     link.addEventListener('click', (event) => {
       event.preventDefault();
 
@@ -906,6 +915,9 @@ function attachEditPostEventListener() {
   const editPostLinks = document.querySelectorAll('.edit-post');
 
   editPostLinks.forEach((link) => {
+    if (link.dataset.listenerBound === '1') return;
+    link.dataset.listenerBound = '1';
+
     link.addEventListener('click', (event) => {
       event.preventDefault();
 
@@ -921,6 +933,9 @@ function attachDeletePostEventListener() {
   const deletePostLinks = document.querySelectorAll('.delete-post');
 
   deletePostLinks.forEach((link) => {
+    if (link.dataset.listenerBound === '1') return;
+    link.dataset.listenerBound = '1';
+
     link.addEventListener('click', (event) => {
       event.preventDefault();
 
@@ -1101,6 +1116,9 @@ function attachPostsInfiniteScrollEventListener() {
       if (!data.has_more) {
         observer.disconnect();
         sentinel.remove();
+      } else {
+        observer.unobserve(sentinel);
+        observer.observe(sentinel);
       }
     } catch (e) {
       console.error('posts-scroll-error:', e);
@@ -1156,6 +1174,9 @@ function attachFollowersInfiniteScrollEventListener() {
       if (!data.has_more) {
         observer.disconnect();
         sentinel.remove();
+      } else {
+        observer.unobserve(sentinel);
+        observer.observe(sentinel);
       }
     } catch (e) {
       console.error('followers-scroll-error:', e);
