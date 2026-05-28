@@ -28,6 +28,7 @@ pub async fn ensure_legacy_user_from_github(
 
   Ok(())
 }
+
 #[post("/v1/post")]
 pub async fn create_post(
   req: HttpRequest,
@@ -155,6 +156,7 @@ pub async fn create_post(
     }),
   }
 }
+
 #[post("/v1/reply")]
 pub async fn create_reply(
   req: HttpRequest,
@@ -238,6 +240,7 @@ pub async fn create_reply(
       .body(format!("Failed to create reply: {}", err)),
   }
 }
+
 #[post("/v1/showpost")]
 pub async fn show_post(
   req: HttpRequest,
@@ -254,6 +257,7 @@ pub async fn show_post(
   )
   .await
 }
+
 #[get("/v1/showpost")]
 pub async fn show_post_get(
   req: HttpRequest,
@@ -270,6 +274,7 @@ pub async fn show_post_get(
   )
   .await
 }
+
 #[post("/v1/pinpost")]
 pub async fn pin_post(
   req: HttpRequest,
@@ -336,6 +341,7 @@ pub async fn pin_post(
     }),
   }
 }
+
 #[get("/v1/embedpost")]
 pub async fn embed_post_get(
   state: web::Data<AppState>,
@@ -349,6 +355,7 @@ pub async fn embed_post_get(
   )
   .await
 }
+
 #[post("/v1/follow")]
 pub async fn follow_user(
   req: HttpRequest,
@@ -447,6 +454,7 @@ pub async fn follow_user(
     .insert_header(("Location", format!("/v1/profile/{}", target_row.username)))
     .finish()
 }
+
 #[get("/v1/user/hover/{ib_user}")]
 pub async fn user_hover_card_data(
   req: HttpRequest,
@@ -538,6 +546,7 @@ pub async fn user_hover_card_data(
     "logged_in": session_username.is_some()
   }))
 }
+
 #[get("/api/badge/{username}.png")]
 pub async fn get_commander_badge(
   path: web::Path<String>,
@@ -598,6 +607,7 @@ pub async fn get_commander_badge(
     }
   }
 }
+
 #[post("/v1/unfollow")]
 pub async fn unfollow_user(
   req: HttpRequest,
@@ -911,6 +921,7 @@ pub async fn update_profile(
       .body(format!("Failed to update profile: {}", err)),
   }
 }
+
 #[post("/v1/deletepost")]
 pub async fn delete_post(
   req: HttpRequest,
@@ -3069,6 +3080,7 @@ pub async fn report_profile(
         .insert_header(("Location", format!("/v1/profile/{}", crate::utils::url_encode_component(target_user))))
         .finish()
 }
+
 #[post("/v1/project/invite")]
 pub async fn send_project_invite(
     state: web::Data<AppState>,

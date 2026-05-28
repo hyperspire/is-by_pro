@@ -109,6 +109,7 @@ async fn handle_view_profile(
     }
   }
 }
+
 #[get("/v1/searchusers")]
 pub async fn search_users(
   req: HttpRequest,
@@ -128,6 +129,7 @@ pub async fn search_users(
     Err(err) => HttpResponse::InternalServerError().body(err),
   }
 }
+
 #[get("/v1/searchposts")]
 pub async fn search_posts(
   req: HttpRequest,
@@ -147,6 +149,7 @@ pub async fn search_posts(
     Err(err) => HttpResponse::InternalServerError().body(err),
   }
 }
+
 #[get("/v1/searchprojects")]
 pub async fn search_projects(
   req: HttpRequest,
@@ -166,6 +169,7 @@ pub async fn search_projects(
     Err(err) => HttpResponse::InternalServerError().body(err),
   }
 }
+
 #[get("/v1/search-section")]
 pub async fn search_section(
   req: HttpRequest,
@@ -180,6 +184,7 @@ pub async fn search_section(
     Err(err) => HttpResponse::InternalServerError().body(err),
   }
 }
+
 #[get("/v1/projects")]
 pub async fn projects_page(
   req: HttpRequest,
@@ -200,6 +205,7 @@ pub async fn projects_page(
     Err(err) => HttpResponse::InternalServerError().body(err),
   }
 }
+
 #[get("/v1/admin/ads")]
 pub async fn ads_admin_page(
   req: HttpRequest,
@@ -300,6 +306,7 @@ pub async fn ads_admin_page(
     .content_type("text/html; charset=utf-8")
     .body(html)
 }
+
 #[get("/v1/ads")]
 pub async fn ads_user_page(
   req: HttpRequest,
@@ -400,6 +407,7 @@ pub async fn ads_user_page(
     .content_type("text/html; charset=utf-8")
     .body(html)
 }
+
 #[get("/v1/warroom")]
 pub async fn war_room(
   req: HttpRequest,
@@ -427,6 +435,7 @@ pub async fn war_room(
     }
   }
 }
+
 #[get("/v1/inbox")]
 pub async fn inbox(
   req: HttpRequest,
@@ -464,6 +473,7 @@ pub async fn inbox(
     Err(err) => HttpResponse::InternalServerError().body(err),
   }
 }
+
 #[get("/")]
 pub async fn hello(req: HttpRequest) -> impl Responder {
   if is_mobile_device(&req) {
@@ -485,6 +495,7 @@ pub async fn hello(req: HttpRequest) -> impl Responder {
         });
   HttpResponse::Ok().body(html)
 }
+
 #[get("/mobile.html")]
 pub async fn mobile_shell_html() -> impl Responder {
   HttpResponse::Ok()
@@ -494,6 +505,7 @@ pub async fn mobile_shell_html() -> impl Responder {
     .content_type("text/html; charset=utf-8")
     .body(include_str!("../../webroot/mobile.html"))
 }
+
 #[get("/app.webmanifest")]
 pub async fn mobile_shell_manifest() -> impl Responder {
   HttpResponse::Ok()
@@ -503,6 +515,7 @@ pub async fn mobile_shell_manifest() -> impl Responder {
     .content_type("application/manifest+json")
     .body(include_str!("../../webroot/app.webmanifest"))
 }
+
 #[get("/sw.js")]
 pub async fn mobile_shell_service_worker() -> impl Responder {
   HttpResponse::Ok()

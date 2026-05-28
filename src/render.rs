@@ -1537,7 +1537,7 @@ pub async fn render_search_users_mobile_html(
     }
 
     if html.is_empty() {
-      r#"<div class="notice"><p><em>:[[ :search-users: is-by: no: is-with: results: ]]:</em></p></div>"#.to_string()
+      r#"<div class="notice"><p><em>:[[ :for-the: [[ :search-users: is-by: none: ]]: ]]:</em></p></div>"#.to_string()
     } else {
       html
     }
@@ -1559,7 +1559,7 @@ pub async fn render_search_users_mobile_html(
   };
 
   search_results_section_html += &format!(
-    r#"<div class="notice"><p><em>:[[ :search-users: for-the: {raw_query}: ]]:</em></p></div>
+    r#"<div class="notice"><p><em>:[[ :search-users: for-the: [[ {raw_query} ]]: ]]:</em></p></div>
       {search_results_html}"#,
     raw_query = escape_html(raw_query),
     search_results_html = search_results_html,
@@ -1701,7 +1701,7 @@ pub async fn render_search_posts_mobile_html(
       .map_err(|e| format!("Search posts query failed: {}", e))?;
 
     if rows.is_empty() {
-      post_html = "<p><em>:[[ :search-posts: is-by: no: is-with: results: ]]:</em></p>".to_string();
+      post_html = "<p><em>:[[ :for-the: [[ :search-posts: is-by: none: ]]: ]]:</em></p>".to_string();
     } else {
       let mut row_post_ids = Vec::new();
       let mut display_rows = Vec::new();
@@ -1897,7 +1897,7 @@ pub async fn render_search_posts_html(
       .map_err(|e| format!("Search posts query failed: {}", e))?;
 
     if rows.is_empty() {
-      "<p><em>:[[ :search-posts: is-by: no: is-with: results: ]]:</em></p>".to_string()
+      "<p><em>:[[ :for-the: [[ :search-posts: is-by: none: ]]: ]]:</em></p>".to_string()
     } else {
       let mut post_html = String::new();
       let mut row_post_ids = Vec::new();
@@ -2922,7 +2922,7 @@ pub async fn render_search_projects_html(
       .map_err(|e| format!("Search projects query failed: {}", e))?;
 
     if rows.is_empty() {
-      r#"<div class="notice"><p><em>:[[ :search-projects: is-by: no: is-with: results: ]]:</em></p></div>"#
+      r#"<div class="notice"><p><em>:[[ :for-the: [[ :search-projects: is-by: none: ]]: ]]:</em></p></div>"#
         .to_string()
     } else {
       let reinforcement_names: HashSet<String> = rows
@@ -3075,7 +3075,7 @@ pub async fn render_search_projects_html(
 
   let projects_search_section_html = format!(
     r#"<div id="selected-user-posts-section" class="post-section">
-        <div class="notice"><p><em>:[[ :search-project-languages: for-the: {raw_query}: ]]:</em></p></div>
+        <div class="notice"><p><em>:[[ :search-project-languages: for-the: [[ {raw_query} ]]: ]]:</em></p></div>
         {search_results_html}
       </div>"#,
     raw_query = escape_html(raw_query),
@@ -3250,7 +3250,7 @@ pub async fn render_search_projects_mobile_html(
       .map_err(|e| format!("Search projects query failed: {}", e))?;
 
     if rows.is_empty() {
-      "<p><em>:[[ :search-projects: is-by: no: is-with: results: ]]:</em></p>".to_string()
+      "<p><em>:[[ :for-the: [[ :search-projects: is-by: none: ]]: ]]:</em></p>".to_string()
     } else {
       let reinforcement_names: HashSet<String> = rows
         .iter()
@@ -3377,7 +3377,7 @@ pub async fn render_search_projects_mobile_html(
 
   let search_results_section_html = format!(
     r#"<div class="glass-card">
-      <div class="notice"><p><em>:[[ :search-project-languages-for: {raw_query}: ]]:</em></p></div>
+      <div class="notice"><p><em>:[[ :search-project-languages: for-the: [[ {raw_query} ]]: ]]:</em></p></div>
       {search_results_html}
     </div>"#,
     raw_query = escape_html(raw_query),
@@ -3912,12 +3912,12 @@ pub async fn render_war_room_html(
   let war_room_chunk = render_war_room_posts_chunk(state, ib_uid, ib_user, session_uid, 0, 20).await?;
 
   let war_room_content = if war_room_chunk.total_followers == 0 {
-    r#"<div class="notice"><p><em>:[[ :war-room: for-the: followers: is-by: none ]]:</em></p></div>"#.to_string()
+    r#"<div class="notice"><p><em>:[[ :war-room: for-the: [[ followers: is-by: none ]]: ]]:</em></p></div>"#.to_string()
   } else if war_room_chunk.posts_html.trim().is_empty() && !war_room_chunk.has_more {
-    r#"<div class="notice"><p><em>:[[ :war-room: for-the: follower-posts: is-by: none: ]]:</em></p></div>"#.to_string()
+    r#"<div class="notice"><p><em>:[[ :war-room: for-the: [[ follower-posts: is-by: none ]]: ]]:</em></p></div>"#.to_string()
   } else {
     format!(
-      r#"<div class="notice"><p><em>:[[ :war-room: for-the: followers-targeted: is-by: {selected_count}: ]]:</em></p></div>{rendered_posts}"#,
+      r#"<div class="notice"><p><em>:[[ :war-room: for-the: [[ followers-targeted: is-by: {selected_count} ]]: ]]:</em></p></div>{rendered_posts}"#,
       selected_count = war_room_chunk.total_followers - 1,
       rendered_posts = war_room_chunk.posts_html
     )
@@ -4116,12 +4116,12 @@ pub async fn render_war_room_mobile_html(
   let war_room_chunk = render_war_room_posts_chunk(state, ib_uid, ib_user, session_uid, 0, 20).await?;
 
   let war_room_content = if war_room_chunk.total_followers == 0 {
-    "<div class=\"notice\"><p><em>:[[ :war-room: for-the: followers: is-by: none: ]]:</em></p></div>".to_string()
+    "<div class=\"notice\"><p><em>:[[ :war-room: for-the: [[ followers: is-by: none: ]]: ]]:</em></p></div>".to_string()
   } else if war_room_chunk.posts_html.trim().is_empty() && !war_room_chunk.has_more {
-    "<div class=\"notice\"><p><em>:[[ :war-room: is-by: no: is-with: follower-posts: ]]:</em></p></div>".to_string()
+    "<div class=\"notice\"><p><em>:[[ :for-the: [[ :war-room: follower-posts: is-by: none: ]]: ]]:</em></p></div>".to_string()
   } else {
     format!(
-      r#"<div class="notice"><p><em>:[[ :war-room: for-the: followers-targeted: is-by: {selected_count}: ]]:</em></p></div>{rendered_posts}"#,
+      r#"<div class=\"notice\"><p><em>:[[ :for-the: [[ :war-room: followers-targeted: is-by: {selected_count}: ]]: ]]:</em></p></div>{rendered_posts}"#,
       selected_count = war_room_chunk.total_followers,
       rendered_posts = war_room_chunk.posts_html
     )
