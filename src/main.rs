@@ -185,7 +185,7 @@ async fn main() -> std::io::Result<()> {
           .next()
           .unwrap_or_default()
           .to_owned();
-        let host_ok = host.trim_end_matches('.').eq_ignore_ascii_case(DOMAIN);
+        let host_ok = host.trim_end_matches('.').eq_ignore_ascii_case(DOMAIN) || host.trim_end_matches('.').eq_ignore_ascii_case(&format!("www.{}", DOMAIN));
 
         let origin_ok = req
           .headers()
