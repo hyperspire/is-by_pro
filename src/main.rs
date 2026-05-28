@@ -309,6 +309,7 @@ async fn main() -> std::io::Result<()> {
       .service(admin_ban_user)
       .service(report_profile)
       .service(moderation_portal_html)
+      .service(sitemap_xml)
       .service(Files::new("/", "./webroot").default_handler(
           actix_web::web::to(|| async {
               actix_web::HttpResponse::NotFound().body("404 Not Found")

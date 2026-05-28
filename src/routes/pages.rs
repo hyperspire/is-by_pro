@@ -552,3 +552,33 @@ pub async fn moderation_portal_html(
     .content_type("text/html; charset=utf-8")
     .body(html)
 }
+
+#[get("/sitemap.xml")]
+pub async fn sitemap_xml(state: web::Data<AppState>) -> impl Responder {
+  let mut xml = String::from(
+    r#"<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://is-by.pro/</loc></url>
+  <url><loc>https://is-by.pro/v1/warroom</loc></url>
+  <url><loc>https://is-by.pro/v1/projects</loc></url>
+"#
+  );
+
+  let users = match sqlx::query_scalar::<_, String>("SELECT username FROM user")
+    .fetch_all(&state.db_pool)
+    .await
+  {
+    Ok(rows) => rows,
+    Err(_) => vec![],
+  };
+
+  for username in users {
+    xml.push_str(&format!("  <url><loc>https://is-by.pro/v1/profile/{}</loc></url>\n", escape_html(&username)));
+  }
+
+  xml.push_str("</urlset>");
+
+  HttpResponse::Ok()
+    .content_type("application/xml")
+    .body(xml)
+}
