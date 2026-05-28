@@ -474,7 +474,7 @@ pub async fn inbox(
   }
 }
 
-#[get("/")]
+#[actix_web::route("/", method = "GET", method = "HEAD")]
 pub async fn hello(req: HttpRequest) -> impl Responder {
   if is_mobile_device(&req) {
      return HttpResponse::SeeOther().insert_header(("Location", "/mobile.html")).finish();
@@ -496,7 +496,7 @@ pub async fn hello(req: HttpRequest) -> impl Responder {
   HttpResponse::Ok().body(html)
 }
 
-#[get("/mobile.html")]
+#[actix_web::route("/mobile.html", method = "GET", method = "HEAD")]
 pub async fn mobile_shell_html() -> impl Responder {
   HttpResponse::Ok()
     .insert_header(("Cache-Control", "no-cache, no-store, must-revalidate"))
