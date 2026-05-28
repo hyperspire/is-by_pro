@@ -1112,6 +1112,7 @@ function attachPostsInfiniteScrollEventListener() {
         attachSelectPostEventListener();
         attachUsernameHoverCardEventListener();
         attachCopyLinkEventListener();
+        attachPinPostEventListener();
       }
       if (!data.has_more) {
         observer.disconnect();

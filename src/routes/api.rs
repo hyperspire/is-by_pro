@@ -1275,7 +1275,7 @@ pub async fn get_posts_page(
             <input type="hidden" name="ib_user" value="{ib_user}">
             <input type="hidden" name="pid" value="{ib_post_id}">
           </form>
-          <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a><a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>"#,
+          <a href="javascript:void(0);" class="edit-post">:[[ :edit: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="javascript:void(0);" class="delete-post">:[[ :delete: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="javascript:void(0);" class="pin-post-link">:[[ :pin-post: ]]:</a>&nbsp;&nbsp;&nbsp;&nbsp;"#,
         ib_uid = ib_uid,
         ib_user = escape_html(ib_user),
         ib_post_id = escape_html(&row.postid),
