@@ -553,7 +553,7 @@ pub async fn moderation_portal_html(
     .body(html)
 }
 
-#[get("/sitemap.xml")]
+#[actix_web::route("/sitemap.xml", method = "GET", method = "HEAD")]
 pub async fn sitemap_xml(state: web::Data<AppState>) -> impl Responder {
   let mut xml = String::from(
     r#"<?xml version="1.0" encoding="UTF-8"?>
