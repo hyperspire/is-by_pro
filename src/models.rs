@@ -30,6 +30,7 @@ pub struct PostRow {
   pub timestamp: String,
   pub acknowledged_count: i64,
   pub user_total_acks: i64,
+  #[sqlx(default)]
   pub pinned_postid: Option<String>,
 }
 
