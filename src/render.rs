@@ -6071,7 +6071,7 @@ pub fn render_project_profile_link(username: &str, user_total_acks: i64) -> Stri
 
 pub fn render_ack_controls(page_ib_uid: i64, page_ib_user: &str, post_id: &str) -> String {
   if page_ib_uid <= 0 {
-    return String::from(r#"<span class="ack-post-disabled">:[[ACK]]:</span>"#);
+    return String::from(r#"<span class="ack-post-disabled">:[[ :👍: ACK: ]]:</span>"#);
   }
 
   format!(
@@ -6080,7 +6080,7 @@ pub fn render_ack_controls(page_ib_uid: i64, page_ib_user: &str, post_id: &str) 
       <input type="hidden" name="ib_user" value="{ib_user}">
       <input type="hidden" name="pid" value="{post_id}">
     </form>
-    <a href="javascript:void(0);" class="ack-post">:[[ACK]]:</a>"#,
+    <a href="javascript:void(0);" class="ack-post">:[[ :👍: ACK: ]]:</a>"#,
     ib_uid = page_ib_uid,
     ib_user = escape_html(page_ib_user),
     post_id = escape_html(post_id)
@@ -6088,7 +6088,7 @@ pub fn render_ack_controls(page_ib_uid: i64, page_ib_user: &str, post_id: &str) 
 }
 
 pub fn render_ack_disabled() -> String {
-  String::from(r#"<span class="ack-post-disabled">:[[ACK]]:</span>"#)
+  String::from(r#"<span class="ack-post-disabled">:[[ :👍: ACK: ]]:</span>"#)
 }
 
 pub fn render_inbox_contacts_html(inbox_users: &[String]) -> String {
