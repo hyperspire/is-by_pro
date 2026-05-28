@@ -1117,8 +1117,11 @@ function attachPostsInfiniteScrollEventListener() {
         observer.disconnect();
         sentinel.remove();
       } else {
-        observer.unobserve(sentinel);
-        observer.observe(sentinel);
+        const newSentinel = document.createElement('div');
+        newSentinel.id = sentinel.id;
+        sentinel.replaceWith(newSentinel);
+        observer.disconnect();
+        attachPostsInfiniteScrollEventListener();
       }
     } catch (e) {
       console.error('posts-scroll-error:', e);
@@ -1175,8 +1178,11 @@ function attachFollowersInfiniteScrollEventListener() {
         observer.disconnect();
         sentinel.remove();
       } else {
-        observer.unobserve(sentinel);
-        observer.observe(sentinel);
+        const newSentinel = document.createElement('div');
+        newSentinel.id = sentinel.id;
+        sentinel.replaceWith(newSentinel);
+        observer.disconnect();
+        attachFollowersInfiniteScrollEventListener();
       }
     } catch (e) {
       console.error('followers-scroll-error:', e);
