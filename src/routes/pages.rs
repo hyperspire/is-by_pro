@@ -554,17 +554,60 @@ pub async fn moderation_portal_html(
 }
 
 #[actix_web::route("/sitemap.xml", method = "GET", method = "HEAD")]
-pub async fn sitemap_xml(state: web::Data<AppState>) -> impl Responder {
+pub async fn sitemap_index_xml(state: web::Data<AppState>) -> impl Responder {
   let mut xml = String::from(
     r#"<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap><loc>https://is-by.pro/sitemap-core.xml</loc></sitemap>
+"#
+  );
+
+  let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user")
+    .fetch_one(&state.db_pool)
+    .await
+    .unwrap_or(0);
+
+  let pages = (count + 49999) / 50000;
+  let pages = if pages == 0 { 1 } else { pages };
+
+  for page in 0..pages {
+    xml.push_str(&format!("  <sitemap><loc>https://is-by.pro/sitemap-users-{}.xml</loc></sitemap>\n", page));
+  }
+
+  xml.push_str("</sitemapindex>");
+
+  HttpResponse::Ok()
+    .content_type("application/xml")
+    .body(xml)
+}
+
+#[actix_web::route("/sitemap-core.xml", method = "GET", method = "HEAD")]
+pub async fn sitemap_core_xml() -> impl Responder {
+  let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://is-by.pro/</loc></url>
   <url><loc>https://is-by.pro/v1/warroom</loc></url>
   <url><loc>https://is-by.pro/v1/projects</loc></url>
+</urlset>"#;
+
+  HttpResponse::Ok()
+    .content_type("application/xml")
+    .body(xml)
+}
+
+#[actix_web::route("/sitemap-users-{page}.xml", method = "GET", method = "HEAD")]
+pub async fn sitemap_users_xml(state: web::Data<AppState>, path: web::Path<u32>) -> impl Responder {
+  let page = path.into_inner();
+  let offset = page * 50000;
+
+  let mut xml = String::from(
+    r#"<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 "#
   );
 
-  let users = match sqlx::query_scalar::<_, String>("SELECT username FROM user")
+  let users = match sqlx::query_scalar::<_, String>("SELECT username FROM user ORDER BY ib_uid LIMIT 50000 OFFSET ?")
+    .bind(offset)
     .fetch_all(&state.db_pool)
     .await
   {
