@@ -1,3 +1,0 @@
-User-agent: *
-Allow: /
-Sitemap: https://is-by.pro/sitemap_index.xml
