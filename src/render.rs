@@ -4116,12 +4116,12 @@ pub async fn render_war_room_mobile_html(
   let war_room_chunk = render_war_room_posts_chunk(state, ib_uid, ib_user, session_uid, 0, 20).await?;
 
   let war_room_content = if war_room_chunk.total_followers == 0 {
-    "<div class=\"notice\"><p><em>:[[ :war-room: for-the: [[ followers: is-by: none: ]]: ]]:</em></p></div>".to_string()
+    r#"<div class="notice"><p><em>:[[ :war-room: for-the: [[ followers: is-by: none: ]]: ]]:</em></p></div>"#.to_string()
   } else if war_room_chunk.posts_html.trim().is_empty() && !war_room_chunk.has_more {
-    "<div class=\"notice\"><p><em>:[[ :for-the: [[ :war-room: follower-posts: is-by: none: ]]: ]]:</em></p></div>".to_string()
+    r#"<div class="notice"><p><em>:[[ :for-the: [[ :war-room: follower-posts: is-by: none: ]]: ]]:</em></p></div>"#.to_string()
   } else {
     format!(
-      r#"<div class=\"notice\"><p><em>:[[ :for-the: [[ :war-room: followers-targeted: is-by: {selected_count}: ]]: ]]:</em></p></div>{rendered_posts}"#,
+      r#"<div class="notice"><p><em>:[[ :for-the: [[ :war-room: followers-targeted: is-by: {selected_count}: ]]: ]]:</em></p></div>{rendered_posts}"#,
       selected_count = war_room_chunk.total_followers,
       rendered_posts = war_room_chunk.posts_html
     )
@@ -4132,6 +4132,15 @@ pub async fn render_war_room_mobile_html(
   } else {
     ""
   };
+
+  let war_room_content = format!(
+    r#"<div id="selected-user-posts-section" class="post-section" data-feed-type="warroom" data-ib-uid="{ib_uid}" data-ib-user="{ib_user}" data-war-room-offset="{war_room_offset}">{war_room_content}{sentinel_html}</div>"#,
+    ib_uid = ib_uid,
+    ib_user = escape_html(ib_user),
+    war_room_offset = war_room_chunk.next_offset,
+    war_room_content = war_room_content,
+    sentinel_html = sentinel_html,
+  );
 
   let session_username = if let Some(uid) = session_uid {
     match sqlx::query_as::<_, SessionUserRow>(
