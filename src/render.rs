@@ -4122,7 +4122,7 @@ pub async fn render_war_room_mobile_html(
   } else {
     format!(
       r#"<div class="notice"><p><em>:[[ :for-the: [[ :war-room: followers-targeted: is-by: {selected_count}: ]]: ]]:</em></p></div>{rendered_posts}"#,
-      selected_count = war_room_chunk.total_followers,
+      selected_count = war_room_chunk.total_followers - 1,
       rendered_posts = war_room_chunk.posts_html
     )
   };
