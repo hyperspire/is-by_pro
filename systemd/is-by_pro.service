@@ -8,6 +8,7 @@ Type=simple
 User=opc
 WorkingDirectory=/home/opc/is-by_pro
 Environment="RUST_LOG=info"
+LimitNOFILE=65535
 ExecStart=/home/opc/is-by_pro/target/release/is-by_pro
 Restart=on-failure
 RestartSec=5
