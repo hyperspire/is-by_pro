@@ -92,7 +92,7 @@ fn load_rustls_config() -> ServerConfig {
   let key_file  = &mut BufReader::new(File::open(IB_CA_KEY).unwrap());
 
   let cert_chain: Vec<CertificateDer> = certs(cert_file).map(|c| c.unwrap()).collect();
-  let key = private_key(key_file).unwrap().unwrap();
+  let key = private_key(key_file).expect("Failed to read or parse the key file").expect("No valid private key found in the key file");
 
   ServerConfig::builder()
     .with_no_client_auth()
