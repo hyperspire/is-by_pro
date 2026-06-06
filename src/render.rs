@@ -5846,7 +5846,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
         } else {
             new_events.push(Event::End(TagEnd::Link));
             if let Some(url) = current_generic_url.take() {
-                if url.starts_with("http") && !url.contains("imgur.com") && !url.contains("youtube.com") && !url.contains("youtu.be") && !url.contains("github.com") {
+                if url.starts_with("http") && !url.contains("imgur.com") && !url.contains("github.com") {
                     let preview_html = format!(r#"<span class="generic-link-preview" data-url="{}"></span>"#, escape_html(&url));
                     new_events.push(Event::Html(preview_html.into()));
                 }
@@ -5946,7 +5946,7 @@ pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> 
                           new_events.push(Event::Html(is_by_html.into()));
                       } else {
                           let mut link_html = format!(r#"<a class="post-link" href="{url}" target="_blank" rel="noopener">{url}</a>"#, url=escape_html(url));
-                          if url.starts_with("http") && !url.contains("imgur.com") && !url.contains("youtube.com") && !url.contains("youtu.be") && !url.contains("github.com") {
+                          if url.starts_with("http") && !url.contains("imgur.com") && !url.contains("github.com") {
                               link_html.push_str(&format!(r#"<span class="generic-link-preview" data-url="{}"></span>"#, escape_html(url)));
                           }
                           new_events.push(Event::Html(link_html.into()));

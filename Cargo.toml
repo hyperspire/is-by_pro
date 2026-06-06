@@ -10,7 +10,7 @@ actix-cors = "0.7"
 actix-multipart = "0.7"
 # 'runtime-tokio' matches Actix's internal runtime
 sqlx = { version = "0.8", features = [ "runtime-tokio", "mysql", "macros" ] }
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["full", "macros", "rt-multi-thread"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 rustls = { version = "0.23", features = ["aws_lc_rs"] }
 rustls-pemfile = "2"
