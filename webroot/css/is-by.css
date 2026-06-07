@@ -1473,3 +1473,66 @@ input[type="text"] {
     background-color: #1C1C1C;
     color: #FFFFFF;
 }
+
+.poll-container {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.poll-option {
+    position: relative;
+    border: 1px solid #3E3E3E;
+    border-radius: 4px;
+    background-color: #1C1C1C;
+    cursor: pointer;
+    overflow: hidden;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+}
+
+.poll-option:hover {
+    border-color: #AFAFAF;
+}
+
+.poll-option-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background-color: #3E3E3E;
+    z-index: 1;
+    transition: width 0.3s ease;
+}
+
+.poll-option-selected .poll-option-fill {
+    background-color: #58a6ff;
+}
+
+.poll-option-content {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    padding: 8px 12px;
+    box-sizing: border-box;
+    color: #FFFFFF;
+}
+
+.poll-option-text {
+    font-weight: bold;
+}
+
+.poll-option-percent {
+    font-size: 14px;
+    color: #AFAFAF;
+}
+
+.poll-total-votes {
+    font-size: 13px;
+    color: #AFAFAF;
+    margin-top: 4px;
+}
