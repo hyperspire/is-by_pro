@@ -32,6 +32,9 @@
                 {{ navigation_links | safe }}
             </div>
             <div id="post-form-section">
+                <div id="poll-form-section">
+                    <p><a href="javascript:void(0);" onclick="togglePollForm()">:[[ :create-poll: ]]:</a></p>
+                </div>
                 <form id="post-form" action="https://is-by.pro/v1/post" method="POST">
                     <div id="post-message"></div>
                     <div id="post-character-count"></div>
@@ -40,6 +43,20 @@
                     <textarea class="post" name="post" autocomplete="off" maxlength="4096" rows="3" required></textarea>
                     <input id="post-cancel" class="post-cancel" type="button" value="Cancel">
                     <input class="post-submit" type="submit" value="Post">
+                </form>
+                <form id="poll-form" action="https://is-by.pro/v1/poll" method="POST" style="display: none;">
+                    <input type="hidden" name="ib_uid" value="{{ ib_uid }}">
+                    <input type="hidden" name="ib_user" value="{{ ib_user }}">
+                    <input type="text" name="question" placeholder="Question" maxlength="255" required>
+                    <input type="text" name="option1" placeholder="Option 1" maxlength="255" required>
+                    <input type="text" name="option2" placeholder="Option 2" maxlength="255" required>
+                    <input type="text" name="option3" placeholder="Option 3" maxlength="255">
+                    <input type="text" name="option4" placeholder="Option 4" maxlength="255">
+                    <div
+                        style="width: 100%; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 9px;">
+                        <input id="poll-cancel" class="post-cancel" type="button" value="Cancel">
+                        <input class="post-submit" type="submit" value="Submit">
+                    </div>
                 </form>
             </div>
             {{ dm_inbox_html | safe }}
