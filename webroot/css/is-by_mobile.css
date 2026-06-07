@@ -771,10 +771,15 @@ body {
 .is-by,
 .is-with,
 .edit-pro,
-.delete-post-button,
-#post-form-section {
+.delete-post-button {
   width: 100% !important;
   max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+#post-form-section {
+  width: 100% !important;
+  max-width: 555px !important;
   box-sizing: border-box !important;
 }
 
