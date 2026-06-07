@@ -270,6 +270,18 @@ pub async fn ensure_database_schema(pool: &MySqlPool) -> Result<(), sqlx::Error>
   .execute(pool)
   .await?;
 
+  sqlx::query(
+    "CREATE TABLE IF NOT EXISTS poll_post (postid VARCHAR(64) PRIMARY KEY, option_1 VARCHAR(255) NOT NULL, option_2 VARCHAR(255) NOT NULL, option_3 VARCHAR(255), option_4 VARCHAR(255))",
+  )
+  .execute(pool)
+  .await?;
+
+  sqlx::query(
+    "CREATE TABLE IF NOT EXISTS poll_vote (postid VARCHAR(64) NOT NULL, ib_uid BIGINT NOT NULL, option_index TINYINT NOT NULL, PRIMARY KEY (postid, ib_uid))",
+  )
+  .execute(pool)
+  .await?;
+
   Ok(())
 }
 pub async fn replace_post_tags(pool: &MySqlPool, postid: &str, post_text: &str) -> Result<(), sqlx::Error> {
@@ -520,4 +532,123 @@ pub async fn load_inbox_contacts(
   inbox_users.retain(|u| !blocked_usernames.iter().any(|b| b.eq_ignore_ascii_case(u)));
 
   Ok(inbox_users)
+}
+
+pub async fn fetch_polls_for_posts(
+  state: &AppState,
+  post_ids: &[String],
+  session_uid: Option<i64>,
+) -> HashMap<String, PollData> {
+  if post_ids.is_empty() {
+    return HashMap::new();
+  }
+
+  let placeholders = vec!["?"; post_ids.len()].join(", ");
+  let sql = format!(
+    "SELECT postid, option_1, option_2, option_3, option_4 FROM poll_post WHERE postid IN ({})",
+    placeholders
+  );
+
+  let mut query = sqlx::query_as::<_, PollPostRow>(&sql);
+  for post_id in post_ids {
+    query = query.bind(post_id);
+  }
+
+  let Ok(poll_posts) = query.fetch_all(&state.db_pool).await else {
+    return HashMap::new();
+  };
+
+  if poll_posts.is_empty() {
+    return HashMap::new();
+  }
+
+  let sql_votes = format!(
+    "SELECT postid, option_index, COUNT(*) as vote_count FROM poll_vote WHERE postid IN ({}) GROUP BY postid, option_index",
+    placeholders
+  );
+
+  let mut query_votes = sqlx::query_as::<_, PollVoteRow>(&sql_votes);
+  for post_id in post_ids {
+    query_votes = query_votes.bind(post_id);
+  }
+
+  let mut vote_counts: HashMap<(String, i8), i64> = HashMap::new();
+  if let Ok(votes) = query_votes.fetch_all(&state.db_pool).await {
+    for vote in votes {
+      vote_counts.insert((vote.postid, vote.option_index), vote.vote_count);
+    }
+  }
+
+  let mut user_votes: HashMap<String, i8> = HashMap::new();
+  if let Some(uid) = session_uid {
+    let sql_user_votes = format!(
+      "SELECT postid, option_index FROM poll_vote WHERE ib_uid = ? AND postid IN ({})",
+      placeholders
+    );
+
+    let mut query_user_votes = sqlx::query_as::<_, UserVoteRow>(&sql_user_votes).bind(uid);
+    for post_id in post_ids {
+      query_user_votes = query_user_votes.bind(post_id);
+    }
+
+    if let Ok(uvotes) = query_user_votes.fetch_all(&state.db_pool).await {
+      for uvote in uvotes {
+        user_votes.insert(uvote.postid, uvote.option_index);
+      }
+    }
+  }
+
+  let mut result_map = HashMap::new();
+  for poll_post in poll_posts {
+    let mut options = Vec::new();
+    let mut total_votes = 0;
+
+    let op1_votes = *vote_counts.get(&(poll_post.postid.clone(), 1)).unwrap_or(&0);
+    total_votes += op1_votes;
+    options.push((poll_post.option_1, op1_votes));
+
+    let op2_votes = *vote_counts.get(&(poll_post.postid.clone(), 2)).unwrap_or(&0);
+    total_votes += op2_votes;
+    options.push((poll_post.option_2, op2_votes));
+
+    if let Some(op3) = poll_post.option_3 {
+      let op3_votes = *vote_counts.get(&(poll_post.postid.clone(), 3)).unwrap_or(&0);
+      total_votes += op3_votes;
+      options.push((op3, op3_votes));
+    }
+
+    if let Some(op4) = poll_post.option_4 {
+      let op4_votes = *vote_counts.get(&(poll_post.postid.clone(), 4)).unwrap_or(&0);
+      total_votes += op4_votes;
+      options.push((op4, op4_votes));
+    }
+
+    let mut option_stats = Vec::new();
+    for (text, count) in options {
+      let percentage = if total_votes > 0 {
+        (count as f64 / total_votes as f64) * 100.0
+      } else {
+        0.0
+      };
+      option_stats.push(PollOptionStats {
+        text,
+        vote_count: count,
+        percentage,
+      });
+    }
+
+    let user_vote = user_votes.get(&poll_post.postid).copied();
+
+    result_map.insert(
+      poll_post.postid.clone(),
+      PollData {
+        postid: poll_post.postid,
+        options: option_stats,
+        total_votes,
+        user_vote_index: user_vote.map(|v| v as u8),
+      },
+    );
+  }
+
+  result_map
 }

@@ -518,6 +518,7 @@ pub async fn render_profile_html(
       .map(|row| row.postid.clone())
       .collect();
     let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &displayed_post_ids).await;
+    let poll_data = crate::db::fetch_polls_for_posts(state, &displayed_post_ids, session_uid).await;
 
     for row in display_rows.iter() {
       let row_owner_uid = row.ib_uid.parse::<i64>().ok();
@@ -572,7 +573,7 @@ pub async fn render_profile_html(
           render_ack_controls(ib_uid, ib_user, &row.postid)
         },
         acknowledged_count = row.acknowledged_count,
-        post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user),
+        post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user) + &render_poll_html(poll_data.get(&row.postid)),
         ib_uid = ib_uid,
         ib_user = escape_html(ib_user),
       );
@@ -844,6 +845,7 @@ pub async fn render_profile_mobile_html(
     .map(|row| row.postid.clone())
     .collect();
   let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &displayed_post_ids).await;
+  let poll_data = crate::db::fetch_polls_for_posts(state, &displayed_post_ids, session_uid).await;
 
   for row in display_rows.iter() {
     let row_owner_uid = row.ib_uid.parse::<i64>().ok();
@@ -898,7 +900,7 @@ pub async fn render_profile_mobile_html(
         render_ack_controls(ib_uid, ib_user, &row.postid)
       },
       acknowledged_count = row.acknowledged_count,
-      post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user),
+      post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user) + &render_poll_html(poll_data.get(&row.postid)),
       ib_uid = ib_uid,
       ib_user = escape_html(ib_user),
     );
@@ -1715,6 +1717,7 @@ pub async fn render_search_posts_mobile_html(
       }
 
       let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &row_post_ids).await;
+      let poll_data = crate::db::fetch_polls_for_posts(state, &row_post_ids, session_uid).await;
 
       for row in display_rows {
         post_html += &format!(
@@ -1735,7 +1738,7 @@ pub async fn render_search_posts_mobile_html(
           post_id = escape_html(&row.postid),
           post_timestamp = escape_html(&row.timestamp),
           post_meta = render_post_meta(&row.ib_uid, &row.username, &row.timestamp, row.user_total_acks),
-          post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user),
+          post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user) + &render_poll_html(poll_data.get(&row.postid)),
           ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&row.postid) {
             render_ack_disabled()
           } else {
@@ -1912,6 +1915,7 @@ pub async fn render_search_posts_html(
       }
 
       let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &row_post_ids).await;
+      let poll_data = crate::db::fetch_polls_for_posts(state, &row_post_ids, session_uid).await;
 
       for row in display_rows {
         post_html += &format!(
@@ -1932,7 +1936,7 @@ pub async fn render_search_posts_html(
           post_id = escape_html(&row.postid),
           post_timestamp = escape_html(&row.timestamp),
           post_meta = render_post_meta(&row.ib_uid, &row.username, &row.timestamp, row.user_total_acks),
-          post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user),
+          post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user) + &render_poll_html(poll_data.get(&row.postid)),
           ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&row.postid) {
             render_ack_disabled()
           } else {
@@ -3720,6 +3724,7 @@ pub async fn render_war_room_posts_chunk(
     .map(|(_, post_row)| post_row.postid.clone())
     .collect();
   let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &selected_post_ids).await;
+  let poll_data = crate::db::fetch_polls_for_posts(state, &selected_post_ids, session_uid).await;
 
   let mut rendered_posts = String::new();
   for (selected_follower, post_row) in selected_posts {
@@ -3743,7 +3748,7 @@ pub async fn render_war_room_posts_chunk(
       post_id = escape_html(&post_row.postid),
       post_timestamp = escape_html(&post_row.timestamp),
       post_meta = render_post_meta(&post_row.ib_uid, &post_row.username, &post_row.timestamp, post_row.user_total_acks),
-      post_body = render_post_with_hashtags(&post_row.post, ib_uid, ib_user),
+      post_body = render_post_with_hashtags(&post_row.post, ib_uid, ib_user) + &render_poll_html(poll_data.get(&post_row.postid)),
       ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&post_row.postid) {
         render_ack_disabled()
       } else {
@@ -3860,6 +3865,7 @@ pub async fn render_trending_posts_chunk(
   }
 
   let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &row_post_ids).await;
+  let poll_data = crate::db::fetch_polls_for_posts(state, &row_post_ids, session_uid).await;
 
   post_html += r#"<div id="trending-posts-section" class="post-section" style="margin-bottom: 24px;">"#;
   post_html += r#"<div class="notice"><p><em>:[[ :trending-posts: 7d: ]]:</em></p></div>"#;
@@ -3883,7 +3889,7 @@ pub async fn render_trending_posts_chunk(
       post_id = escape_html(&row.postid),
       post_timestamp = escape_html(&row.timestamp),
       post_meta = render_post_meta(&row.ib_uid, &row.username, &row.timestamp, row.user_total_acks),
-      post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user),
+      post_body = render_post_with_hashtags(&row.post, ib_uid, ib_user) + &render_poll_html(poll_data.get(&row.postid)),
       ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&row.postid) {
         render_ack_disabled()
       } else {
@@ -4826,6 +4832,7 @@ pub async fn render_single_post_html(
   let mut visible_post_ids = vec![post.postid.clone()];
   visible_post_ids.extend(replies.iter().map(|reply| reply.postid.clone()));
   let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &visible_post_ids).await;
+  let poll_data = crate::db::fetch_polls_for_posts(state, &visible_post_ids, session_uid).await;
 
   let mut replies_html = String::new();
 
@@ -4874,7 +4881,7 @@ pub async fn render_single_post_html(
         reply_post_id = escape_html(&reply.postid),
         reply_post_timestamp = escape_html(&reply.timestamp),
         reply_post_meta = render_post_meta(&reply.ib_uid, &reply.username, &reply.timestamp, reply.user_total_acks),
-        reply_post_body = render_post_with_hashtags(&reply.post, ib_uid, ib_user),
+        reply_post_body = render_post_with_hashtags(&reply.post, ib_uid, ib_user) + &render_poll_html(poll_data.get(&reply.postid)),
         reply_ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&reply.postid) {
           render_ack_disabled()
         } else {
@@ -4948,7 +4955,7 @@ pub async fn render_single_post_html(
     } else {
       render_ack_controls(ib_uid, ib_user, &post.postid)
     },
-    post_body = render_post_with_hashtags(&post.post, ib_uid, ib_user),
+    post_body = render_post_with_hashtags(&post.post, ib_uid, ib_user) + &render_poll_html(poll_data.get(&post.postid)),
     replies_html = replies_html
   );
 
@@ -5104,6 +5111,7 @@ pub async fn render_single_post_mobile_html(
   let mut visible_post_ids = vec![post.postid.clone()];
   visible_post_ids.extend(replies.iter().map(|reply| reply.postid.clone()));
   let acknowledged_post_ids = acknowledged_post_ids_for_user(&state.db_pool, session_uid, &visible_post_ids).await;
+  let poll_data = crate::db::fetch_polls_for_posts(state, &visible_post_ids, session_uid).await;
 
   let mut replies_html = String::new();
 
@@ -5152,7 +5160,7 @@ pub async fn render_single_post_mobile_html(
         reply_post_id = escape_html(&reply.postid),
         reply_post_timestamp = escape_html(&reply.timestamp),
         reply_post_meta = render_post_meta(&reply.ib_uid, &reply.username, &reply.timestamp, reply.user_total_acks),
-        reply_post_body = render_post_with_hashtags(&reply.post, ib_uid, ib_user),
+        reply_post_body = render_post_with_hashtags(&reply.post, ib_uid, ib_user) + &render_poll_html(poll_data.get(&reply.postid)),
         reply_ack_controls = if session_uid.is_none() || acknowledged_post_ids.contains(&reply.postid) {
           render_ack_disabled()
         } else {
@@ -5218,7 +5226,7 @@ pub async fn render_single_post_mobile_html(
     } else {
       render_ack_controls(ib_uid, ib_user, &post.postid)
     },
-    post_body = render_post_with_hashtags(&post.post, ib_uid, ib_user),
+    post_body = render_post_with_hashtags(&post.post, ib_uid, ib_user) + &render_poll_html(poll_data.get(&post.postid)),
     replies_html = replies_html
   );
 
@@ -5349,6 +5357,8 @@ pub async fn render_embed_post_response(
         _ => return HttpResponse::NotFound().body("Post not found"),
     };
 
+  let poll_data = crate::db::fetch_polls_for_posts(state, &[post.postid.clone()], None).await;
+
   let single_post_html = format!(
     r#"<div class="glass-card" style="margin: 0; padding: 10px;">
         <div class="post" data-postid="{ib_post_id}" data-timestamp="{ib_post_timestamp}" style="border: none;">
@@ -5359,7 +5369,7 @@ pub async fn render_embed_post_response(
     ib_post_id = escape_html(&post.postid),
     ib_post_timestamp = escape_html(&post.timestamp),
     post_meta = render_post_meta(&post.ib_uid, &post.username, &post.timestamp, post.user_total_acks),
-    post_body = render_post_with_hashtags(&post.post, ib_uid, ib_user),
+    post_body = render_post_with_hashtags(&post.post, ib_uid, ib_user) + &render_poll_html(poll_data.get(&post.postid)),
   );
 
   let mut context = Context::new();
@@ -5725,6 +5735,46 @@ pub fn extract_meta_tags_from_post(raw_text: &str) -> String {
   String::new()
 }
 
+pub fn render_poll_html(poll_data: Option<&crate::models::PollData>) -> String {
+  let Some(poll) = poll_data else {
+    return String::new();
+  };
+
+  let mut options_html = String::new();
+  for (i, option) in poll.options.iter().enumerate() {
+    let index = i + 1;
+    let selected_class = if poll.user_vote_index == Some(index as u8) { " poll-option-selected" } else { "" };
+    
+    options_html += &format!(
+      r#"
+      <div class="poll-option{selected_class}" onclick="submitPollVote('{postid}', {index})">
+        <div class="poll-option-fill" style="width: {percentage}%"></div>
+        <div class="poll-option-content">
+          <span class="poll-option-text">{text}</span>
+          <span class="poll-option-percent">{percentage:.0}%</span>
+        </div>
+      </div>
+      "#,
+      selected_class = selected_class,
+      postid = escape_html(&poll.postid),
+      index = index,
+      percentage = option.percentage,
+      text = escape_html(&option.text),
+    );
+  }
+
+  format!(
+    r#"
+    <div class="poll-container" id="poll-container-{postid}">
+      {options}
+      <div class="poll-total-votes">{total_votes} votes</div>
+    </div>
+    "#,
+    postid = escape_html(&poll.postid),
+    options = options_html,
+    total_votes = poll.total_votes,
+  )
+}
 pub fn render_post_with_hashtags(raw_text: &str, ib_uid: i64, ib_user: &str) -> String {
   lazy_static::lazy_static! {
     static ref SYNTAX_SET: SyntaxSet = SyntaxSet::load_defaults_newlines();

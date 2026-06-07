@@ -237,6 +237,8 @@ async fn main() -> std::io::Result<()> {
       .service(hello)
       .service(events_endpoint)
       .service(create_post)
+      .service(create_poll)
+      .service(vote_poll)
       .service(create_reply)
       .service(show_post)
       .service(show_post_get)

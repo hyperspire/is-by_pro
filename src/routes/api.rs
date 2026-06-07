@@ -157,6 +157,255 @@ pub async fn create_post(
   }
 }
 
+#[post("/v1/poll")]
+pub async fn create_poll(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  payload: web::Json<CreatePollRequest>,
+) -> impl Responder {
+  const MAX_POST_LEN: usize = 4096;
+  const MAX_OPTION_LEN: usize = 255;
+
+  let Some((session_uid, session_username)) = get_session_identity(&req, &state).await else {
+    return HttpResponse::Unauthorized().json(PostResponse {
+      success: false,
+      message: "Login required".to_string(),
+      postid: None,
+    });
+  };
+
+  if payload.post.trim().is_empty() {
+    return HttpResponse::BadRequest().json(PostResponse {
+      success: false,
+      message: "Question cannot be empty".to_string(),
+      postid: None,
+    });
+  }
+
+  if payload.option_1.trim().is_empty() || payload.option_2.trim().is_empty() {
+    return HttpResponse::BadRequest().json(PostResponse {
+      success: false,
+      message: "At least two options are required".to_string(),
+      postid: None,
+    });
+  }
+
+  if payload.post.chars().count() > MAX_POST_LEN {
+    return HttpResponse::BadRequest().json(PostResponse {
+      success: false,
+      message: format!("Question cannot exceed {} characters", MAX_POST_LEN),
+      postid: None,
+    });
+  }
+
+  if payload.option_1.chars().count() > MAX_OPTION_LEN ||
+     payload.option_2.chars().count() > MAX_OPTION_LEN ||
+     payload.option_3.as_ref().map_or(0, |s| s.chars().count()) > MAX_OPTION_LEN ||
+     payload.option_4.as_ref().map_or(0, |s| s.chars().count()) > MAX_OPTION_LEN {
+    return HttpResponse::BadRequest().json(PostResponse {
+      success: false,
+      message: format!("Options cannot exceed {} characters", MAX_OPTION_LEN),
+      postid: None,
+    });
+  }
+
+  let postid = Uuid::new_v4().to_string();
+
+  let mut tx = match state.db_pool.begin().await {
+    Ok(tx) => tx,
+    Err(err) => return HttpResponse::InternalServerError().json(PostResponse {
+      success: false,
+      message: format!("Database transaction failed: {}", err),
+      postid: None,
+    }),
+  };
+
+  let post_result = sqlx::query(
+    "INSERT INTO post (ib_uid, postid, post, `timestamp`) VALUES (?, ?, ?, NOW())",
+  )
+  .bind(session_uid)
+  .bind(&postid)
+  .bind(&payload.post)
+  .execute(&mut *tx)
+  .await;
+
+  if let Err(err) = post_result {
+    let _ = tx.rollback().await;
+    return HttpResponse::InternalServerError().json(PostResponse {
+      success: false,
+      message: format!("Failed to create post: {}", err),
+      postid: None,
+    });
+  }
+
+  let poll_result = sqlx::query(
+    "INSERT INTO poll_post (postid, option_1, option_2, option_3, option_4) VALUES (?, ?, ?, ?, ?)",
+  )
+  .bind(&postid)
+  .bind(&payload.option_1)
+  .bind(&payload.option_2)
+  .bind(&payload.option_3)
+  .bind(&payload.option_4)
+  .execute(&mut *tx)
+  .await;
+
+  if let Err(err) = poll_result {
+    let _ = tx.rollback().await;
+    return HttpResponse::InternalServerError().json(PostResponse {
+      success: false,
+      message: format!("Failed to create poll: {}", err),
+      postid: None,
+    });
+  }
+
+  if let Err(err) = tx.commit().await {
+    return HttpResponse::InternalServerError().json(PostResponse {
+      success: false,
+      message: format!("Transaction commit failed: {}", err),
+      postid: None,
+    });
+  }
+
+  if let Err(err) = replace_post_tags(&state.db_pool, &postid, &payload.post).await {
+    eprintln!("Post tag sync failed for {}: {}", postid, err);
+  }
+
+  let mentioned_users = extract_mentions(&payload.post);
+  if !mentioned_users.is_empty() {
+    for mentioned_user in mentioned_users {
+      let target = match lookup_user_by_username(&state, &mentioned_user).await {
+        Ok(Some(found)) => found,
+        Ok(None) => continue,
+        Err(err) => {
+          eprintln!("Mention lookup failed for @{}: {}", mentioned_user, err);
+          continue;
+        }
+      };
+
+      let target_uid = target.0;
+      if target_uid == session_uid {
+        continue;
+      }
+
+      let dm_message = format!(
+        "You were mentioned by @{} in a poll:\n\n{}\n\n|||LINK|||https://{}/v1/showpost?ib_uid={}&ib_user={}&pid={}|||View Poll|||",
+        session_username,
+        payload.post,
+        DOMAIN,
+        session_uid,
+        url_encode_component(&session_username),
+        postid
+      );
+
+      let stored_dm_message = match encode_dm_message_for_storage(&dm_message) {
+        Ok(value) => value,
+        Err(err) => {
+          eprintln!(
+            "Mention DM encryption failed from {} to {} for poll {}: {}",
+            session_uid,
+            target_uid,
+            postid,
+            err
+          );
+          continue;
+        }
+      };
+
+      if let Err(err) = sqlx::query(
+        "INSERT INTO dm (sender_uid, recipient_uid, message) VALUES (?, ?, ?)",
+      )
+      .bind(session_uid)
+      .bind(target_uid)
+      .bind(stored_dm_message)
+      .execute(&state.db_pool)
+      .await
+      {
+        eprintln!(
+          "Mention DM send failed from {} to {} for poll {}: {}",
+          session_uid,
+          target_uid,
+          postid,
+          err
+        );
+      }
+    }
+  }
+
+  HttpResponse::Ok()
+    .insert_header(("ib_user", session_username.clone()))
+    .json(PostResponse {
+      success: true,
+      message: "Poll created".to_string(),
+      postid: Some(postid),
+    })
+}
+
+#[post("/v1/poll/vote")]
+pub async fn vote_poll(
+  req: HttpRequest,
+  state: web::Data<AppState>,
+  payload: web::Json<VotePollRequest>,
+) -> impl Responder {
+  let Some((session_uid, _)) = get_session_identity(&req, &state).await else {
+    return HttpResponse::Unauthorized().json(json!({
+      "success": false,
+      "message": "Login required"
+    }));
+  };
+
+  if payload.option_index < 1 || payload.option_index > 4 {
+    return HttpResponse::BadRequest().json(json!({
+      "success": false,
+      "message": "Invalid option index"
+    }));
+  }
+
+  let row = match sqlx::query_as::<_, PollPostRow>(
+    "SELECT postid, option_1, option_2, option_3, option_4 FROM poll_post WHERE postid = ?"
+  )
+  .bind(&payload.postid)
+  .fetch_optional(&state.db_pool)
+  .await {
+    Ok(Some(r)) => r,
+    Ok(None) => return HttpResponse::NotFound().json(json!({ "success": false, "message": "Poll not found" })),
+    Err(e) => return HttpResponse::InternalServerError().json(json!({ "success": false, "message": format!("Database error: {}", e) })),
+  };
+
+  if payload.option_index == 3 && row.option_3.is_none() || payload.option_index == 3 && row.option_3.as_ref().map_or(true, |s| s.trim().is_empty()) {
+    return HttpResponse::BadRequest().json(json!({ "success": false, "message": "Option 3 does not exist" }));
+  }
+  if payload.option_index == 4 && row.option_4.is_none() || payload.option_index == 4 && row.option_4.as_ref().map_or(true, |s| s.trim().is_empty()) {
+    return HttpResponse::BadRequest().json(json!({ "success": false, "message": "Option 4 does not exist" }));
+  }
+
+  let vote_result = sqlx::query(
+    "INSERT INTO poll_vote (postid, ib_uid, option_index) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE option_index = ?"
+  )
+  .bind(&payload.postid)
+  .bind(session_uid)
+  .bind(payload.option_index)
+  .bind(payload.option_index)
+  .execute(&state.db_pool)
+  .await;
+
+  if let Err(e) = vote_result {
+    return HttpResponse::InternalServerError().json(json!({ "success": false, "message": format!("Failed to record vote: {}", e) }));
+  }
+
+  // Fetch updated polls to return the new data
+  let mut poll_data = fetch_polls_for_posts(&state, &[payload.postid.clone()], Some(session_uid)).await;
+  let Some(data) = poll_data.remove(&payload.postid) else {
+    return HttpResponse::InternalServerError().json(json!({ "success": false, "message": "Failed to fetch updated poll data" }));
+  };
+
+  HttpResponse::Ok().json(json!({
+    "success": true,
+    "message": "Vote recorded",
+    "poll": data
+  }))
+}
+
+
 #[post("/v1/reply")]
 pub async fn create_reply(
   req: HttpRequest,

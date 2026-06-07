@@ -140,9 +140,61 @@ pub struct GithubUser {
   pub id: u64,
 }
 
+#[derive(sqlx::FromRow)]
+pub struct PollPostRow {
+  pub postid: String,
+  pub option_1: String,
+  pub option_2: String,
+  pub option_3: Option<String>,
+  pub option_4: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+pub struct PollVoteRow {
+  pub postid: String,
+  pub option_index: i8,
+  pub vote_count: i64,
+}
+
+#[derive(sqlx::FromRow)]
+pub struct UserVoteRow {
+  pub postid: String,
+  pub option_index: i8,
+}
+
 #[derive(Deserialize)]
 pub struct NewPostRequest {
   pub post: String,
+}
+
+#[derive(Deserialize)]
+pub struct CreatePollRequest {
+  pub post: String,
+  pub option_1: String,
+  pub option_2: String,
+  pub option_3: Option<String>,
+  pub option_4: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct VotePollRequest {
+  pub postid: String,
+  pub option_index: u8,
+}
+
+#[derive(Serialize)]
+pub struct PollOptionStats {
+  pub text: String,
+  pub vote_count: i64,
+  pub percentage: f64,
+}
+
+#[derive(Serialize)]
+pub struct PollData {
+  pub postid: String,
+  pub options: Vec<PollOptionStats>,
+  pub total_votes: i64,
+  pub user_vote_index: Option<u8>,
 }
 
 #[derive(Deserialize)]

@@ -831,7 +831,85 @@ function attachNewPostEventListener() {
       .catch(error => generateIBFormMessageFailure('post-message', error))
   });
 
+  const ibPollForm = document.querySelector('#poll-form');
+  const pollCancelButton = ibPollForm ? ibPollForm.querySelector('.post-cancel') : null;
+
+  if (ibPollForm && pollCancelButton) {
+    pollCancelButton.addEventListener('click', (event) => {
+      postFormSection.style.display = 'none'; // hide the form section
+      document.getElementById('poll-form').style.display = 'none';
+      document.getElementById('post-form').style.display = 'block';
+      const toggleLink = document.querySelector('#poll-form-section a');
+      if (toggleLink) toggleLink.innerText = ':[[ :create-poll: ]]:';
+    });
+
+    ibPollForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+
+      let ibUsername = '';
+      const ibUID = Number(ibPollForm.querySelector('input[name="ib_uid"]').value);
+      const ibUser = ibPollForm.querySelector('input[name="ib_user"]').value;
+      const question = ibPollForm.querySelector('[name="question"]').value;
+      const option1 = ibPollForm.querySelector('[name="option1"]').value;
+      const option2 = ibPollForm.querySelector('[name="option2"]').value;
+      const option3 = ibPollForm.querySelector('[name="option3"]').value;
+      const option4 = ibPollForm.querySelector('[name="option4"]').value;
+
+      if (Number.isNaN(ibUID)) {
+        generateIBFormMessageFailure('post-message', 'Invalid user id');
+        return;
+      }
+
+      fetch(ibPollForm.action, {
+        method: ibPollForm.method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'ib-uid': ibUID
+        },
+        body: JSON.stringify({ 
+          'ib_uid': ibUID, 
+          'ib_user': ibUser, 
+          'post': question,
+          'option_1': option1,
+          'option_2': option2,
+          'option_3': option3,
+          'option_4': option4
+        }),
+      })
+        .then(async response => {
+          ibUsername = response.headers.get('ib_user');
+          return response.json();
+        })
+        .then(data => {
+          if (data.success === true) {
+            generateIBFormMessageSuccess('post-message', data.message);
+            generateIBPostFormSuccess(ibUsername, ibUID);
+          } else if (data.success === false) {
+            generateIBFormMessageFailure('post-message', data.message);
+          }
+        })
+        .catch(error => generateIBFormMessageFailure('post-message', error))
+    });
+  }
 }
+
+window.togglePollForm = function() {
+  const postForm = document.getElementById('post-form');
+  const pollForm = document.getElementById('poll-form');
+  const toggleLink = document.querySelector('#poll-form-section a');
+  if (postForm && pollForm) {
+    if (postForm.style.display !== 'none') {
+      postForm.style.display = 'none';
+      pollForm.style.display = 'block';
+      if (toggleLink) toggleLink.innerText = ':[[ :create-post: ]]:';
+    } else {
+      postForm.style.display = 'block';
+      pollForm.style.display = 'none';
+      if (toggleLink) toggleLink.innerText = ':[[ :create-poll: ]]:';
+    }
+  }
+};
 
 function attachAcknowledgePostEventListener() {
   const acknowledgeLinks = document.querySelectorAll('.ack-post');
@@ -1623,3 +1701,54 @@ async function acceptProjectInvite(projectId) {
     alert('An error occurred while accepting the invite: ' + error.message);
   }
 }
+
+window.submitPollVote = async function(postid, optionIndex) {
+  const ibUID = getCurrentIBUID();
+  if (Number.isNaN(ibUID)) {
+    alert("You must be logged in to vote.");
+    return;
+  }
+
+  try {
+    const response = await fetch('/v1/poll/vote', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'ib-uid': String(ibUID)
+      },
+      body: JSON.stringify({
+        postid: postid,
+        option_index: optionIndex
+      })
+    });
+
+    const data = await response.json();
+    if (data.success && data.poll) {
+      const container = document.getElementById(`poll-container-${postid}`);
+      if (container) {
+        let optionsHtml = '';
+        data.poll.options.forEach((option, idx) => {
+          const optIndex = idx + 1;
+          const selectedClass = data.poll.user_vote_index === optIndex ? ' poll-option-selected' : '';
+          optionsHtml += `
+            <div class="poll-option${selectedClass}" onclick="submitPollVote('${postid}', ${optIndex})">
+              <div class="poll-option-fill" style="width: ${option.percentage}%"></div>
+              <div class="poll-option-content">
+                <span class="poll-option-text">${escapeHTML(option.text)}</span>
+                <span class="poll-option-percent">${Math.round(option.percentage)}%</span>
+              </div>
+            </div>
+          `;
+        });
+        optionsHtml += `<div class="poll-total-votes">${data.poll.total_votes} votes</div>`;
+        container.innerHTML = optionsHtml;
+      }
+    } else {
+      alert(data.message || "Failed to submit vote.");
+    }
+  } catch (error) {
+    console.error('Error submitting vote:', error);
+    alert("An error occurred while voting.");
+  }
+};
