@@ -54,8 +54,7 @@
                     <input type="text" name="option3" placeholder="Option 3" maxlength="255"><br>
                     <input type="text" name="option4" placeholder="Option 4" maxlength="255"><br>
                     <div
-                        style="width: 100%; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 9px;">
-                        <br>
+                        style="width: 100%; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 9px; margin-top: 12px;">
                         <input id="poll-cancel" class="post-cancel" type="button" value="Cancel">
                         <input class="post-submit" type="submit" value="Submit">
                     </div>
@@ -79,7 +78,6 @@
             <div id="userlist-section">
                 <p><strong>:[[ :related-users: ]]:</strong></p><br>
                 <div id="userlist-container">
-                    <br>
                     {{ related_users | safe }}
                 </div>
             </div><br>
