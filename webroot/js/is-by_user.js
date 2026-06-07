@@ -838,7 +838,7 @@ function attachNewPostEventListener() {
     pollCancelButton.addEventListener('click', (event) => {
       postFormSection.style.display = 'none'; // hide the form section
       document.getElementById('poll-form').style.display = 'none';
-      document.getElementById('post-form').style.display = 'block';
+      document.getElementById('post-form').style.display = '';
       const toggleLink = document.querySelector('#poll-form-section a');
       if (toggleLink) toggleLink.innerText = ':[[ :create-poll: ]]:';
     });
@@ -904,7 +904,7 @@ window.togglePollForm = function() {
       pollForm.style.display = 'block';
       if (toggleLink) toggleLink.innerText = ':[[ :create-post: ]]:';
     } else {
-      postForm.style.display = 'block';
+      postForm.style.display = '';
       pollForm.style.display = 'none';
       if (toggleLink) toggleLink.innerText = ':[[ :create-poll: ]]:';
     }
