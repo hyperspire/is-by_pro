@@ -873,7 +873,9 @@ a:hover {
 
 #post-form .post-cancel,
 #post-form .post-submit,
-#reply-form .post-submit {
+#reply-form .post-submit,
+#poll-form .post-cancel,
+#poll-form .post-submit {
     display: inline-flex;
     margin: 0 !important;
 }
