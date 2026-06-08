@@ -1056,6 +1056,10 @@ a:hover {
     margin: 6px 6px 6px 6px;
 }
 
+#navigation-section {
+    margin: 20px 0;
+}
+
 #navigation-section,
 #navigation-section a,
 #navigation-section a:active,
