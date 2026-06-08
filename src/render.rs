@@ -484,7 +484,7 @@ pub async fn render_profile_html(
 
   let selected_user_posts_section = if is_blocked {
     format!(
-      r#"<div id="selected-user-posts-section" data-ib-uid="{ib_uid}" data-ib-user="{ib_user_escaped}"><br><div class="notice"><p><em>This user is unavailable.</em></p></div></div>"#,
+      r#"<div id="selected-user-posts-section" data-ib-uid="{ib_uid}" data-ib-user="{ib_user_escaped}"><div class="notice"><p><em>This user is unavailable.</em></p></div></div>"#,
       ib_uid = ib_uid,
       ib_user_escaped = escape_html(ib_user),
     )
@@ -509,7 +509,7 @@ pub async fn render_profile_html(
     let display_rows = &ib_post_results[..ib_post_results.len().min(20)];
 
     let mut selected_user_posts_response_content = format!(
-      r#"<br><div class="notice"><p><em>:[[ :for-the: [[ posts: is-by: {ib_post_results_length}: is-with: showing-latest-results: ]]: ]]:</em></p></div>"#,
+      r#"<div class="notice"><p><em>:[[ :for-the: [[ posts: is-by: {ib_post_results_length}: is-with: showing-latest-results: ]]: ]]:</em></p></div>"#,
       ib_post_results_length = ib_post_results_length,
     );
 
@@ -831,11 +831,11 @@ pub async fn render_profile_mobile_html(
 
   let mut selected_user_posts_response_content = if is_blocked {
     format!(
-      r#"<br><div class="notice"><p><em>This user is unavailable.</em></p></div>"#,
+      r#"<div class="notice"><p><em>This user is unavailable.</em></p></div>"#,
     )
   } else {
     format!(
-      r#"<br><div class="notice"><p><em>:[[ :for-the: [[ posts: is-by: {ib_post_results_length}: is-with: showing-latest-results: ]]: ]]:</em></p></div>"#,
+      r#"<div class="notice"><p><em>:[[ :for-the: [[ posts: is-by: {ib_post_results_length}: is-with: showing-latest-results: ]]: ]]:</em></p></div>"#,
       ib_post_results_length = ib_post_results_length,
     )
   };
@@ -2134,7 +2134,7 @@ pub async fn render_projects_html(
     .map_err(|e| format!("Projects query failed: {}", e))?;
 
   let projects_html = if rows.is_empty() {
-    r#"<br><div class="notice"><p><em>:[[ :for-the: [[ user-projects: is-by: none: ]]: ]]:</em></p></div>"#.to_string()
+    r#"<div class="notice"><p><em>:[[ :for-the: [[ user-projects: is-by: none: ]]: ]]:</em></p></div>"#.to_string()
   } else {
     let reinforcement_names: HashSet<String> = rows
       .iter()
@@ -2566,7 +2566,7 @@ pub async fn render_projects_mobile_html(
     .map_err(|e| format!("Projects query failed: {}", e))?;
 
   let projects_html = if rows.is_empty() {
-    r#"<br><div class="notice"><p><em>:[[ :for-the: [[ projects: is-by: none: ]]: ]]:</em></p></div>"#.to_string()
+    r#"<div class="notice"><p><em>:[[ :for-the: [[ projects: is-by: none: ]]: ]]:</em></p></div>"#.to_string()
   } else {
     let reinforcement_names: HashSet<String> = rows
       .iter()
