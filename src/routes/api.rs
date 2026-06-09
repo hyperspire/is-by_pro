@@ -1399,10 +1399,6 @@ pub async fn acknowledge_post(
     None => return HttpResponse::Unauthorized().body("Login required"),
   };
 
-  if session_uid != payload.ib_uid {
-    return HttpResponse::Forbidden().body("Session mismatch");
-  }
-
   let mut tx = match state.db_pool.begin().await {
     Ok(t) => t,
     Err(err) => return HttpResponse::InternalServerError().body(format!("Failed to start transaction: {}", err)),
