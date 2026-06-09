@@ -2,6 +2,8 @@
 
 ![:is-by_pro.png:](https://raw.githubusercontent.com/hyperspire/is-by_pro/refs/heads/main/is-by_pro.png)
 
+![:is-by_pro-description.png:](https://raw.githubusercontent.com/hyperspire/is-by_pro/refs/heads/main/is-by_pro-description.png)
+
 >Do you have what it takes to be a development hero? Rank up your development skills with others on is-by.pro! Achieve the rank of Commander to get your own verified badge bellow:
 
 https://is-by.pro/api/badge/{username}.png
