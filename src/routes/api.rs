@@ -63,8 +63,6 @@ pub async fn create_post(
 
   let postid = Uuid::new_v4().to_string();
 
-  // CREATE TABLE post (ib_uid varchar(64), postid varchar(64), parentid varchar(64), post varchar(1024), timestamp varchar(32));
-  // ALTER TABLE post MODIFY COLUMN parentid VARCHAR(64) NOT NULL DEFAULT '';
   let result = sqlx::query(
     "INSERT INTO post (ib_uid, postid, post, `timestamp`) VALUES (?, ?, ?, NOW())",
   )
@@ -840,7 +838,7 @@ pub async fn get_commander_badge(
   }
 
   // Return PNG badge image
-  match fs::read("./webroot/images/hall_of_heroes.png") {
+  match fs::read("./hall_of_heroes.png") {
     Ok(image_data) => {
       Either::Right(
         HttpResponse::Ok()
