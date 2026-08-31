@@ -96,7 +96,7 @@ pub async fn create_post(
           }
 
           let dm_message = format!(
-            "You were mentioned by @{} in a post:\n\n{}\n\n|||LINK|||https://{}/v1/showpost?ib_uid={}&ib_user={}&pid={}|||View Post|||",
+            "You were mentioned by @{} in a post:\n\n{}\n\n[View Post](https://{}/v1/showpost?ib_uid={}&ib_user={}&pid={})",
             session_username,
             payload.post,
             DOMAIN,
@@ -286,7 +286,7 @@ pub async fn create_poll(
       }
 
       let dm_message = format!(
-        "You were mentioned by @{} in a poll:\n\n{}\n\n|||LINK|||https://{}/v1/showpost?ib_uid={}&ib_user={}&pid={}|||View Poll|||",
+        "You were mentioned by @{} in a poll:\n\n{}\n\n[View Poll](https://{}/v1/showpost?ib_uid={}&ib_user={}&pid={})",
         session_username,
         payload.post,
         DOMAIN,
@@ -446,7 +446,7 @@ pub async fn create_reply(
       let target_uid = payload.ib_uid;
       if target_uid != session_uid {
         let dm_message = format!(
-          "{} replied to your post:\n\n{}\n\n|||LINK|||https://{}/v1/showpost?ib_uid={}&ib_user={}&pid={}|||View Post|||",
+          "{} replied to your post:\n\n{}\n\n[View Post](https://{}/v1/showpost?ib_uid={}&ib_user={}&pid={})",
           session_username,
           payload.post,
           DOMAIN,
