@@ -40,10 +40,7 @@
 use is_by_pro::{
   DOMAIN,
   HTTP_PORT,
-  HTTPS_PORT,
   GITHUB_CLIENT_SECRET_ENV,
-  IB_CA_CERT,
-  IB_CA_KEY,
   IB_ENV,
   MYSQL_ENV,
   PAYPAL_ENV,
@@ -57,11 +54,6 @@ use actix_cors::Cors;
 use actix_files::Files;
 use actix_web::{dev::Service, http::Method, middleware::Logger, web, App, HttpResponse, HttpServer};
 use env_logger::Env;
-
-use rustls::{ServerConfig, pki_types::CertificateDer};
-use rustls_pemfile::{certs, private_key};
-use std::fs::File;
-use std::io::BufReader;
 
 pub mod models;
 pub use models::*;
@@ -86,19 +78,6 @@ pub use routes::sse::*;
 pub use routes::pages::*;
 
 static AES256_KEY: std::sync::OnceLock<[u8; 32]> = std::sync::OnceLock::new();
-
-fn load_rustls_config() -> ServerConfig {
-  let cert_file = &mut BufReader::new(File::open(IB_CA_CERT).unwrap());
-  let key_file  = &mut BufReader::new(File::open(IB_CA_KEY).unwrap());
-
-  let cert_chain: Vec<CertificateDer> = certs(cert_file).map(|c| c.unwrap()).collect();
-  let key = private_key(key_file).expect("Failed to read or parse the key file").expect("No valid private key found in the key file");
-
-  ServerConfig::builder()
-    .with_no_client_auth()
-    .with_single_cert(cert_chain, key)
-    .unwrap()
-}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -158,15 +137,7 @@ async fn main() -> std::io::Result<()> {
       .expect("Missing VAPID_PRIVATE_KEY in environment file or shell"),
   };
 
-  let http_server = HttpServer::new(|| {
-    App::new()
-      .wrap(Logger::default())
-      .default_service(web::to(redirect_to_https))
-  })
-  .bind(("0.0.0.0", HTTP_PORT))?
-  .run();
-
-  let https_server = HttpServer::new(move || {
+  HttpServer::new(move || {
     let allowed_origin = format!("https://{}", DOMAIN);
     let cors = Cors::default()
       .allowed_origin(&allowed_origin)
@@ -320,9 +291,7 @@ async fn main() -> std::io::Result<()> {
           })
       ))
   })
-  .bind_rustls_0_23(("0.0.0.0", HTTPS_PORT), load_rustls_config())?
-  .run();
-
-  tokio::try_join!(http_server, https_server)?;
-  Ok(())
+  .bind(("0.0.0.0", HTTP_PORT))?
+  .run()
+  .await
 }

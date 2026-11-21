@@ -1,8 +1,5 @@
 pub const DOMAIN: &str = "is-by.pro";
 pub const HTTP_PORT: u16 = 8000;
-pub const HTTPS_PORT: u16 = 8443;
-pub const IB_CA_KEY: &str = "/etc/letsencrypt/live/is-by.pro/privkey.pem";
-pub const IB_CA_CERT: &str = "/etc/letsencrypt/live/is-by.pro/fullchain.pem";
 pub const IB_ENV: &str = ".env";
 pub const GITHUB_CLIENT_SECRET_ENV: &str = ".env/GITHUB_CLIENT_SECRET.env";
 pub const MYSQL_ENV: &str = ".env/MYSQL.env";
